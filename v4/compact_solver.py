@@ -66,9 +66,6 @@ class CompactSolver:
         for i in range(Ny):
             for j in range(Nz):
                 result[:, i, j] = spsolve(self.A_periodic[0], rhs[:, i, j])
-                count += 1
-                if count % 10 == 0:
-                    print(f"Solving Poisson equation: {count}/{total} ({count/total*100:.1f}%)")
         
         return result
     
