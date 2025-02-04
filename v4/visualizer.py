@@ -86,37 +86,52 @@ class Visualizer:
         """速度ベクトルの可視化"""
         fig = plt.figure(figsize=(15, 5))
         
-        # xy平面でのベクトル場
+        # スキップ間隔の設定
+        skip = 2
+        
+        # マスクの最小速度
+        min_vel = 1e-6
+        
+        # xy平面
         ax1 = fig.add_subplot(131)
-        x, y = np.meshgrid(self.config.x, self.config.y)
+        x, y = np.meshgrid(self.config.x[::skip], self.config.y[::skip])
+        vel_mag = np.sqrt(u[:,:,self.config.Nz//2]**2 + v[:,:,self.config.Nz//2]**2)
+        mask = vel_mag > min_vel
         ax1.quiver(
             x, y,
-            u[:,:,self.config.Nz//2].T,
-            v[:,:,self.config.Nz//2].T
+            u[::skip,::skip,self.config.Nz//2].T[mask],
+            v[::skip,::skip,self.config.Nz//2].T[mask],
+            scale=50
         )
         ax1.set_title('Velocity Vectors (xy-plane)')
         ax1.set_xlabel('x')
         ax1.set_ylabel('y')
         
-        # xz平面でのベクトル場
+        # xz平面
         ax2 = fig.add_subplot(132)
-        x, z = np.meshgrid(self.config.x, self.config.z)
+        x, z = np.meshgrid(self.config.x[::skip], self.config.z[::skip])
+        vel_mag = np.sqrt(u[:,self.config.Ny//2,:]**2 + w[:,self.config.Ny//2,:]**2)
+        mask = vel_mag > min_vel
         ax2.quiver(
             x, z,
-            u[:,self.config.Ny//2,:].T,
-            w[:,self.config.Ny//2,:].T
+            u[::skip,self.config.Ny//2,::skip].T[mask],
+            w[::skip,self.config.Ny//2,::skip].T[mask],
+            scale=50
         )
         ax2.set_title('Velocity Vectors (xz-plane)')
         ax2.set_xlabel('x')
         ax2.set_ylabel('z')
         
-        # yz平面でのベクトル場
+        # yz平面
         ax3 = fig.add_subplot(133)
-        y, z = np.meshgrid(self.config.y, self.config.z)
+        y, z = np.meshgrid(self.config.y[::skip], self.config.z[::skip])
+        vel_mag = np.sqrt(v[self.config.Nx//2,:,:]**2 + w[self.config.Nx//2,:,:]**2)
+        mask = vel_mag > min_vel
         ax3.quiver(
             y, z,
-            v[self.config.Nx//2,:,:].T,
-            w[self.config.Nx//2,:,:].T
+            v[self.config.Nx//2,::skip,::skip].T[mask],
+            w[self.config.Nx//2,::skip,::skip].T[mask],
+            scale=50
         )
         ax3.set_title('Velocity Vectors (yz-plane)')
         ax3.set_xlabel('y')

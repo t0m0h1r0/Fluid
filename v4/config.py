@@ -4,7 +4,7 @@ class SimulationConfig:
     def __init__(self):
         # 計算領域の設定
         self.Lx, self.Ly, self.Lz = 1.0, 1.0, 2.0
-        self.Nx, self.Ny, self.Nz = 32, 32, 64
+        self.Nx, self.Ny, self.Nz = 16, 16, 32
         
         # 物理パラメータ
         self.rho_water = 1000.0  # 水の密度 [kg/m^3]
