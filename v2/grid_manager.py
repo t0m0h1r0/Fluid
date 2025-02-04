@@ -35,6 +35,11 @@ class GridConfig:
         """z方向のグリッド間隔"""
         return self.Lz / (self.nz - 1)
 
+    @property
+    def grid_shape(self) -> Tuple[int, int, int]:
+        """グリッドの形状を返す"""
+        return (self.nx, self.ny, self.nz)
+
 class GridManager:
     """グリッド生成と操作のための高性能クラス"""
     def __init__(self, config: GridConfig):
