@@ -6,6 +6,8 @@ from compact_solver import CompactSolver
 from flow_solver import FlowSolver
 from io_handler import SimulationIO
 from visualizer import Visualizer
+import matplotlib.pyplot as plt
+
 
 def simulate(config, start_time=0.0, start_step=0, max_time=1.0):
     """シミュレーションの実行"""
