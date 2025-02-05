@@ -95,12 +95,14 @@ class Visualizer:
         # xy平面
         ax1 = fig.add_subplot(131)
         x, y = np.meshgrid(self.config.x[::skip], self.config.y[::skip])
-        vel_mag = np.sqrt(u[:,:,self.config.Nz//2]**2 + v[:,:,self.config.Nz//2]**2)
+        u_slice = u[::skip,::skip,self.config.Nz//2].T
+        v_slice = v[::skip,::skip,self.config.Nz//2].T
+        vel_mag = np.sqrt(u_slice**2 + v_slice**2)
         mask = vel_mag > min_vel
         ax1.quiver(
             x, y,
-            u[::skip,::skip,self.config.Nz//2].T[mask],
-            v[::skip,::skip,self.config.Nz//2].T[mask],
+            np.ma.masked_array(u_slice, ~mask),
+            np.ma.masked_array(v_slice, ~mask),
             scale=50
         )
         ax1.set_title('Velocity Vectors (xy-plane)')
@@ -110,12 +112,14 @@ class Visualizer:
         # xz平面
         ax2 = fig.add_subplot(132)
         x, z = np.meshgrid(self.config.x[::skip], self.config.z[::skip])
-        vel_mag = np.sqrt(u[:,self.config.Ny//2,:]**2 + w[:,self.config.Ny//2,:]**2)
+        u_slice = u[::skip,self.config.Ny//2,::skip].T
+        w_slice = w[::skip,self.config.Ny//2,::skip].T
+        vel_mag = np.sqrt(u_slice**2 + w_slice**2)
         mask = vel_mag > min_vel
         ax2.quiver(
             x, z,
-            u[::skip,self.config.Ny//2,::skip].T[mask],
-            w[::skip,self.config.Ny//2,::skip].T[mask],
+            np.ma.masked_array(u_slice, ~mask),
+            np.ma.masked_array(w_slice, ~mask),
             scale=50
         )
         ax2.set_title('Velocity Vectors (xz-plane)')
@@ -125,12 +129,14 @@ class Visualizer:
         # yz平面
         ax3 = fig.add_subplot(133)
         y, z = np.meshgrid(self.config.y[::skip], self.config.z[::skip])
-        vel_mag = np.sqrt(v[self.config.Nx//2,:,:]**2 + w[self.config.Nx//2,:,:]**2)
+        v_slice = v[self.config.Nx//2,::skip,::skip].T
+        w_slice = w[self.config.Nx//2,::skip,::skip].T
+        vel_mag = np.sqrt(v_slice**2 + w_slice**2)
         mask = vel_mag > min_vel
         ax3.quiver(
             y, z,
-            v[self.config.Nx//2,::skip,::skip].T[mask],
-            w[self.config.Nx//2,::skip,::skip].T[mask],
+            np.ma.masked_array(v_slice, ~mask),
+            np.ma.masked_array(w_slice, ~mask),
             scale=50
         )
         ax3.set_title('Velocity Vectors (yz-plane)')

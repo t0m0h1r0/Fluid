@@ -20,7 +20,7 @@ def simulate(config, start_time=0.0, start_step=0, max_time=1.0):
     
     time = start_time
     step = start_step
-    next_save = time + config.save_interval
+    next_save = 0
     
     print(f"Starting simulation from t = {time}")
     
