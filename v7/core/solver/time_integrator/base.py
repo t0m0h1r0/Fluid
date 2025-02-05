@@ -1,20 +1,23 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from typing import List, Dict, Callable, TypeVar, Generic
+from typing import Callable, TypeVar, Generic
 
 T = TypeVar('T')
 
 class TimeIntegrator(Generic[T], ABC):
-    """時間積分の基底クラス"""
+    """時間積分法の基底クラス"""
     
     @abstractmethod
-    def step(self, y: T, t: float, dt: float, rhs: Callable[[T, float], T]) -> T:
-        """1時間ステップの計算
+    def step(self, t: float, dt: float, y: T, f: Callable[[float, T], T]) -> T:
+        """
+        1ステップの時間発展を計算
+        
         Args:
-            y: 現在の状態
-            t: 現在時刻
+            t: 現在の時刻
             dt: 時間刻み幅
-            rhs: 右辺の計算関数 f(y, t) -> dy/dt
+            y: 現在の状態
+            f: 右辺関数 f(t, y)
+        
         Returns:
             次のステップの状態
         """
@@ -22,5 +25,5 @@ class TimeIntegrator(Generic[T], ABC):
 
     @abstractmethod
     def order(self) -> int:
-        """時間積分の次数"""
+        """スキームの次数を返す"""
         pass

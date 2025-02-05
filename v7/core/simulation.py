@@ -1,5 +1,5 @@
-from typing import Dict
-from pathlib import Path
+from typing import Dict, Optional
+import numpy as np
 
 from config.base import Config
 from core.material.properties import MaterialManager
@@ -10,13 +10,16 @@ from core.field.scalar_field import ScalarField
 from core.field.vector_field import VectorField
 from core.field.metadata import FieldMetadata
 
-class Simulation:
-    def __init__(self,
-                 material_manager: MaterialManager,
-                 phase_field: PhaseField,
-                 ns_solver: NavierStokesSolver,
-                 time_integrator: TimeIntegrator,
-                 config: Config):
+class MultiPhaseSimulation:
+    """多相流体シミュレーションのメインクラス"""
+    def __init__(
+        self,
+        material_manager: MaterialManager,
+        phase_field: PhaseField,
+        ns_solver: NavierStokesSolver,
+        time_integrator: TimeIntegrator,
+        config: Config
+    ):
         self.material_manager = material_manager
         self.phase_field = phase_field
         self.ns_solver = ns_solver
@@ -38,9 +41,8 @@ class Simulation:
             domain_size=domain_size,
             resolution=resolution
         )
-        self.phase = ScalarField(phase_metadata)
-        self.material_manager.initialize_phase_field(self.phase)
-
+        self.phase = self.phase_field.phi
+        
         # 速度場の初期化
         velocity_metadata = FieldMetadata(
             name='velocity',
@@ -48,7 +50,10 @@ class Simulation:
             domain_size=domain_size,
             resolution=resolution
         )
-        self.velocity = VectorField(velocity_metadata)
+        self.velocity = VectorField(
+            velocity_metadata, 
+            initial_value=self.config.initial_condition.initial_velocity
+        )
 
         # 圧力場の初期化
         pressure_metadata = FieldMetadata(
@@ -59,14 +64,18 @@ class Simulation:
         )
         self.pressure = ScalarField(pressure_metadata)
 
+        # 密度と粘性の初期化
+        self.material_manager.initialize_phase_field(self.phase)
+
     def step(self, dt: float):
+        """1タイムステップの計算"""
         # Phase-Fieldの更新
         self.phase_field.evolve(self.velocity, dt)
         
         # 物性値の更新
         self.material_manager.update_properties(self.phase)
         
-        # Navier-Stokes方程式の更新
+        # 各種フィールドの準備
         fields = {
             'velocity': self.velocity,
             'pressure': self.pressure,
@@ -78,6 +87,7 @@ class Simulation:
         def rhs(t: float, y: VectorField) -> VectorField:
             return self.ns_solver.compute_right_hand_side(fields)
         
+        # 時間積分
         self.velocity = self.time_integrator.step(0.0, dt, self.velocity, rhs)
         
         # 圧力補正
@@ -88,6 +98,7 @@ class Simulation:
         )
 
     def get_field_data(self) -> Dict[str, ScalarField | VectorField]:
+        """フィールドデータの取得"""
         return {
             'phase': self.phase,
             'velocity': self.velocity,
@@ -95,3 +106,32 @@ class Simulation:
             'density': self.material_manager.get_density_field(),
             'viscosity': self.material_manager.get_viscosity_field()
         }
+
+    def set_initial_conditions(self):
+        """初期条件の設定"""
+        # 層の設定
+        for layer in self.config.initial_condition.layers:
+            # TODO: 層に応じて相場を初期化
+            z_min, z_max = layer.z_range
+            phase_data = self.phase.data
+            phase_data[(self.phase.metadata.domain_size[2] * z_min / self.phase.metadata.domain_size[2]):
+                       (self.phase.metadata.domain_size[2] * z_max / self.phase.metadata.domain_size[2])] = 1.0
+        
+        # 球の設定
+        for sphere in self.config.initial_condition.spheres:
+            # TODO: 球の形状に応じて相場を初期化
+            center = sphere.center
+            radius = sphere.radius
+            
+            # 座標のグリッドを生成
+            x = np.linspace(0, self.phase.metadata.domain_size[0], self.phase.metadata.resolution[0])
+            y = np.linspace(0, self.phase.metadata.domain_size[1], self.phase.metadata.resolution[1])
+            z = np.linspace(0, self.phase.metadata.domain_size[2], self.phase.metadata.resolution[2])
+            X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+            
+            # 球の条件
+            sphere_mask = ((X - center[0])**2 + 
+                           (Y - center[1])**2 + 
+                           (Z - center[2])**2) <= radius**2
+            
+            self.phase.data[sphere_mask] = 1.0

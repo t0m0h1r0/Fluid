@@ -1,178 +1,386 @@
 import argparse
+import logging
 from pathlib import Path
-from typing import Optional
+from datetime import datetime
 
 from config.base import Config
 from config.validator import ConfigValidator
-from core.simulation import Simulation
-from core.material.properties import MaterialManager
+from core.simulation import MultiPhaseSimulation
+from core.material.properties import MaterialManager, FluidProperties
 from core.solver.navier_stokes.solver import NavierStokesSolver
+from core.solver.time_integrator.adaptive import AdaptiveTimeIntegrator
 from core.solver.time_integrator.runge_kutta import RK4
 from core.solver.poisson.multigrid import MultigridSolver
 from physics.phase_field import PhaseField, PhaseFieldParameters
-from core.field.metadata import FieldMetadata
-from core.field.scalar_field import ScalarField
-from data_io.hdf5_io import HDF5IO
-from data_io.csv_io import CSVIO
 from data_io.visualizer import Visualizer
+from data_io.logging import setup_logging
+from data_io.hdf5_io import HDF5IO
 
-class SimulationRunner:
-    def __init__(self, config_path: Path):
-        self.config = Config.from_yaml(config_path)
-        self._validate_config()
+def initialize_logging(config: Config):
+    """ロギング設定の初期化"""
+    log_dir = Path(config.logging.output_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # ログファイル名に現在の日時を追加
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"simulation_{timestamp}.log"
+    
+    # ロギングの設定
+    setup_logging(
+        level=getattr(logging, config.logging.level.upper(), logging.INFO),
+        log_file=log_file
+    )
+    
+    # 設定情報をログに記録
+    logging.info("シミュレーション設定:")
+    logging.info(f"計算領域: {config.domain.size}")
+    logging.info(f"グリッド解像度: {config.domain.resolution}")
+    logging.info(f"相の数: {len(config.physical.phases)}")
+
+def create_material_manager(config: Config) -> MaterialManager:
+    """物性値マネージャーの作成"""
+    material_manager = MaterialManager()
+    
+    # 各相の物性値を追加
+    for phase_config in config.physical.phases:
+        fluid_props = FluidProperties(
+            name=phase_config.name,
+            density=phase_config.density,
+            viscosity=phase_config.viscosity,
+            surface_tension=phase_config.surface_tension_coefficient
+        )
+        material_manager.add_fluid(phase_config.name, fluid_props)
+    
+    return material_manager
+
+def setup_phase_field(config: Config) -> PhaseField:
+    """Phase-Fieldの設定"""
+    # Phase-Fieldパラメータの設定
+    phase_params = PhaseFieldParameters(
+        epsilon=0.01,  # 界面厚さ
+        mobility=1.0,  # 移動度
+        surface_tension=config.physical.surface_tension
+    )
+    
+    # フィールドのメタデータを作成
+    from core.field.metadata import FieldMetadata
+    from core.field.scalar_field import ScalarField
+    
+    metadata = FieldMetadata(
+        name='phase',
+        unit='-',
+        domain_size=config.domain.size,
+        resolution=config.domain.resolution
+    )
+    phase_field_scalar = ScalarField(metadata)
+    
+    # 初期条件の設定（層と球）
+    # TODO: 層と球の初期条件を実装
+    
+    return PhaseField(phase_field_scalar, phase_params)
+
+def create_simulation(config: Config) -> MultiPhaseSimulation:
+    """シミュレーションの初期化"""
+    # 物性値マネージャー
+    material_manager = create_material_manager(config)
+    
+    # Phase-Field
+    phase_field = setup_phase_field(config)
+    
+    # ポアソンソルバー
+    poisson_solver = MultigridSolver(
+        tolerance=config.numerical.pressure_tolerance,
+        max_iterations=1000
+    )
+    
+    # Navier-Stokesソルバー
+    ns_solver = NavierStokesSolver(poisson_solver)
+    
+    # 時間積分器
+    base_integrator = RK4()
+    time_integrator = AdaptiveTimeIntegrator(
+        base_integrator,
+        atol=config.numerical.velocity_tolerance,
+        rtol=config.numerical.velocity_tolerance
+    )
+    
+    return MultiPhaseSimulation(
+        material_manager=material_manager,
+        phase_field=phase_field,
+        ns_solver=ns_solver,
+        time_integrator=time_integrator,
+        config=config
+    )
+
+def run_simulation(config: Config):
+    """シミュレーションの実行"""
+    # ロギングの初期化
+    initialize_logging(config)
+    
+    try:
+        # シミュレーションの準備
+        simulation = create_simulation(config)
         
-        self.io = self._create_io()
-        self.visualizer = Visualizer(self.config.output.output_dir)
-        self.simulation = self._create_simulation()
-
-    def _validate_config(self):
-        errors = ConfigValidator.validate(self.config)
-        if errors:
-            raise ValueError("\n".join(errors))
-
-    def _create_io(self):
-        if self.config.output.save_format == 'hdf5':
-            return HDF5IO(self.config.output.output_dir)
-        else:
-            return CSVIO(self.config.output.output_dir)
-
-    def _create_simulation(self):
-        # 物性値管理
-        material_manager = MaterialManager()
-        for name, fluid in self.config.fluids.items():
-            material_manager.add_fluid(name, fluid)
-
-        # フィールドのメタデータを作成
-        metadata = FieldMetadata(
-            name='phase',
-            unit='-',
-            domain_size=self.config.domain.size,
-            resolution=self.config.domain.resolution
-        )
-
-        # Phase-Fieldのスカラー場を作成
-        phase_field_scalar = ScalarField(metadata)
-
-        # Phase-Field
-        phase_field = PhaseField(
-            phase_field=phase_field_scalar,
-            parameters=PhaseFieldParameters(
-                epsilon=self.config.phase.epsilon,
-                mobility=self.config.phase.mobility,
-                surface_tension=self.config.phase.surface_tension
-            )
-        )
-
-        # ポアソンソルバー
-        poisson_solver = MultigridSolver(
-            num_levels=3,
-            v_cycles=3,
-            tolerance=self.config.numerical.tolerance,
-            max_iterations=self.config.numerical.max_iterations
-        )
-
-        # Navier-Stokesソルバー
-        ns_solver = NavierStokesSolver(
-            poisson_solver  # キーワード引数ではなく位置引数として渡す
-        )
-
-        # 時間積分
-        time_integrator = RK4()
-
-        return Simulation(
-            material_manager=material_manager,
-            phase_field=phase_field,
-            ns_solver=ns_solver,
-            time_integrator=time_integrator,
-            config=self.config
-        )
-
-    def run(self):
-        print("シミュレーションを開始します...")
-        try:
-            # 初期状態の保存と可視化
-            self._save_results(0)
-            print("初期状態を保存しました")
+        # 入出力の設定
+        output_dir = Path(config.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        io = HDF5IO(output_dir)
+        visualizer = Visualizer(output_dir)
+        
+        # シミュレーションループ
+        current_time = 0.0
+        timestep = 0
+        next_save_time = config.numerical.save_interval
+        
+        while (current_time < config.numerical.max_time and 
+               timestep < config.numerical.max_steps):
             
-            timestep = 0
-            time = 0.0
-            next_save = self.config.output.save_interval  # 次の保存時刻
-
-            print("時間発展計算を開始します...")
-            while time < self.config.numerical.max_time:
-                print(f"\rTime: {time:.3f} s", end="")
-
-                # シミュレーションステップ
-                self.simulation.step(self.config.numerical.dt)
-                time += self.config.numerical.dt
-                timestep += 1
-
-                # 結果の保存
-                if time >= next_save:
-                    self._save_results(timestep)
-                    next_save += self.config.output.save_interval
-                    print(f"\n時刻 {time:.3f} s の結果を保存しました")
-
-            # 最終状態の保存
-            self._save_results(timestep)
-            print("\n最終状態を保存しました")
-            print("\nシミュレーションが完了しました")
-
-        except KeyboardInterrupt:
-            print("\nシミュレーションが中断されました")
-            # 中断時の状態を保存
-            self._save_results(timestep)
-            print("中断時の状態を保存しました")
+            # 時間発展
+            simulation.step(config.numerical.dt)
             
-        except Exception as e:
-            print(f"\nエラーが発生しました: {e}")
-            raise
+            current_time += config.numerical.dt
+            timestep += 1
+            
+            # 結果の保存と可視化
+            if current_time >= next_save_time or timestep == config.numerical.max_steps:
+                # フィールドデータの保存
+                field_data = simulation.get_field_data()
+                for name, field in field_data.items():
+                    io.save_field(field, timestep)
+                
+                # 可視化
+                if config.output.visualization:
+                    # 相場の可視化
+                    phase_plot = visualizer.create_slice_plot(
+                        field_data['phase'], timestep,
+                        cmap='RdYlBu',
+                        elev=config.visualization.phase_3d.elev,
+                        azim=config.visualization.phase_3d.azim
+                    )
+                    
+                    # 速度場の可視化
+                    velocity_plot = visualizer.create_vector_plot(
+                        field_data['velocity'], timestep,
+                        cmap='coolwarm',
+                        scale=50,
+                        elev=config.visualization.velocity_3d.elev,
+                        azim=config.visualization.velocity_3d.azim
+                    )
+                
+                next_save_time += config.numerical.save_interval
+                logging.info(f"時刻 {current_time:.3f} s の結果を保存しました")
+        
+        logging.info("シミュレーションが完了しました")
+    
+    except Exception as e:
+        logging.error(f"シミュレーション中にエラーが発生しました: {e}")
+        raise
 
-    def _save_results(self, timestep: int):
-        # フィールドデータの保存
-        field_data = self.simulation.get_field_data()
-        for name, field in field_data.items():
-            filepath = self.io.save_field(field, timestep)
-            print(f"  - {name}フィールドを保存: {filepath}")
+import argparse
+import logging
+from pathlib import Path
+from datetime import datetime
 
-        # 可視化
-        if self.config.output.visualization:
-            # 相場の可視化
-            phase_plot = self.visualizer.create_slice_plot(
-                field_data['phase'], timestep,
-                cmap='RdYlBu'
-            )
-            print(f"  - 相場の可視化を保存: {phase_plot}")
+from config.base import Config
+from config.validator import ConfigValidator
+from core.simulation import MultiPhaseSimulation
+from core.material.properties import MaterialManager, FluidProperties
+from core.solver.navier_stokes.solver import NavierStokesSolver
+from core.solver.time_integrator.adaptive import AdaptiveTimeIntegrator
+from core.solver.time_integrator.runge_kutta import RK4
+from core.solver.poisson.multigrid import MultigridSolver
+from physics.phase_field import PhaseField, PhaseFieldParameters
+from data_io.visualizer import Visualizer
+from data_io.logging import setup_logging
+from data_io.hdf5_io import HDF5IO
 
-            # 速度場の可視化
-            velocity_plot = self.visualizer.create_vector_plot(
-                field_data['velocity'], timestep,
-                cmap='coolwarm', scale=50
-            )
-            print(f"  - 速度場の可視化を保存: {velocity_plot}")
+def initialize_logging(config: Config):
+    """ロギング設定の初期化"""
+    log_dir = Path(config.logging.output_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # ログファイル名に現在の日時を追加
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = log_dir / f"simulation_{timestamp}.log"
+    
+    # ロギングの設定
+    setup_logging(
+        level=getattr(logging, config.logging.level.upper(), logging.INFO),
+        log_file=log_file
+    )
+    
+    # 設定情報をログに記録
+    logging.info("シミュレーション設定:")
+    logging.info(f"計算領域: {config.domain.size}")
+    logging.info(f"グリッド解像度: {config.domain.resolution}")
+    logging.info(f"相の数: {len(config.physical.phases)}")
 
-            # 圧力場の可視化
-            pressure_plot = self.visualizer.create_slice_plot(
-                field_data['pressure'], timestep,
-                cmap='RdBu'
-            )
-            print(f"  - 圧力場の可視化を保存: {pressure_plot}")
+def create_material_manager(config: Config) -> MaterialManager:
+    """物性値マネージャーの作成"""
+    material_manager = MaterialManager()
+    
+    # 各相の物性値を追加
+    for phase_config in config.physical.phases:
+        fluid_props = FluidProperties(
+            name=phase_config.name,
+            density=phase_config.density,
+            viscosity=phase_config.viscosity,
+            surface_tension=phase_config.surface_tension_coefficient
+        )
+        material_manager.add_fluid(phase_config.name, fluid_props)
+    
+    return material_manager
 
-            # 密度場の可視化
-            density_plot = self.visualizer.create_slice_plot(
-                field_data['density'], timestep,
-                cmap='viridis'
-            )
-            print(f"  - 密度場の可視化を保存: {density_plot}")
+def setup_phase_field(config: Config) -> PhaseField:
+    """Phase-Fieldの設定"""
+    # Phase-Fieldパラメータの設定
+    phase_params = PhaseFieldParameters(
+        epsilon=0.01,  # 界面厚さ
+        mobility=1.0,  # 移動度
+        surface_tension=config.physical.surface_tension
+    )
+    
+    # フィールドのメタデータを作成
+    from core.field.metadata import FieldMetadata
+    from core.field.scalar_field import ScalarField
+    
+    metadata = FieldMetadata(
+        name='phase',
+        unit='-',
+        domain_size=config.domain.size,
+        resolution=config.domain.resolution
+    )
+    phase_field_scalar = ScalarField(metadata)
+    
+    # 初期条件の設定（層と球）
+    # TODO: 層と球の初期条件を実装
+    
+    return PhaseField(phase_field_scalar, phase_params)
+
+def create_simulation(config: Config) -> MultiPhaseSimulation:
+    """シミュレーションの初期化"""
+    # 物性値マネージャー
+    material_manager = create_material_manager(config)
+    
+    # Phase-Field
+    phase_field = setup_phase_field(config)
+    
+    # ポアソンソルバー
+    poisson_solver = MultigridSolver(
+        tolerance=config.numerical.pressure_tolerance,
+        max_iterations=1000
+    )
+    
+    # Navier-Stokesソルバー
+    ns_solver = NavierStokesSolver(poisson_solver)
+    
+    # 時間積分器
+    base_integrator = RK4()
+    time_integrator = AdaptiveTimeIntegrator(
+        base_integrator,
+        atol=config.numerical.velocity_tolerance,
+        rtol=config.numerical.velocity_tolerance
+    )
+    
+    return MultiPhaseSimulation(
+        material_manager=material_manager,
+        phase_field=phase_field,
+        ns_solver=ns_solver,
+        time_integrator=time_integrator,
+        config=config
+    )
+
+def run_simulation(config: Config):
+    """シミュレーションの実行"""
+    # ロギングの初期化
+    initialize_logging(config)
+    
+    try:
+        # シミュレーションの準備
+        simulation = create_simulation(config)
+        
+        # 入出力の設定
+        output_dir = Path(config.output.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        io = HDF5IO(output_dir)
+        visualizer = Visualizer(output_dir)
+        
+        # シミュレーションループ
+        current_time = 0.0
+        timestep = 0
+        next_save_time = config.numerical.save_interval
+        
+        while (current_time < config.numerical.max_time and 
+               timestep < config.numerical.max_steps):
+            
+            # 時間発展
+            simulation.step(config.numerical.dt)
+            
+            current_time += config.numerical.dt
+            timestep += 1
+            
+            # 結果の保存と可視化
+            if current_time >= next_save_time or timestep == config.numerical.max_steps:
+                # フィールドデータの保存
+                field_data = simulation.get_field_data()
+                for name, field in field_data.items():
+                    io.save_field(field, timestep)
+                
+                # 可視化
+                if config.output.visualization:
+                    # 相場の可視化
+                    phase_plot = visualizer.create_slice_plot(
+                        field_data['phase'], timestep,
+                        cmap='RdYlBu',
+                        elev=config.visualization.phase_3d.elev,
+                        azim=config.visualization.phase_3d.azim
+                    )
+                    
+                    # 速度場の可視化
+                    velocity_plot = visualizer.create_vector_plot(
+                        field_data['velocity'], timestep,
+                        cmap='coolwarm',
+                        scale=50,
+                        elev=config.visualization.velocity_3d.elev,
+                        azim=config.visualization.velocity_3d.azim
+                    )
+                    
+                    logging.info(f"可視化: {phase_plot}, {velocity_plot}")
+
+                next_save_time += config.numerical.save_interval
+                logging.info(f"時刻 {current_time:.3f} s の結果を保存しました")
+        
+        logging.info("シミュレーションが完了しました")
+    
+    except Exception as e:
+        logging.error(f"シミュレーション中にエラーが発生しました: {e}")
+        raise
 
 def main():
-    parser = argparse.ArgumentParser(description='二相流体シミュレーション')
-    parser.add_argument('--config', type=Path, default='config/default_config.yaml',
-                       help='設定ファイルのパス')
+    # コマンドライン引数の解析
+    parser = argparse.ArgumentParser(description='多相流体シミュレーション')
+    parser.add_argument(
+        '--config', 
+        type=Path, 
+        default='config/default_config.yaml',
+        help='設定ファイルのパス'
+    )
     args = parser.parse_args()
-
-    runner = SimulationRunner(args.config)
-    runner.run()
+    
+    # 設定ファイルの読み込みとバリデーション
+    config = Config.from_yaml(args.config)
+    
+    # 設定のバリデーション
+    validation_errors = ConfigValidator.validate(config)
+    if validation_errors:
+        for error in validation_errors:
+            print(f"設定エラー: {error}")
+        return
+    
+    # シミュレーションの実行
+    run_simulation(config)
 
 if __name__ == "__main__":
     main()
