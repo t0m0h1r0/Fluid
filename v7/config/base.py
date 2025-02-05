@@ -45,9 +45,14 @@ class NumericalConfig:
 class OutputConfig:
     """出力の設定"""
     save_interval: float
-    output_dir: Path
+    output_dir: str | Path
     save_format: str = 'hdf5'
     visualization: bool = True
+
+    def __post_init__(self):
+        # output_dirをPathに変換
+        if isinstance(self.output_dir, str):
+            self.output_dir = Path(self.output_dir)
 
 @dataclass
 class Config:

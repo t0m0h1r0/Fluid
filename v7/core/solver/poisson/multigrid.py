@@ -1,31 +1,22 @@
 import numpy as np
 from typing import Optional, List, Tuple
-from .base import PoissonSolver
-from .jacobi import JacobiSolver
-from ...field.scalar_field import ScalarField
+from core.field.scalar_field import ScalarField
+from core.field.metadata import FieldMetadata
+from .poisson import PoissonSolver
 
 class MultigridSolver(PoissonSolver):
-    """マルチグリッド法によるPoisson方程式ソルバー"""
-    
+    """マルチグリッド法"""
     def __init__(self, 
                  num_levels: int = 4,
-                 num_vcycles: int = 10,
+                 v_cycles: int = 3,
                  pre_smooth: int = 2,
                  post_smooth: int = 2,
                  **kwargs):
-        """
-        Args:
-            num_levels: グリッドレベル数
-            num_vcycles: Vサイクル数
-            pre_smooth: 制限前の平滑化回数
-            post_smooth: 補間後の平滑化回数
-        """
         super().__init__(**kwargs)
         self.num_levels = num_levels
-        self.num_vcycles = num_vcycles
+        self.v_cycles = v_cycles
         self.pre_smooth = pre_smooth
         self.post_smooth = post_smooth
-        self.smoother = JacobiSolver(omega=0.8, max_iterations=1)
 
     def solve(self, rhs: ScalarField, initial_guess: Optional[ScalarField] = None) -> ScalarField:
         if initial_guess is None:
@@ -35,12 +26,10 @@ class MultigridSolver(PoissonSolver):
 
         self.iteration_count = 0
         self.residual_history = []
-
-        # Vサイクルの実行
-        for cycle in range(self.num_vcycles):
+        
+        while self.iteration_count < self.v_cycles:
             solution = self._v_cycle(solution, rhs, self.num_levels)
             
-            # 収束判定
             residual = self.compute_residual(solution, rhs)
             self.residual_history.append(residual)
             
@@ -48,36 +37,63 @@ class MultigridSolver(PoissonSolver):
                 break
                 
             self.iteration_count += 1
-
+            
         return solution
 
     def _v_cycle(self, u: ScalarField, f: ScalarField, level: int) -> ScalarField:
         if level == 1:
-            # 最粗グリッドでの直接解法
-            return self.smoother.solve(f, u)
+            return self._solve_directly(f)  # 最粗グリッドでの直接解法
 
-        # 事前平滑化
+        # Pre-smoothing
         for _ in range(self.pre_smooth):
-            u = self.smoother.solve(f, u)
+            u = self._smooth(u, f)
 
         # 残差の計算
-        residual = self._compute_residual_field(u, f)
+        r = self._compute_residual_field(u, f)
 
-        # 制限
-        r_coarse = self._restrict(residual)
-        u_coarse = self._restrict(u)
-        
-        # 粗いグリッドでの解法（再帰）
-        e_coarse = self._v_cycle(u_coarse, r_coarse, level-1)
+        # 粗いグリッドへの制限
+        r_coarse = self._restrict(r)
+        metadata_coarse = self._create_coarse_metadata(r.metadata)
+        f_coarse = ScalarField(metadata_coarse)
+        f_coarse.data = r_coarse
 
-        # 補間と補正
-        e_fine = self._prolongate(e_coarse)
-        u.data += e_fine.data
+        # 粗いグリッドでの補正（再帰）
+        e_coarse = self._v_cycle(ScalarField(metadata_coarse), f_coarse, level-1)
 
-        # 事後平滑化
+        # 補正の補間と適用
+        e = self._prolongate(e_coarse, u.metadata)
+        u.data += e.data
+
+        # Post-smoothing
         for _ in range(self.post_smooth):
-            u = self.smoother.solve(f, u)
+            u = self._smooth(u, f)
 
+        return u
+
+    def _smooth(self, u: ScalarField, f: ScalarField) -> ScalarField:
+        """Gauss-Seidel平滑化"""
+        dx2 = [d*d for d in u.dx]
+        data = u.data.copy()
+        
+        for i in range(1, data.shape[0]-1):
+            for j in range(1, data.shape[1]-1):
+                for k in range(1, data.shape[2]-1):
+                    data[i,j,k] = (
+                        (data[i+1,j,k] + data[i-1,j,k])/dx2[0] +
+                        (data[i,j+1,k] + data[i,j-1,k])/dx2[1] +
+                        (data[i,j,k+1] + data[i,j,k-1])/dx2[2] -
+                        f.data[i,j,k]
+                    ) / (2/dx2[0] + 2/dx2[1] + 2/dx2[2])
+        
+        u.data = data
+        return u
+
+    def _solve_directly(self, f: ScalarField) -> ScalarField:
+        """最粗グリッドでの直接解法"""
+        # 簡単のためGauss-Seidelを使用
+        u = ScalarField(f.metadata)
+        for _ in range(50):  # 十分な反復回数
+            u = self._smooth(u, f)
         return u
 
     def _compute_residual_field(self, u: ScalarField, f: ScalarField) -> ScalarField:
@@ -95,42 +111,31 @@ class MultigridSolver(PoissonSolver):
         residual.data = f.data - laplacian
         return residual
 
-    def _restrict(self, field: ScalarField) -> ScalarField:
+    def _restrict(self, field: ScalarField) -> np.ndarray:
         """制限演算子 (Full Weighting)"""
-        fine_data = field.data
-        coarse_shape = tuple(s//2 for s in fine_data.shape)
-        
-        # メタデータの更新
-        coarse_metadata = field.metadata
-        coarse_metadata.grid_size = coarse_shape
-        coarse_field = ScalarField(coarse_metadata)
-        
-        # 制限の実行
+        data = field.data
+        coarse_shape = tuple(s//2 for s in data.shape)
         coarse_data = np.zeros(coarse_shape)
+        
         for i in range(coarse_shape[0]):
             for j in range(coarse_shape[1]):
                 for k in range(coarse_shape[2]):
                     i_fine, j_fine, k_fine = 2*i, 2*j, 2*k
-                    coarse_data[i,j,k] = (
-                        fine_data[i_fine:i_fine+2,
-                                j_fine:j_fine+2,
-                                k_fine:k_fine+2]
-                    ).mean()
+                    coarse_data[i,j,k] = np.mean(
+                        data[i_fine:i_fine+2,
+                             j_fine:j_fine+2,
+                             k_fine:k_fine+2]
+                    )
         
-        coarse_field.data = coarse_data
-        return coarse_field
+        return coarse_data
 
-    def _prolongate(self, field: ScalarField) -> ScalarField:
+    def _prolongate(self, field: ScalarField, target_metadata: FieldMetadata) -> ScalarField:
         """補間演算子 (Trilinear)"""
         coarse_data = field.data
-        fine_shape = tuple(2*s for s in coarse_data.shape)
+        fine_shape = target_metadata.resolution
         
-        # メタデータの更新
-        fine_metadata = field.metadata
-        fine_metadata.grid_size = fine_shape
-        fine_field = ScalarField(fine_metadata)
-        
-        # 補間の実行
+        # 補間結果を格納するフィールド
+        fine_field = ScalarField(target_metadata)
         fine_data = np.zeros(fine_shape)
         
         # 頂点の値をコピー
@@ -158,3 +163,13 @@ class MultigridSolver(PoissonSolver):
         
         fine_field.data = fine_data
         return fine_field
+
+    def _create_coarse_metadata(self, metadata: FieldMetadata) -> FieldMetadata:
+        """粗いグリッドのメタデータを作成"""
+        return FieldMetadata(
+            name=metadata.name,
+            unit=metadata.unit,
+            domain_size=metadata.domain_size,
+            resolution=tuple(s//2 for s in metadata.resolution),
+            time=metadata.time
+        )

@@ -4,10 +4,11 @@ from pathlib import Path
 from config.base import Config
 from core.material.properties import MaterialManager
 from core.solver.navier_stokes.solver import NavierStokesSolver
-from core.solver.time_integrator.base import TimeIntegrator
+from core.solver.time_integrator.runge_kutta import TimeIntegrator
 from physics.phase_field import PhaseField
 from core.field.scalar_field import ScalarField
 from core.field.vector_field import VectorField
+from core.field.metadata import FieldMetadata
 
 class Simulation:
     def __init__(self,
@@ -26,33 +27,37 @@ class Simulation:
         self.initialize_fields()
 
     def initialize_fields(self):
+        """フィールドの初期化"""
         domain_size = self.config.domain.size
         resolution = self.config.domain.resolution
         
         # 相場の初期化
-        self.phase = ScalarField(
+        phase_metadata = FieldMetadata(
             name='phase',
             unit='-',
             domain_size=domain_size,
             resolution=resolution
         )
+        self.phase = ScalarField(phase_metadata)
         self.material_manager.initialize_phase_field(self.phase)
 
         # 速度場の初期化
-        self.velocity = VectorField(
+        velocity_metadata = FieldMetadata(
             name='velocity',
             unit='m/s',
             domain_size=domain_size,
             resolution=resolution
         )
+        self.velocity = VectorField(velocity_metadata)
 
         # 圧力場の初期化
-        self.pressure = ScalarField(
+        pressure_metadata = FieldMetadata(
             name='pressure',
             unit='Pa',
             domain_size=domain_size,
             resolution=resolution
         )
+        self.pressure = ScalarField(pressure_metadata)
 
     def step(self, dt: float):
         # Phase-Fieldの更新
@@ -70,7 +75,7 @@ class Simulation:
         }
         
         # 時間発展
-        def rhs(t, y):
+        def rhs(t: float, y: VectorField) -> VectorField:
             return self.ns_solver.compute_right_hand_side(fields)
         
         self.velocity = self.time_integrator.step(0.0, dt, self.velocity, rhs)

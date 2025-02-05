@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Optional
+from typing import Optional, Tuple
 from .base import Field, FieldMetadata
 
 class ScalarField(Field):
@@ -11,7 +11,9 @@ class ScalarField(Field):
 
     def _initialize(self):
         """スカラー場の初期化"""
-        self._data = np.full(self.metadata.grid_size, self._initial_value)
+        # metadata.resolutionをタプルに変換して使用
+        resolution = tuple(self.metadata.resolution)
+        self._data = np.full(resolution, self._initial_value)
 
     @property
     def data(self) -> np.ndarray:
@@ -19,6 +21,8 @@ class ScalarField(Field):
 
     @data.setter
     def data(self, value: np.ndarray):
-        if value.shape != self.metadata.grid_size:
-            raise ValueError(f"データのサイズが一致しません: {value.shape} != {self.metadata.grid_size}")
+        # metadata.resolutionをタプルに変換して比較
+        resolution = tuple(self.metadata.resolution)
+        if value.shape != resolution:
+            raise ValueError(f"データのサイズが一致しません: {value.shape} != {resolution}")
         self._data = value

@@ -10,6 +10,8 @@ from core.solver.navier_stokes.solver import NavierStokesSolver
 from core.solver.time_integrator.runge_kutta import RK4
 from core.solver.poisson.multigrid import MultigridSolver
 from physics.phase_field import PhaseField, PhaseFieldParameters
+from core.field.metadata import FieldMetadata
+from core.field.scalar_field import ScalarField
 from data_io.hdf5_io import HDF5IO
 from data_io.csv_io import CSVIO
 from data_io.visualizer import Visualizer
@@ -40,8 +42,20 @@ class SimulationRunner:
         for name, fluid in self.config.fluids.items():
             material_manager.add_fluid(name, fluid)
 
+        # フィールドのメタデータを作成
+        metadata = FieldMetadata(
+            name='phase',
+            unit='-',
+            domain_size=self.config.domain.size,
+            resolution=self.config.domain.resolution
+        )
+
+        # Phase-Fieldのスカラー場を作成
+        phase_field_scalar = ScalarField(metadata)
+
         # Phase-Field
         phase_field = PhaseField(
+            phase_field=phase_field_scalar,
             parameters=PhaseFieldParameters(
                 epsilon=self.config.phase.epsilon,
                 mobility=self.config.phase.mobility,
@@ -49,16 +63,17 @@ class SimulationRunner:
             )
         )
 
-        # ソルバー
-        poisson_solver = MultiGrid(
-            levels=3,
+        # ポアソンソルバー
+        poisson_solver = MultigridSolver(
+            num_levels=3,
             v_cycles=3,
             tolerance=self.config.numerical.tolerance,
             max_iterations=self.config.numerical.max_iterations
         )
 
+        # Navier-Stokesソルバー
         ns_solver = NavierStokesSolver(
-            poisson_solver=poisson_solver
+            poisson_solver  # キーワード引数ではなく位置引数として渡す
         )
 
         # 時間積分
