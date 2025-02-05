@@ -1,9 +1,9 @@
 import os
 import numpy as np
-import h5py
+import h5py # type: ignore
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from skimage import measure
+from skimage import measure # type: ignore
 
 class DataWriter:
     def __init__(self, output_dir: str = 'output'):
