@@ -1,9 +1,9 @@
 import numpy as np
 from typing import Tuple, List
-from ..core.scheme import DifferenceScheme
-from ..core.boundary import DirectionalBC
+from core.scheme import DifferenceScheme, BoundaryCondition
+from core.boundary import DirectionalBC
 from .fluid_properties import MultiPhaseProperties
-from ..numerics.poisson_solver import PoissonSolver
+from numerics.poisson_solver import PoissonSolver
 
 class NavierStokesSolver:
     def __init__(self,
@@ -88,7 +88,9 @@ class NavierStokesSolver:
                 if axis == 2:  # z方向
                     gravity -= 9.81
                 
-                rhs.append(-advection + diffusion/density + gravity)
+                # 密度がゼロの場合を回避
+                safe_density = np.where(density > 0, density, np.finfo(float).eps)
+                rhs.append(-advection + diffusion/safe_density + gravity)
             return rhs
         
         # RK4のステージ

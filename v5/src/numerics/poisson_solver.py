@@ -1,6 +1,6 @@
 import numpy as np
 from typing import List, Tuple
-from ..core.scheme import DifferenceScheme, BoundaryCondition
+from core.scheme import DifferenceScheme, BoundaryCondition
 
 class PoissonSolver:
     def __init__(self, 

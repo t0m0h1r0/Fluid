@@ -1,8 +1,8 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import Tuple
-from ..core.scheme import DifferenceScheme
-from ..core.boundary import DirectionalBC
+from core.scheme import DifferenceScheme
+from core.boundary import DirectionalBC
 
 @dataclass
 class PhaseFieldParams:

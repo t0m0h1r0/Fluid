@@ -1,9 +1,9 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import List, Tuple, Dict
-from ..physics.navier_stokes import NavierStokesSolver
-from ..physics.phase_field import PhaseFieldSolver, PhaseFieldParams
-from ..physics.fluid_properties import MultiPhaseProperties
+from physics.navier_stokes import NavierStokesSolver
+from physics.phase_field import PhaseFieldSolver, PhaseFieldParams
+from physics.fluid_properties import MultiPhaseProperties
 from .boundary import DirectionalBC
 
 @dataclass

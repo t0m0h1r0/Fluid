@@ -2,7 +2,7 @@ import numpy as np
 from scipy.sparse import lil_matrix, diags
 from scipy.sparse.linalg import spsolve
 from typing import Tuple
-from ..core.scheme import DifferenceScheme, BoundaryCondition, StencilOperator
+from core.scheme import DifferenceScheme, BoundaryCondition, StencilOperator
 
 class CompactScheme(DifferenceScheme):
     def __init__(self, alpha: float = 0.25):

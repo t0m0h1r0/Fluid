@@ -7,8 +7,8 @@ from numerics.poisson_solver import PoissonSolver
 from physics.fluid_properties import FluidProperties, MultiPhaseProperties
 from physics.phase_field import PhaseFieldSolver, PhaseFieldParams
 from physics.navier_stokes import NavierStokesSolver
-from io.visualizer import Visualizer
-from io.checkpoint import CheckpointHandler
+from data_io.visualizer import Visualizer
+from data_io.checkpoint import CheckpointHandler
 
 def create_simulation():
     # 設定
