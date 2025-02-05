@@ -89,6 +89,7 @@ def main():
     # 初期状態の保存
     print("Saving initial state...")
     writer.save_density_field(phi, config, f"phase_t0.000")
+    writer.save_velocity_field(velocity, config, f"phase_t0.000")
     
     time = 0.0
     step = 0
@@ -123,6 +124,7 @@ def main():
             save_count += 1
             print(f"t = {time:.3f}, step = {step}, saving output {save_count}...")
             writer.save_density_field(phi, config, f"phase_t{time:.3f}")
+            writer.save_velocity_field(velocity, config, f"phase_t{time:.3f}")
     
     print("Simulation completed!")
 

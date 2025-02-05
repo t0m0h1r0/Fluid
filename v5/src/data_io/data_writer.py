@@ -19,6 +19,48 @@ class DataWriter:
         
         self._save_field_plot_3d(field, config, png_filename)
     
+    def save_velocity_field(self, velocity: list, config: dict, basename: str):
+        """速度場の保存"""
+        h5_filename = os.path.join(self.output_dir, f"{basename}_velocity.h5")
+        
+        # HDF5ファイルに速度場を保存
+        with h5py.File(h5_filename, 'w') as f:
+            f.create_dataset('u', data=velocity[0])
+            f.create_dataset('v', data=velocity[1])
+            f.create_dataset('w', data=velocity[2])
+            f.attrs['Lx'] = config.Lx
+            f.attrs['Ly'] = config.Ly
+            f.attrs['Lz'] = config.Lz
+            f.create_dataset('x', data=np.linspace(0, config.Lx, config.Nx))
+            f.create_dataset('y', data=np.linspace(0, config.Ly, config.Ny))
+            f.create_dataset('z', data=np.linspace(0, config.Lz, config.Nz))
+        
+        # 速度の大きさを計算
+        vel_mag = np.sqrt(velocity[0]**2 + velocity[1]**2 + velocity[2]**2)
+        
+        png_filename = os.path.join(self.output_dir, f"{basename}_velocity.png")
+        
+        # 2Dスライスの可視化
+        fig = plt.figure(figsize=(15, 5))
+        
+        slices = [
+            (vel_mag[:, :, vel_mag.shape[2]//2], 'xy-plane (z=1.0)', [0, config.Lx, 0, config.Ly]),
+            (vel_mag[:, vel_mag.shape[1]//2, :], 'xz-plane (y=0.5)', [0, config.Lx, 0, config.Lz]),
+            (vel_mag[vel_mag.shape[0]//2, :, :], 'yz-plane (x=0.5)', [0, config.Ly, 0, config.Lz])
+        ]
+        
+        for i, (slice_data, title, extent) in enumerate(slices, 1):
+            ax = fig.add_subplot(1, 3, i)
+            im = ax.imshow(slice_data.T, origin='lower', extent=extent, cmap='viridis')
+            ax.set_title(title)
+            plt.colorbar(im, ax=ax, label='Velocity Magnitude [m/s]')
+            ax.set_xlabel('x [m]' if 'xz' in title or 'xy' in title else 'y [m]')
+            ax.set_ylabel('y [m]' if 'xy' in title else 'z [m]')
+        
+        plt.tight_layout()
+        plt.savefig(png_filename, dpi=300)
+        plt.close()
+    
     def _save_field_h5(self, field: np.ndarray, config: dict, filename: str):
         with h5py.File(filename, 'w') as f:
             f.create_dataset('field', data=field)
@@ -50,7 +92,18 @@ class DataWriter:
         plt.savefig(filename, dpi=300)
         plt.close()
 
-    def _save_field_plot_3d(self, field: np.ndarray, config: dict, filename: str):
+    def _save_field_plot_3d(self, field: np.ndarray, config: dict, filename: str, 
+                            elev: float = 30, azim: float = 45):
+        """
+        3D可視化プロット
+        
+        Args:
+            field (np.ndarray): 可視化する3Dデータ
+            config (dict): シミュレーション設定
+            filename (str): 出力ファイル名
+            elev (float, optional): 仰角（垂直方向の角度）. Defaults to 30.
+            azim (float, optional): 方位角（水平方向の角度）. Defaults to 45.
+        """
         fig = plt.figure(figsize=(10, 10))
         ax = fig.add_subplot(111, projection='3d')
         
@@ -67,6 +120,9 @@ class DataWriter:
         # 3D表示
         ax.plot_trisurf(verts[:, 0], verts[:, 1], verts[:, 2], 
                         triangles=faces, cmap='coolwarm', alpha=0.8)
+        
+        # 視点の設定
+        ax.view_init(elev=elev, azim=azim)
         
         ax.set_xlabel('X [m]')
         ax.set_ylabel('Y [m]')
