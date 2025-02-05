@@ -1,0 +1,79 @@
+# 二層流体中の球のシミュレーション設定
+
+physical:
+  fluids:
+    water:
+      density: 1000.0  # [kg/m³]
+      viscosity: 1.0e-3  # [Pa·s]
+      surface_tension: 0.07  # [N/m]
+    air:
+      density: 1.225  # [kg/m³]
+      viscosity: 1.789e-5  # [Pa·s]
+      surface_tension: 0.0  # [N/m]
+
+domain:
+  size: [1.0, 1.0, 2.0]  # [m]
+  resolution: [64, 64, 128]  # 格子数
+  periodicity: [true, true, false]  # 境界条件
+
+initial_condition:
+  # 二層の設定
+  layers:
+    # 下層の水
+    - phase: "water"
+      z_range: [0.0, 1.4]  # 高さ1.4mまでが水
+    
+    # 上層の空気
+    - phase: "air"
+      z_range: [1.4, 2.0]  # 高さ1.4m以上が空気
+  
+  # 球の配置
+  spheres:
+    # 水中の空気球
+    - center: [0.5, 0.5, 0.7]  # 中心座標 [m]
+      radius: 0.1  # 半径 [m]
+      phase: "air"
+    
+    # 空気中の水球
+    - center: [0.5, 0.5, 1.7]  # 中心座標 [m]
+      radius: 0.1  # 半径 [m]
+      phase: "water"
+
+# 相場パラメータ
+phase:
+  epsilon: 0.01  # 界面厚さ
+  mobility: 1.0  # 移動度
+  surface_tension: 0.07  # [N/m]
+  stabilization: 0.1  # 安定化係数
+
+# 数値計算パラメータ
+numerical:
+  dt: 0.001  # 時間刻み幅 [s]
+  max_time: 3.0  # 最大計算時間 [s]
+  cfl_number: 0.5
+  tolerance: 1.0e-6
+  max_iterations: 1000
+
+# 出力設定
+output:
+  save_interval: 0.02  # 保存間隔 [s]
+  output_dir: "output/layer_with_spheres"
+  save_format: "hdf5"
+  visualization: true
+
+gravity: 9.81  # 重力加速度 [m/s²]
+
+fluids:
+  water:
+    density: 1000.0  # [kg/m³]
+    viscosity: 1.0e-3  # [Pa·s]
+    surface_tension: 0.07  # [N/m]
+    specific_heat: 4182.0  # [J/kg·K]
+    thermal_conductivity: 0.6  # [W/m·K]
+  
+  air:
+    density: 1.225  # [kg/m³]
+    viscosity: 1.789e-5  # [Pa·s]
+    surface_tension: 0.0  # [N/m]
+    specific_heat: 1005.0  # [J/kg·K]
+    thermal_conductivity: 0.024  # [W/m·K]
