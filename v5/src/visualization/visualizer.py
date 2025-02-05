@@ -27,8 +27,8 @@ class SimulationVisualizer:
         plt.style.use("default")  # seabornの代わりにデフォルトスタイルを使用
 
         # フォントの設定
-        plt.rcParams["font.family"] = "sans-serif"
-        plt.rcParams["font.sans-serif"] = ["Arial", "DejaVu Sans"]
+        plt.rcParams["font.family"] = 'Noto Sans CJK JP'
+        #plt.rcParams["font.sans-serif"] = ["Arial", "DejaVu Sans"]
 
         # 図のサイズとDPIの設定
         self.default_figsize = (15, 10)
