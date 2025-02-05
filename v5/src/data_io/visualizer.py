@@ -46,21 +46,57 @@ class Visualizer:
                            time: float, step: int):
         fig = plt.figure(figsize=(15, 5))
         
-        # 速度の大きさ
+        # サブサンプリングの間隔（密度を下げる）
+        subsample = 4
+        
+        # 速度の大きさと方向
         vel_mag = np.sqrt(u**2 + v**2 + w**2)
         
         # 3つの断面での可視化
         slices = [
-            (vel_mag[:, :, vel_mag.shape[2]//2], 'xy-plane'),
-            (vel_mag[:, vel_mag.shape[1]//2, :], 'xz-plane'),
-            (vel_mag[vel_mag.shape[0]//2, :, :], 'yz-plane')
+            (u[:, :, u.shape[2]//2], v[:, :, u.shape[2]//2], w[:, :, u.shape[2]//2], 'xy-plane', 2),
+            (u[:, u.shape[1]//2, :], v[:, u.shape[1]//2, :], w[:, u.shape[1]//2, :], 'xz-plane', 0),
+            (u[u.shape[0]//2, :, :], v[u.shape[0]//2, :, :], w[u.shape[0]//2, :, :], 'yz-plane', 1)
         ]
         
-        for i, (slice_data, title) in enumerate(slices, 1):
+        for i, (u_slice, v_slice, w_slice, title, plane_idx) in enumerate(slices, 1):
             ax = fig.add_subplot(1, 3, i)
-            im = ax.imshow(slice_data.T, origin='lower', cmap='viridis')
-            ax.set_title(f'Velocity Magnitude ({title})')
-            plt.colorbar(im, ax=ax)
+            
+            # グリッドの作成
+            if plane_idx == 2:  # xy plane
+                y, x = np.meshgrid(
+                    np.arange(0, u_slice.shape[1], subsample),
+                    np.arange(0, u_slice.shape[0], subsample),
+                    indexing='ij'
+                )
+            elif plane_idx == 0:  # xz plane
+                y, x = np.meshgrid(
+                    np.arange(0, u_slice.shape[1], subsample),
+                    np.arange(0, u_slice.shape[0], subsample),
+                    indexing='ij'
+                )
+            else:  # yz plane
+                y, x = np.meshgrid(
+                    np.arange(0, u_slice.shape[1], subsample),
+                    np.arange(0, u_slice.shape[0], subsample),
+                    indexing='ij'
+                )
+            
+            # 対応するベクトルの抽出
+            u_plot = u_slice[::subsample, ::subsample]
+            v_plot = v_slice[::subsample, ::subsample]
+            
+            # 速度ベクトルの色を速さで変更
+            vel_slice = np.sqrt(u_plot**2 + v_plot**2)
+            
+            # ベクトルプロット
+            q = ax.quiver(x, y, u_plot, v_plot, vel_slice, 
+                          cmap='viridis', scale=10, pivot='mid')
+            plt.colorbar(q, ax=ax, label='速度 [m/s]')
+            
+            ax.set_title(f'Velocity Field ({title})')
+            ax.set_xlabel('x [m]')
+            ax.set_ylabel('y [m]')
         
         fig.suptitle(f't = {time:.3f}')
         plt.tight_layout()

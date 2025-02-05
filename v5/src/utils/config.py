@@ -3,6 +3,13 @@ from typing import List, Tuple
 import yaml
 
 @dataclass
+class VisualizationConfig:
+    phase_3d_elev: float = 30
+    phase_3d_azim: float = 45
+    velocity_3d_elev: float = 45
+    velocity_3d_azim: float = 60
+
+@dataclass
 class PhaseConfig:
     name: str
     density: float
@@ -18,12 +25,6 @@ class SphereConfig:
 class LayerConfig:
     phase: str
     z_range: List[float]
-
-@dataclass
-class InitialCondition:
-    layers: List[LayerConfig]
-    spheres: List[SphereConfig]
-    initial_velocity: Tuple[float, float, float]
 
 class SimulationConfig:
     def __init__(self, config_file: str):
@@ -49,3 +50,15 @@ class SimulationConfig:
         self.dt = config['numerical']['dt']
         self.save_interval = config['numerical']['save_interval']
         self.max_time = config['numerical']['max_time']
+        
+        # 可視化の設定
+        vis_config = config.get('visualization', {})
+        phase_3d = vis_config.get('phase_3d', {})
+        velocity_3d = vis_config.get('velocity_3d', {})
+        
+        self.visualization = VisualizationConfig(
+            phase_3d_elev=phase_3d.get('elev', 30),
+            phase_3d_azim=phase_3d.get('azim', 45),
+            velocity_3d_elev=velocity_3d.get('elev', 45),
+            velocity_3d_azim=velocity_3d.get('azim', 60)
+        )
