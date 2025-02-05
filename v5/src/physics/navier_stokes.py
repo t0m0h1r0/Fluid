@@ -1,6 +1,6 @@
 # physics/navier_stokes.py
 import numpy as np
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from core.scheme import DifferenceScheme
 from core.boundary import DirectionalBC
 from .fluid_properties import MultiPhaseProperties
@@ -152,14 +152,15 @@ class NavierStokesSolver:
                     velocity: List[np.ndarray],
                     density: np.ndarray,
                     viscosity: np.ndarray,
-                    dt: float) -> List[np.ndarray]:
+                    dt: float,
+                    external_forces: Optional[List[np.ndarray]] = None) -> List[np.ndarray]:
         """4次のルンゲクッタ法による時間積分"""
         def compute_rhs(v: List[np.ndarray], rho: np.ndarray) -> List[np.ndarray]:
             """右辺項の計算"""
             rhs = []
             for axis in range(len(v)):
                 # 移流項
-                advection = self.compute_advection(v, axis)
+                advection = self.compute_convection(v, rho, axis)
                 
                 # 粘性項
                 diffusion = self.compute_laplacian(v[axis])
@@ -176,8 +177,13 @@ class NavierStokesSolver:
                         # 密度に応じた重力項
                         gravity = -self.gravity * (rho - rho_min) / (rho_max - rho_min)
                 
+                # 外部力の追加（オプション）
+                external_force = (external_forces[axis] 
+                                 if external_forces is not None 
+                                 else np.zeros_like(v[axis]))
+                
                 # 全項の合計
-                total = (-advection + viscosity * diffusion / rho + gravity)
+                total = (-advection + viscosity * diffusion / rho + gravity + external_force)
                 rhs.append(total)
             
             return rhs
@@ -205,3 +211,68 @@ class NavierStokesSolver:
             new_velocity.append(v_new)
         
         return new_velocity
+
+    # 勾配計算のメソッドを追加（欠落していた場合）
+    def compute_gradient(self, field: np.ndarray, axis: int) -> np.ndarray:
+        """多次元配列に対する勾配計算"""
+        # 中心差分による勾配計算
+        gradient = np.zeros_like(field)
+        
+        # スライス配列の準備
+        slices = [slice(None)] * field.ndim
+        
+        # 各軸に対する勾配計算
+        if field.ndim == 3:
+            # 3D配列の場合
+            for i in range(field.shape[0]):
+                for j in range(field.shape[1]):
+                    # 指定された軸に沿った1次元配列を取得
+                    slices[0], slices[1] = i, j
+                    
+                    # 1次元配列から勾配を計算
+                    line = field[tuple(slices)]
+                    
+                    # 中心差分（4次精度）
+                    if line.size < 5:
+                        # 配列が小さすぎる場合は単純な中心差分
+                        grad_line = np.gradient(line)
+                    else:
+                        # 4次精度中心差分
+                        grad_line = np.zeros_like(line)
+                        grad_line[2:-2] = (-line[4:] + 8*line[3:-1] - 8*line[1:-3] + line[:-4]) / (12)
+                        
+                        # 境界の処理
+                        grad_line[0] = (-25*line[0] + 48*line[1] - 36*line[2] + 16*line[3] - 3*line[4]) / 12
+                        grad_line[1] = (-3*line[0] - 10*line[1] + 18*line[2] - 6*line[3] + line[4]) / 12
+                        grad_line[-1] = (25*line[-1] - 48*line[-2] + 36*line[-3] - 16*line[-4] + 3*line[-5]) / 12
+                        grad_line[-2] = (3*line[-1] + 10*line[-2] - 18*line[-3] + 6*line[-4] - line[-5]) / 12
+                    
+                    # 結果を勾配配列に設定
+                    slices_grad = slices.copy()
+                    slices_grad[axis] = slice(None)
+                    gradient[tuple(slices_grad)] = grad_line
+        else:
+            # 1次元や2次元配列の場合は通常の勾配計算
+            gradient = np.gradient(field, axis=axis)
+        
+        return gradient
+
+    def compute_laplacian(self, field: np.ndarray) -> np.ndarray:
+        """ラプラシアンの計算（必要に応じて適切なラプラシアン計算を実装）"""
+        laplacian = np.zeros_like(field)
+        for axis in range(field.ndim):
+            # 中心差分でラプラシアンを計算
+            slices_forward = [slice(None)] * field.ndim
+            slices_backward = [slice(None)] * field.ndim
+            
+            slices_forward[axis] = slice(2, None)
+            slices_backward[axis] = slice(None, -2)
+            
+            # 2階微分の近似
+            laplacian += (
+                np.roll(field, -1, axis) - 
+                2 * field + 
+                np.roll(field, 1, axis)
+            )
+        
+        return laplacian

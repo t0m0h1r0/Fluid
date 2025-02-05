@@ -1,6 +1,6 @@
 # utils/config.py
-from dataclasses import dataclass
-from typing import List, Tuple
+from dataclasses import dataclass, field
+from typing import List, Tuple, Optional
 import yaml
 import numpy as np
 
@@ -15,9 +15,10 @@ class VisualizationConfig:
 @dataclass
 class PhaseConfig:
     """相の設定"""
-    name: str         # 相の名前
-    density: float    # 密度 [kg/m³]
-    viscosity: float  # 粘性係数 [Pa·s]
+    name: str                    # 相の名前
+    density: float               # 密度 [kg/m³]
+    viscosity: float             # 粘性係数 [Pa·s]
+    surface_tension_coefficient: Optional[float] = None  # 表面張力係数 [N/m]
 
 @dataclass
 class SphereConfig:
@@ -58,18 +59,27 @@ class SimulationConfig:
         
         # 物理パラメータ
         self.gravity = config['physical']['gravity']                # 重力加速度 [m/s²]
-        self.surface_tension = config['physical']['surface_tension']  # 表面張力係数 [N/m]
+        self.surface_tension = config['physical'].get('surface_tension', 0.07)  # 表面張力係数 [N/m]
         
         # 初期条件
         self.initial_velocity = tuple(config['initial_condition']['initial_velocity'])
         
         # 数値パラメータ
-        self.dt = config['numerical']['dt']                # 時間刻み幅 [s]
-        self.save_interval = config['numerical']['save_interval']  # 保存間隔 [s]
-        self.max_time = config['numerical']['max_time']    # 最大計算時間 [s]
+        numerical_config = config.get('numerical', {})
+        self.dt = numerical_config.get('dt', 0.001)                # 時間刻み幅 [s]
+        self.save_interval = numerical_config.get('save_interval', 0.1)  # 保存間隔 [s]
+        self.max_time = numerical_config.get('max_time', 1.0)    # 最大計算時間 [s]
+        self.max_steps = numerical_config.get('max_steps', int(self.max_time / self.dt))  # 最大ステップ数
         
-        # 最大ステップ数の計算
-        self.max_steps = int(self.max_time / self.dt)     # 最大ステップ数
+        # 収束判定パラメータ
+        self.pressure_tolerance = numerical_config.get('pressure_tolerance', 1e-6)
+        self.velocity_tolerance = numerical_config.get('velocity_tolerance', 1e-6)
+        
+        # 境界条件
+        boundary_config = config.get('boundary_conditions', {})
+        self.x_boundary = boundary_config.get('x', 'periodic')
+        self.y_boundary = boundary_config.get('y', 'periodic')
+        self.z_boundary = boundary_config.get('z', 'neumann')
         
         # 可視化の設定
         vis_config = config.get('visualization', {})

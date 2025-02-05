@@ -1,162 +1,112 @@
+# numerics/poisson_solver/classic_poisson_solver.py
 import numpy as np
-from typing import List, Optional
-from scipy import sparse
-
-from .abstract_poisson_solver import AbstractPoissonSolver
+from scipy.sparse import diags, csr_matrix
+from scipy.sparse.linalg import spsolve
 from core.scheme import DifferenceScheme, BoundaryCondition
 
-class ClassicPoissonSolver(AbstractPoissonSolver):
-    """
-    従来の逐次反復法によるポアソンソルバー
-    """
+class ClassicPoissonSolver:
+    def __init__(self, 
+                 scheme: DifferenceScheme, 
+                 boundary_conditions: list):
+        """
+        クラシック（直接法）ポアソンソルバーの初期化
+        
+        Args:
+            scheme: 差分スキーム
+            boundary_conditions: 境界条件のリスト（x, y, z順）
+        """
+        self.scheme = scheme
+        self.boundary_conditions = boundary_conditions
+
     def solve(self, 
               rhs: np.ndarray, 
-              initial_guess: Optional[np.ndarray] = None) -> np.ndarray:
+              tolerance: float = 1e-6, 
+              max_iterations: int = 100) -> np.ndarray:
         """
-        ポアソン方程式を解く
+        ポアソン方程式を解く（直接法）
         
         Args:
-            rhs (np.ndarray): 右辺ベクトル
-            initial_guess (Optional[np.ndarray]): 初期解（デフォルトはゼロ）
+            rhs: 右辺項（ソース項）
+            tolerance: 収束判定の許容誤差（この引数は直接法では使用されないが、互換性のために保持）
+            max_iterations: 最大反復回数（直接法では使用されないが、互換性のために保持）
         
         Returns:
-            np.ndarray: ポアソン方程式の解
+            圧力場
         """
-        # 初期解の設定
-        if initial_guess is None:
-            solution = np.zeros_like(rhs)
-        else:
-            solution = initial_guess.copy()
+        # 形状と次元の確認
+        shape = rhs.shape
+        ndim = rhs.ndim
         
-        # システム行列の構築（3D対応の簡易実装）
-        def create_system_matrix(shape):
-            """3D有限差分近似のラプラシアン行列を作成"""
-            nx, ny, nz = shape
-            N = nx * ny * nz
-            
-            # スパース行列用のデータ
-            row_indices = []
-            col_indices = []
-            data = []
-            
-            # 対角要素と近傍要素の重み
-            diag_weight = -6.0  # 3D空間での6近傍
-            neigh_weight = 1.0
-            
-            for k in range(nz):
-                for j in range(ny):
-                    for i in range(nx):
-                        # 現在の1D インデックス
-                        idx = i + j * nx + k * nx * ny
-                        
-                        # 対角要素
-                        row_indices.append(idx)
-                        col_indices.append(idx)
-                        data.append(diag_weight)
-                        
-                        # x方向の近傍
-                        if i > 0:
-                            row_indices.append(idx)
-                            col_indices.append(idx - 1)
-                            data.append(neigh_weight)
-                        if i < nx - 1:
-                            row_indices.append(idx)
-                            col_indices.append(idx + 1)
-                            data.append(neigh_weight)
-                        
-                        # y方向の近傍
-                        if j > 0:
-                            row_indices.append(idx)
-                            col_indices.append(idx - nx)
-                            data.append(neigh_weight)
-                        if j < ny - 1:
-                            row_indices.append(idx)
-                            col_indices.append(idx + nx)
-                            data.append(neigh_weight)
-                        
-                        # z方向の近傍
-                        if k > 0:
-                            row_indices.append(idx)
-                            col_indices.append(idx - nx * ny)
-                            data.append(neigh_weight)
-                        if k < nz - 1:
-                            row_indices.append(idx)
-                            col_indices.append(idx + nx * ny)
-                            data.append(neigh_weight)
-            
-            # スパース行列の作成
-            return sparse.csr_matrix(
-                (data, (row_indices, col_indices)), 
-                shape=(N, N)
-            )
+        # 3次元配列を想定
+        if ndim != 3:
+            raise ValueError(f"3次元配列が必要です。現在の配列次元: {ndim}")
         
-        # ガウス・ザイデル反復法
-        def gauss_seidel(A, b, x, num_steps):
-            """
-            ガウス・ザイデル反復法による平滑化
-            
-            Args:
-                A (sparse.csr_matrix): システム行列
-                b (np.ndarray): 右辺ベクトル
-                x (np.ndarray): 初期解
-                num_steps (int): 反復回数
-            
-            Returns:
-                np.ndarray: 更新された解
-            """
-            for _ in range(num_steps):
-                x_new = x.copy()
-                for i in range(len(b)):
-                    x_new[i] = (
-                        b[i] - 
-                        A[i, :i].dot(x_new[:i]) - 
-                        A[i, i+1:].dot(x[i+1:])
-                    ) / A[i, i]
-                x = x_new
-            return x
+        Nx, Ny, Nz = shape
         
-        # 主ソルバーループ
-        for iteration in range(self.max_iterations):
-            # システム行列の作成
-            A = create_system_matrix(solution.shape)
-            
-            # ガウス・ザイデル反復
-            solution_old = solution.copy()
-            solution = gauss_seidel(
-                A, 
-                rhs.ravel(), 
-                solution.ravel(), 
-                num_steps=10
-            ).reshape(solution.shape)
-            
-            # 収束判定
-            residual = np.linalg.norm(rhs - (
-                A.dot(solution.ravel())
-            ).reshape(solution.shape))
-            
-            # 進捗表示
-            if iteration % 10 == 0:
-                print(f"Iteration {iteration}, Residual: {residual}")
-            
-            if residual < self.tolerance:
-                print(f"Converged after {iteration} iterations")
-                break
+        # 係数行列の構築
+        A = self._build_matrix(shape)
         
-        # 境界条件の適用
-        return self._apply_boundary_conditions(solution)
-    
-    def _apply_boundary_conditions(self, solution: np.ndarray) -> np.ndarray:
+        # 右辺項をベクトル化
+        b = rhs.flatten()
+        
+        # 直接法で解く
+        try:
+            # スパース行列を使用した直接解法
+            x = spsolve(A, b)
+            
+            # 圧力場を元の形状に戻す
+            pressure = x.reshape(shape)
+            
+            return pressure
+        
+        except Exception as e:
+            print(f"ポアソン方程式の求解中にエラーが発生: {e}")
+            raise
+
+    def _build_matrix(self, shape: tuple) -> csr_matrix:
         """
-        境界条件の適用（各軸の境界条件を個別に処理）
+        3次元ポアソン方程式の係数行列を構築
         
         Args:
-            solution (np.ndarray): 解
+            shape: グリッドの形状 (Nx, Ny, Nz)
         
         Returns:
-            np.ndarray: 境界条件を適用した解
+            スパース行列（CSR形式）
         """
-        for axis, bc in enumerate(self.boundary_conditions):
-            # 各軸の境界条件を適用
-            solution = bc.apply_to_field(solution)
+        Nx, Ny, Nz = shape
+        N = Nx * Ny * Nz
         
-        return solution
+        # 対角成分の初期化
+        main_diag = np.zeros(N)
+        lower_diag = np.zeros(N-1)
+        upper_diag = np.zeros(N-1)
+        
+        # 隣接グリッド間の係数（等間隔グリッドを仮定）
+        dx = dy = dz = 1.0
+        
+        # 対角成分の計算
+        for k in range(Nz):
+            for j in range(Ny):
+                for i in range(Nx):
+                    idx = i + j*Nx + k*Nx*Ny
+                    
+                    # 対角成分
+                    main_diag[idx] = -(
+                        2/(dx*dx) + 
+                        2/(dy*dy) + 
+                        2/(dz*dz)
+                    )
+                    
+                    # x方向の隣接項
+                    if i > 0:
+                        lower_diag[idx-1] = 1/(dx*dx)
+                    if i < Nx-1:
+                        upper_diag[idx] = 1/(dx*dx)
+        
+        # スパース行列の構築
+        diagonals = [main_diag, lower_diag, upper_diag]
+        offsets = [0, -1, 1]
+        
+        A = diags(diagonals, offsets, shape=(N, N), format='csr')
+        
+        return A
