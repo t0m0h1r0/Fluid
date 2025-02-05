@@ -1,281 +1,198 @@
+# numerics/poisson_solver/multigrid_poisson_solver.py
 import numpy as np
-from typing import List, Optional, Tuple
-from scipy import sparse
-from scipy.sparse.linalg import spsolve, cg
-
+from typing import List, Tuple, Optional, Callable
+from dataclasses import dataclass
 from .abstract_poisson_solver import AbstractPoissonSolver
-from core.scheme import DifferenceScheme, BoundaryCondition
+from core.boundary import BoundaryCondition
+
+@dataclass
+class MultigridConfig:
+    """マルチグリッドソルバーの設定"""
+    max_levels: int = 4           # マルチグリッドレベルの最大数
+    pre_smoothing: int = 2        # 前処理スムージングの回数
+    post_smoothing: int = 2       # 後処理スムージングの回数
+    coarse_size: int = 4          # 最も粗いグリッドのサイズ
+    max_iterations: int = 1000    # 最大反復回数
+    tolerance: float = 1e-6       # 収束判定の閾値
+    omega: float = 2/3           # SOR法の緩和係数
 
 class MultigridPoissonSolver(AbstractPoissonSolver):
-    """
-    高度なマルチグリッド法によるポアソンソルバー
-    
-    特徴：
-    - フルマルチグリッド法
-    - 適応的グリッド解像度
-    - 柔軟な境界条件対応
-    """
     def __init__(self, 
-                 scheme: DifferenceScheme,
-                 boundary_conditions: List[BoundaryCondition],
-                 max_levels: int = 5, 
-                 smoothing_method: str = 'gauss_seidel',
-                 pre_smooth_steps: int = 2,
-                 post_smooth_steps: int = 2,
-                 coarse_solver: str = 'direct',
-                 tolerance: float = 1e-6,
-                 max_iterations: int = 100):
+                 config: Optional[MultigridConfig] = None,
+                 boundary_conditions: List[BoundaryCondition] = None):
         """
-        マルチグリッドソルバーの詳細設定
+        マルチグリッドポアソンソルバーの初期化
         
         Args:
-            scheme (DifferenceScheme): 差分スキーム
-            boundary_conditions (List[BoundaryCondition]): 境界条件
-            max_levels (int): 最大マルチグリッドレベル数
-            smoothing_method (str): スムージング手法
-            pre_smooth_steps (int): 前スムージングステップ数
-            post_smooth_steps (int): 後スムージングステップ数
-            coarse_solver (str): 粗いグリッドでの解法
-            tolerance (float): 収束許容誤差
-            max_iterations (int): 最大反復回数
+            config: ソルバーの設定
+            boundary_conditions: 境界条件のリスト [x_bc, y_bc, z_bc]
         """
-        super().__init__(scheme, boundary_conditions, tolerance, max_iterations)
-        self.max_levels = max_levels
-        self.smoothing_method = smoothing_method
-        self.pre_smooth_steps = pre_smooth_steps
-        self.post_smooth_steps = post_smooth_steps
-        self.coarse_solver = coarse_solver
+        self.config = config or MultigridConfig()
+        self.boundary_conditions = boundary_conditions
+        self.operators = {}  # 各レベルの演算子を保持
     
-    def _create_system_matrix(self, shape: Tuple[int, ...]) -> sparse.csr_matrix:
-        """
-        高度な3D有限差分ラプラシアン行列生成
+    def _create_restriction_operator(self, fine_shape: Tuple[int, ...]) -> Callable:
+        """制限演算子の生成"""
+        def restrict(fine_grid: np.ndarray) -> np.ndarray:
+            coarse_shape = tuple(s // 2 for s in fine_grid.shape)
+            coarse_grid = np.zeros(coarse_shape)
+            
+            # 重み付き制限
+            weights = np.array([
+                [1/16, 1/8, 1/16],
+                [1/8,  1/4, 1/8],
+                [1/16, 1/8, 1/16]
+            ])
+            
+            for i in range(coarse_shape[0]):
+                for j in range(coarse_shape[1]):
+                    for k in range(coarse_shape[2]):
+                        i_f, j_f, k_f = 2*i, 2*j, 2*k
+                        coarse_grid[i,j,k] = np.sum(
+                            fine_grid[i_f:i_f+3, j_f:j_f+3, k_f:k_f+3] * 
+                            weights[:,:,np.newaxis]
+                        )
+            
+            return coarse_grid
         
-        Args:
-            shape (Tuple[int, ...]): グリッドの形状
-        
-        Returns:
-            sparse.csr_matrix: システム行列
-        """
-        nx, ny, nz = shape
-        N = nx * ny * nz
-        
-        # スパース行列用のデータ
-        row_indices, col_indices, data = [], [], []
-        
-        # 重み係数（中心差分）
-        center_weight = -6.0  # 6近傍
-        neighbor_weight = 1.0
-        
-        for k in range(nz):
-            for j in range(ny):
-                for i in range(nx):
-                    # 1D インデックス計算
-                    idx = i + j * nx + k * nx * ny
-                    
-                    # 対角要素
-                    row_indices.append(idx)
-                    col_indices.append(idx)
-                    data.append(center_weight)
-                    
-                    # 近傍インデックスの追加
-                    neighbor_offsets = [
-                        (-1, 0, 0), (1, 0, 0),   # x方向
-                        (0, -1, 0), (0, 1, 0),   # y方向
-                        (0, 0, -1), (0, 0, 1)    # z方向
-                    ]
-                    
-                    for dx, dy, dz in neighbor_offsets:
-                        ni, nj, nk = i + dx, j + dy, k + dz
+        return restrict
+    
+    def _create_prolongation_operator(self, coarse_shape: Tuple[int, ...]) -> Callable:
+        """補間演算子の生成"""
+        def prolong(coarse_grid: np.ndarray) -> np.ndarray:
+            fine_shape = tuple(2*s for s in coarse_grid.shape)
+            fine_grid = np.zeros(fine_shape)
+            
+            # 三線形補間
+            for i in range(coarse_grid.shape[0]):
+                for j in range(coarse_grid.shape[1]):
+                    for k in range(coarse_grid.shape[2]):
+                        i_f, j_f, k_f = 2*i, 2*j, 2*k
                         
-                        # 境界チェック
-                        if (0 <= ni < nx and 0 <= nj < ny and 0 <= nk < nz):
-                            neighbor_idx = ni + nj * nx + nk * nx * ny
-                            row_indices.append(idx)
-                            col_indices.append(neighbor_idx)
-                            data.append(neighbor_weight)
-        
-        # スパース行列の作成
-        return sparse.csr_matrix(
-            (data, (row_indices, col_indices)), 
-            shape=(N, N)
-        )
-    
-    def _smooth(self, A: sparse.csr_matrix, b: np.ndarray, x: np.ndarray, steps: int) -> np.ndarray:
-        """
-        異なるスムージング手法の実装
-        
-        Args:
-            A (sparse.csr_matrix): システム行列
-            b (np.ndarray): 右辺ベクトル
-            x (np.ndarray): 初期解
-            steps (int): スムージングステップ数
-        
-        Returns:
-            np.ndarray: スムージング後の解
-        """
-        if self.smoothing_method == 'gauss_seidel':
-            for _ in range(steps):
-                x_new = x.copy()
-                for i in range(len(b)):
-                    x_new[i] = (
-                        b[i] - 
-                        A[i, :i].dot(x_new[:i]) - 
-                        A[i, i+1:].dot(x[i+1:])
-                    ) / A[i, i]
-                x = x_new
-        elif self.smoothing_method == 'jacobi':
-            for _ in range(steps):
-                diag = A.diagonal()
-                x_new = (b - A.dot(x) + diag * x) / diag
-                x = x_new
-        elif self.smoothing_method == 'conjugate_gradient':
-            x, _ = cg(A, b, x0=x, maxiter=steps)
-        
-        return x
-    
-    def _restrict(self, residual: np.ndarray) -> np.ndarray:
-        """
-        高度な残差制限（粗いグリッドへの写像）
-        
-        Args:
-            residual (np.ndarray): 入力残差場
-        
-        Returns:
-            np.ndarray: 制限された残差
-        """
-        restricted = np.zeros(
-            tuple((n + 1) // 2 for n in residual.shape)
-        )
-        
-        for idx in np.ndindex(restricted.shape):
-            # 補間インデックスを計算
-            src_idx = tuple(i * 2 for i in idx)
+                        # 頂点の値
+                        fine_grid[i_f, j_f, k_f] = coarse_grid[i,j,k]
+                        
+                        # エッジの補間
+                        if i_f+1 < fine_shape[0]:
+                            fine_grid[i_f+1, j_f, k_f] = 0.5 * (
+                                coarse_grid[i,j,k] + 
+                                coarse_grid[min(i+1,coarse_grid.shape[0]-1),j,k]
+                            )
+                        if j_f+1 < fine_shape[1]:
+                            fine_grid[i_f, j_f+1, k_f] = 0.5 * (
+                                coarse_grid[i,j,k] + 
+                                coarse_grid[i,min(j+1,coarse_grid.shape[1]-1),k]
+                            )
+                        if k_f+1 < fine_shape[2]:
+                            fine_grid[i_f, j_f, k_f+1] = 0.5 * (
+                                coarse_grid[i,j,k] + 
+                                coarse_grid[i,j,min(k+1,coarse_grid.shape[2]-1)]
+                            )
             
-            # 加重平均による制限
-            window = residual[
-                tuple(slice(i, i+2) for i in src_idx)
-            ]
-            restricted[idx] = np.mean(window)
+            return fine_grid
         
-        return restricted
+        return prolong
     
-    def _prolongate(self, coarse_solution: np.ndarray, fine_shape: Tuple[int, ...]) -> np.ndarray:
-        """
-        高度な補間（細密化）
-        
-        Args:
-            coarse_solution (np.ndarray): 粗いグリッドのソリューション
-            fine_shape (Tuple[int, ...]): 細密化後の形状
-        
-        Returns:
-            np.ndarray: 細密化されたソリューション
-        """
-        prolongated = np.zeros(fine_shape)
-        
-        for idx in np.ndindex(coarse_solution.shape):
-            # 対応する細密グリッドのインデックス範囲を計算
-            fine_idx = tuple(slice(i*2, i*2+2) for i in idx)
+    def _smooth(self, u: np.ndarray, f: np.ndarray, 
+               iterations: int, dx: float) -> np.ndarray:
+        """ガウス-ザイデル法によるスムージング"""
+        omega = self.config.omega
+        for _ in range(iterations):
+            u_new = u.copy()
+            for i in range(1, u.shape[0]-1):
+                for j in range(1, u.shape[1]-1):
+                    for k in range(1, u.shape[2]-1):
+                        u_new[i,j,k] = (1-omega)*u[i,j,k] + omega/6 * (
+                            u[i-1,j,k] + u[i+1,j,k] +
+                            u[i,j-1,k] + u[i,j+1,k] +
+                            u[i,j,k-1] + u[i,j,k+1] -
+                            dx**2 * f[i,j,k]
+                        )
+            u = u_new
             
-            # バイリニア補間
-            prolongated[fine_idx] = coarse_solution[idx]
-        
-        return prolongated
+            # 境界条件の適用
+            if self.boundary_conditions:
+                for axis, bc in enumerate(self.boundary_conditions):
+                    u = bc.apply_to_field(u)
+                    
+        return u
     
-    def solve(self, 
-              rhs: np.ndarray, 
-              initial_guess: Optional[np.ndarray] = None) -> np.ndarray:
-        """
-        マルチグリッド法によるポアソン方程式の解法
+    def _v_cycle(self, u: np.ndarray, f: np.ndarray, 
+                 level: int, dx: float) -> np.ndarray:
+        """V-サイクルの実行"""
+        if level == 0 or min(u.shape) <= self.config.coarse_size:
+            # 最も粗いグリッドでは直接解く
+            return self._solve_directly(u, f, dx)
+            
+        # 前処理スムージング
+        u = self._smooth(u, f, self.config.pre_smoothing, dx)
         
-        Args:
-            rhs (np.ndarray): 右辺ベクトル
-            initial_guess (Optional[np.ndarray]): 初期解
+        # 残差の計算
+        r = f - self._apply_laplacian(u, dx)
         
-        Returns:
-            np.ndarray: ポアソン方程式の解
-        """
-        # 初期解の設定
-        solution = initial_guess if initial_guess is not None else np.zeros_like(rhs)
+        # 粗いグリッドへの制限
+        r_c = self._create_restriction_operator(r.shape)(r)
+        e_c = np.zeros_like(r_c)
         
-        # V-サイクルのマルチグリッド法
-        def v_cycle(solution, rhs):
-            # 最粗レベルでの直接解法
-            if solution.size <= 8:
-                if self.coarse_solver == 'direct':
-                    return spsolve(
-                        self._create_system_matrix(solution.shape), 
-                        rhs.ravel()
-                    ).reshape(solution.shape)
-                else:
-                    # フォールバックは共役勾配法
-                    solution, _ = cg(
-                        self._create_system_matrix(solution.shape), 
-                        rhs.ravel(),
-                        x0=solution.ravel()
+        # 粗いグリッドでの修正
+        e_c = self._v_cycle(e_c, r_c, level-1, 2*dx)
+        
+        # 細かいグリッドへの補間
+        e = self._create_prolongation_operator(e_c.shape)(e_c)
+        u += e
+        
+        # 後処理スムージング
+        u = self._smooth(u, f, self.config.post_smoothing, dx)
+        
+        return u
+    
+    def _solve_directly(self, u: np.ndarray, f: np.ndarray, dx: float) -> np.ndarray:
+        """最も粗いグリッドでの直接解法"""
+        # ガウス-ザイデル法を十分な回数実行
+        return self._smooth(u, f, 50, dx)
+    
+    def _apply_laplacian(self, u: np.ndarray, dx: float) -> np.ndarray:
+        """ラプラシアン演算子の適用"""
+        laplacian = np.zeros_like(u)
+        for i in range(1, u.shape[0]-1):
+            for j in range(1, u.shape[1]-1):
+                for k in range(1, u.shape[2]-1):
+                    laplacian[i,j,k] = (
+                        (u[i+1,j,k] + u[i-1,j,k] +
+                         u[i,j+1,k] + u[i,j-1,k] +
+                         u[i,j,k+1] + u[i,j,k-1] -
+                         6*u[i,j,k]) / dx**2
                     )
-                    return solution.reshape(solution.shape)
-            
-            # システム行列の生成
-            A = self._create_system_matrix(solution.shape)
-            
-            # 前スムージング
-            solution = self._smooth(A, rhs.ravel(), solution.ravel(), self.pre_smooth_steps).reshape(solution.shape)
-            
-            # 残差計算
-            residual = rhs - A.dot(solution.ravel()).reshape(solution.shape)
-            
-            # 残差の制限（粗いグリッドへ）
-            coarse_residual = self._restrict(residual)
-            
-            # 粗いグリッドでの誤差計算
-            coarse_error = v_cycle(
-                np.zeros_like(coarse_residual), 
-                coarse_residual
-            )
-            
-            # 誤差の補間
-            error = self._prolongate(coarse_error, solution.shape)
-            
-            # 解の補正
-            solution += error
-            
-            # 後スムージング
-            solution = self._smooth(A, rhs.ravel(), solution.ravel(), self.post_smooth_steps).reshape(solution.shape)
-            
-            return solution
+        return laplacian
+    
+    def solve(self, rhs: np.ndarray, 
+             initial_guess: Optional[np.ndarray] = None,
+             dx: float = 1.0) -> np.ndarray:
+        """ポアソン方程式を解く
         
-        # 主ソルバーループ
-        for iteration in range(self.max_iterations):
-            solution_old = solution.copy()
+        Args:
+            rhs: 右辺
+            initial_guess: 初期推定値
+            dx: グリッド間隔
+            
+        Returns:
+            解
+        """
+        if initial_guess is None:
+            u = np.zeros_like(rhs)
+        else:
+            u = initial_guess.copy()
+            
+        for iter in range(self.config.max_iterations):
+            u_old = u.copy()
             
             # V-サイクルの実行
-            solution = v_cycle(solution, rhs)
+            u = self._v_cycle(u, rhs, self.config.max_levels, dx)
             
             # 収束判定
-            residual = np.linalg.norm(rhs - self._create_system_matrix(solution.shape).dot(solution.ravel()).reshape(solution.shape))
-            
-            # 収束チェックと進捗表示
-            if iteration % 10 == 0:
-                print(f"Iteration {iteration}, Residual: {residual}")
-            
-            if residual < self.tolerance:
-                print(f"Converged after {iteration+1} iterations")
+            residual = np.max(np.abs(u - u_old))
+            if residual < self.config.tolerance:
+                print(f"  マルチグリッド法: {iter+1}回の反復で収束")
                 break
-        
-        # 境界条件の適用
-        return self._apply_boundary_conditions(solution)
-    
-    def _apply_boundary_conditions(self, solution: np.ndarray) -> np.ndarray:
-        """
-        境界条件の適用
-        
-        Args:
-            solution (np.ndarray): 解
-        
-        Returns:
-            np.ndarray: 境界条件を適用した解
-        """
-        for axis, bc in enumerate(self.boundary_conditions):
-            solution = bc.apply_to_field(solution)
-        
-        return solution
+                
+        return u
