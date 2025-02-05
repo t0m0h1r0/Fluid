@@ -17,65 +17,111 @@ class NavierStokesSolver:
         self.poisson_solver = poisson_solver
         self.fluid_properties = fluid_properties
         self.gravity = 9.81
-    
-    def compute_gradient(self, field: np.ndarray, axis: int) -> np.ndarray:
-        """指定方向の勾配を計算"""
-        bc = self.boundary_conditions.get_condition(axis)
-        grad = np.zeros_like(field)
 
-        # 境界条件を適用して配列を拡張
-        padded = np.pad(field, pad_width=1, mode='edge')
+    def compute_timestep(self,
+                        velocity: List[np.ndarray],
+                        density: np.ndarray,
+                        viscosity: np.ndarray,
+                        dx: float) -> float:
+        """CFL条件に基づく適応的時間刻み幅の計算"""
+        # 対流項によるCFL条件
+        max_velocity = max(np.max(np.abs(v)) for v in velocity)
+        dt_convection = 0.5 * dx / (max_velocity + 1e-10)
         
-        # 中心差分
-        slices_center = [slice(1, -1)] * field.ndim
-        slices_forward = [slice(1, -1)] * field.ndim
-        slices_backward = [slice(1, -1)] * field.ndim
+        # 粘性項による制限
+        max_viscosity = np.max(viscosity)
+        min_density = np.max(density)
+        dt_diffusion = 0.25 * dx**2 * min_density / (max_viscosity + 1e-10)
         
-        slices_forward[axis] = slice(2, None)
-        slices_backward[axis] = slice(None, -2)
+        # 表面張力による制限（Phase-Fieldモデルと結合時に使用）
+        surface_tension = 0.07  # N/m
+        dt_surface = np.sqrt(min_density * dx**3 / (2 * np.pi * surface_tension + 1e-10))
         
-        grad = (padded[tuple(slices_forward)] - padded[tuple(slices_backward)]) / 2.0
-        
-        # 境界条件の適用
-        return bc.apply_to_field(grad)
+        return min(dt_convection, dt_diffusion, dt_surface)
 
-    def compute_advection(self, u: List[np.ndarray], axis: int) -> np.ndarray:
-        """移流項の計算"""
-        result = np.zeros_like(u[axis])
+    def compute_convection(self, 
+                          velocity: List[np.ndarray],
+                          density: np.ndarray,
+                          axis: int) -> np.ndarray:
+        """WENOスキームを用いた移流項の計算"""
+        result = np.zeros_like(velocity[axis])
         
-        for i in range(len(u)):
-            grad = self.compute_gradient(u[axis], i)
-            result += u[i] * grad
+        for i in range(len(velocity)):
+            # 風上差分の方向を決定
+            upwind = velocity[i] < 0
             
+            # WENO5による風上差分
+            flux_plus = self._weno5(velocity[axis], axis, False)
+            flux_minus = self._weno5(velocity[axis], axis, True)
+            
+            # フラックスの合成
+            flux = np.where(upwind, flux_minus, flux_plus)
+            result += velocity[i] * flux
+        
         return result
 
-    def compute_laplacian(self, field: np.ndarray) -> np.ndarray:
-        """ラプラシアンを計算"""
-        laplacian = np.zeros_like(field)
+    def _weno5(self, field: np.ndarray, axis: int, is_negative: bool) -> np.ndarray:
+        """5次精度WENOスキームの実装"""
+        # WENOの重み係数
+        epsilon = 1e-6
+        gamma0, gamma1, gamma2 = 0.1, 0.6, 0.3
         
-        # 各方向について2階微分を計算
-        for axis in range(field.ndim):
-            bc = self.boundary_conditions.get_condition(axis)
-            padded = np.pad(field, pad_width=1, mode='edge')
-            
-            # スライスの準備
-            slices_center = [slice(1, -1)] * field.ndim
-            slices_forward = [slice(1, -1)] * field.ndim
-            slices_backward = [slice(1, -1)] * field.ndim
-            
-            slices_forward[axis] = slice(2, None)
-            slices_backward[axis] = slice(None, -2)
-            
-            # 2階中心差分
-            laplacian += (padded[tuple(slices_forward)] - 2*padded[tuple(slices_center)] + 
-                         padded[tuple(slices_backward)])
+        # シフトしたインデックスを準備
+        if is_negative:
+            v1 = np.roll(field, 2, axis=axis)
+            v2 = np.roll(field, 1, axis=axis)
+            v3 = field
+            v4 = np.roll(field, -1, axis=axis)
+            v5 = np.roll(field, -2, axis=axis)
+        else:
+            v1 = np.roll(field, -2, axis=axis)
+            v2 = np.roll(field, -1, axis=axis)
+            v3 = field
+            v4 = np.roll(field, 1, axis=axis)
+            v5 = np.roll(field, 2, axis=axis)
         
-        # 境界条件の適用
-        for axis in range(field.ndim):
-            bc = self.boundary_conditions.get_condition(axis)
-            laplacian = bc.apply_to_field(laplacian)
+        # 3つの候補ステンシル
+        s0 = (13/12) * (v1 - 2*v2 + v3)**2 + (1/4) * (v1 - 4*v2 + 3*v3)**2
+        s1 = (13/12) * (v2 - 2*v3 + v4)**2 + (1/4) * (v2 - v4)**2
+        s2 = (13/12) * (v3 - 2*v4 + v5)**2 + (1/4) * (3*v3 - 4*v4 + v5)**2
         
-        return laplacian
+        # 非線形重み
+        alpha0 = gamma0 / (epsilon + s0)**2
+        alpha1 = gamma1 / (epsilon + s1)**2
+        alpha2 = gamma2 / (epsilon + s2)**2
+        omega = np.array([alpha0, alpha1, alpha2])
+        omega /= np.sum(omega, axis=0)
+        
+        # 各ステンシルでの補間値
+        p0 = (1/6) * (2*v1 - 7*v2 + 11*v3)
+        p1 = (1/6) * (-v2 + 5*v3 + 2*v4)
+        p2 = (1/6) * (2*v3 + 5*v4 - v5)
+        
+        return omega[0]*p0 + omega[1]*p1 + omega[2]*p2
+
+    def compute_diffusion(self,
+                         velocity: List[np.ndarray],
+                         density: np.ndarray,
+                         viscosity: np.ndarray,
+                         axis: int) -> np.ndarray:
+        """空間変化する粘性を考慮した拡散項の計算"""
+        # 粘性の勾配を計算
+        grad_mu = [self.compute_gradient(viscosity, i) for i in range(3)]
+        
+        # 速度の勾配テンソルを計算
+        grad_u = [self.compute_gradient(velocity[axis], i) for i in range(3)]
+        
+        # ∇・(μ(∇u + ∇u^T))の計算
+        result = np.zeros_like(velocity[axis])
+        
+        # 主要項 μ∇²u
+        result += viscosity * self.compute_laplacian(velocity[axis])
+        
+        # 追加項 (∇μ・∇)u
+        for i in range(3):
+            result += grad_mu[i] * grad_u[i]
+        
+        return result / density
 
     def pressure_projection(self, 
                           velocity: List[np.ndarray],
@@ -87,8 +133,10 @@ class NavierStokesSolver:
         for i, v in enumerate(velocity):
             div_u += self.compute_gradient(v, i)
         
-        # 圧力ポアソン方程式を解く
+        # 圧力ポアソン方程式のソース項
         rhs = density * div_u / dt
+        
+        # マルチグリッド法で圧力を解く
         pressure = self.poisson_solver.solve(rhs)
         
         # 速度場の補正

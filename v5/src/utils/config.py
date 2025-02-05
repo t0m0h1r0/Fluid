@@ -28,8 +28,7 @@ class SphereConfig:
 
 @dataclass
 class LayerConfig:
-    """レイヤーの設定"""
-    phase: str          # 相の名前
+    phase: str          # phaseを使用
     z_range: List[float]  # z方向の範囲 [m]
 
 class SimulationConfig:

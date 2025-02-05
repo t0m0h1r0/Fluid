@@ -2,165 +2,204 @@
 import numpy as np
 import os
 import yaml
+import argparse
 from pathlib import Path
+from datetime import datetime
+from typing import Tuple, Dict, Any
+
 from physics.navier_stokes import NavierStokesSolver
 from physics.phase_field import PhaseFieldSolver, PhaseFieldParams, Layer, Sphere
 from numerics.compact_scheme import CompactScheme
-from numerics.poisson_solver.classic_poisson_solver import ClassicPoissonSolver as PoissonSolver
+from numerics.poisson_solver.classic_poisson_solver import ClassicPoissonSolver as MultigridPoissonSolver
 from core.boundary import DirectionalBC, PeriodicBC, NeumannBC
 from physics.fluid_properties import MultiPhaseProperties, FluidProperties
 from data_io.data_writer import DataWriter
+from visualization.visualizer import SimulationVisualizer
+from core.simulation import SimulationManager
 from utils.config import SimulationConfig
 
-def setup_simulation():
-    """シミュレーションの設定とソルバーの初期化"""
-    print("シミュレーションの初期化を開始...")
-    config = SimulationConfig('config/simulation.yaml')
-    
-    # スキームと境界条件の設定
-    scheme = CompactScheme()
-    boundary_conditions = DirectionalBC(
-        x_bc=PeriodicBC(),
-        y_bc=PeriodicBC(),
-        z_bc=NeumannBC()
-    )
-    
-    # ポアソンソルバーの初期化（schemeを追加）
-    poisson_solver = PoissonSolver(
-        scheme=scheme,
-        boundary_conditions=[boundary_conditions.get_condition(i) for i in range(3)]
-    )
-    
-    # 流体物性の設定
-    fluids = {
-        phase.name: FluidProperties(phase.name, phase.density, phase.viscosity) 
-        for phase in config.phases
-    }
-    fluid_properties = MultiPhaseProperties(fluids)
-    
-    # ソルバーの初期化
-    phase_solver = PhaseFieldSolver(
-        scheme=scheme,
-        boundary_conditions=boundary_conditions,
-        params=PhaseFieldParams()
-    )
-    
-    ns_solver = NavierStokesSolver(
-        scheme=scheme,
-        boundary_conditions=boundary_conditions,
-        poisson_solver=poisson_solver,
-        fluid_properties=fluid_properties
-    )
-    
-    return config, ns_solver, phase_solver, fluid_properties
-
-def initialize_fields(config, phase_solver):
-    """フィールドの初期化"""
-    print("\nフィールドの初期化中...")
-    
-    # 基本フィールドの初期化
-    shape = (config.Nx, config.Ny, config.Nz)
-    velocity = [np.zeros(shape) for _ in range(3)]
-    pressure = np.zeros(shape)
-    
-    # 密度場の初期化
-    density = phase_solver.initialize_field(
-        shape=shape,
-        domain_size=(config.Lx, config.Ly, config.Lz)
-    )
-    
-    # 相の密度を登録
-    print("\n各相の密度を設定:")
-    for phase in config.phases:
-        phase_solver.set_phase_density(phase.name, phase.density)
-        print(f"  {phase.name}: {phase.density} kg/m³")
-    
-    # レイヤーの設定
-    print("\nレイヤーの設定:")
-    for layer_config in config.layers:
-        layer = Layer(
-            phase=layer_config.phase,
-            z_range=layer_config.z_range
-        )
-        density = phase_solver.add_layer(density, layer)
-        print(f"  {layer.phase} レイヤー: z = [{layer.z_range[0]}, {layer.z_range[1]}]")
-    
-    # スフィアの設定
-    print("\n球の設定:")
-    for sphere_config in config.spheres:
-        sphere = Sphere(
-            phase=sphere_config.phase,
-            center=sphere_config.center,
-            radius=sphere_config.radius
-        )
-        density = phase_solver.add_sphere(density, sphere)
-        print(f"  {sphere.phase} 球: 中心 = {sphere.center}, 半径 = {sphere.radius}")
-    
-    return velocity, pressure, density
-
-def run_simulation():
-    """シミュレーションの実行"""
-    # 出力ディレクトリの設定
-    output_dir = Path('output')
-    output_dir.mkdir(exist_ok=True)
-    writer = DataWriter(str(output_dir))
-    
-    # シミュレーションの初期化
-    config, ns_solver, phase_solver, fluid_properties = setup_simulation()
-    velocity, pressure, density = initialize_fields(config, phase_solver)
-    
-    # 初期状態の保存
-    print("\n初期状態を保存中...")
-    writer.save_density_field(density, config, "initial_state")
-    
-    # シミュレーションループ
-    print("\nシミュレーション開始...")
-    time = 0.0
-    step = 0
-    save_count = 0
-    
-    while time < config.max_time:
-        # 物性値の更新
-        H = phase_solver.heaviside(density)
-        current_density = fluid_properties.get_density(H)
-        viscosity = fluid_properties.get_viscosity(H)
+class SimulationRunner:
+    def __init__(self, config_path: str):
+        """シミュレーション実行クラスの初期化
         
-        # 速度場の更新（RK4）
-        velocity = ns_solver.runge_kutta4(
-            velocity, current_density, viscosity, config.dt
+        Args:
+            config_path: 設定ファイルのパス
+        """
+        self.config_path = config_path
+        self.output_dir = self._setup_output_directory()
+        self.config = SimulationConfig(config_path)
+        
+        # 各コンポーネントの初期化
+        self.writer = DataWriter(self.output_dir)
+        self.visualizer = SimulationVisualizer(self.output_dir)
+        self.manager = self._setup_simulation_manager()
+        
+        # 実行状態の初期化
+        self.current_step = 0
+        self.is_running = False
+    
+    def _setup_output_directory(self) -> Path:
+        """出力ディレクトリの設定"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_dir = Path('output') / timestamp
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 設定ファイルのコピー
+        config_backup = output_dir / 'simulation_config.yaml'
+        config_backup.write_bytes(Path(self.config_path).read_bytes())
+        
+        return output_dir
+    
+    def _setup_simulation_manager(self) -> SimulationManager:
+        """シミュレーションマネージャーの設定"""
+        # スキームと境界条件の設定
+        scheme = CompactScheme()
+        boundary_conditions = DirectionalBC(
+            x_bc=PeriodicBC(),
+            y_bc=PeriodicBC(),
+            z_bc=NeumannBC()
         )
         
-        # 圧力補正
-        velocity, pressure = ns_solver.pressure_projection(
-            velocity, current_density, config.dt
+        # ポアソンソルバーの初期化
+        poisson_solver = MultigridPoissonSolver(
+            scheme=scheme,
+            boundary_conditions=[boundary_conditions.get_condition(i) for i in range(3)]
         )
         
-        # 密度場の更新
-        density = phase_solver.advance(density, velocity, config.dt)
+        # 流体物性の設定
+        fluids = {
+            phase.name: FluidProperties(phase.name, phase.density, phase.viscosity) 
+            for phase in self.config.phases
+        }
+        fluid_properties = MultiPhaseProperties(fluids)
         
-        time += config.dt
-        step += 1
+        # ソルバーの初期化
+        phase_solver = PhaseFieldSolver(
+            scheme=scheme,
+            boundary_conditions=boundary_conditions,
+            params=PhaseFieldParams()
+        )
         
-        # 進捗表示
-        if step % 10 == 0:
-            print(f"\nt = {time:.3f}, ステップ = {step}")
-            total_mass = np.sum(density)
-            print(f"全質量: {total_mass:.6e}")
+        ns_solver = NavierStokesSolver(
+            scheme=scheme,
+            boundary_conditions=boundary_conditions,
+            poisson_solver=poisson_solver,
+            fluid_properties=fluid_properties
+        )
+        
+        # フェーズ密度の設定
+        for phase in self.config.phases:
+            phase_solver.set_phase_density(phase.name, phase.density)
+            print(f"密度を設定: {phase.name} = {phase.density} kg/m³")
+        
+        return SimulationManager(
+            self.config,
+            ns_solver,
+            phase_solver,
+            fluid_properties
+        )
+    
+    def run(self, checkpoint_interval: int = 100):
+        """シミュレーションの実行"""
+        print("シミュレーションを開始します...")
+        self.is_running = True
+        
+        try:
+            # 初期状態の保存と可視化
+            self._save_and_visualize(0)
             
-            # 物理量の範囲をチェック
-            print(f"密度範囲: [{density.min():.2f}, {density.max():.2f}]")
-            for i, comp in enumerate(['x', 'y', 'z']):
-                print(f"{comp}方向速度範囲: [{velocity[i].min():.2e}, {velocity[i].max():.2e}]")
-            print(f"圧力範囲: [{pressure.min():.2e}, {pressure.max():.2e}]")
+            while self.current_step < self.config.max_steps:
+                # 1ステップ進める
+                results = self.manager.advance_timestep(adaptive_dt=True)
+                self.current_step += 1
+                
+                # 進捗表示
+                if self.current_step % 10 == 0:
+                    self._print_progress(results)
+                
+                # チェックポイントの保存
+                if self.current_step % checkpoint_interval == 0:
+                    self._save_and_visualize(self.current_step)
+                
+                # 収束判定
+                if self._check_convergence(results):
+                    print("\n収束条件を満たしました。シミュレーションを終了します。")
+                    break
+            
+            # 最終状態の保存
+            self._save_and_visualize(self.current_step)
+            
+        except KeyboardInterrupt:
+            print("\nシミュレーションが中断されました。")
+            self._save_and_visualize(self.current_step)
         
-        # 結果の保存
-        if step % int(config.save_interval/config.dt) == 0:
-            save_count += 1
-            print(f"\n結果を保存中... (t = {time:.3f})")
-            writer.save_density_field(density, config, f"density_t{time:.3f}")
-            writer.save_velocity_field(velocity, config, f"velocity_t{time:.3f}")
+        except Exception as e:
+            print(f"\nエラーが発生しました: {str(e)}")
+            raise
+        
+        finally:
+            self.is_running = False
+            print("\nシミュレーションが完了しました。")
     
-    print("\nシミュレーション完了!")
+    def _save_and_visualize(self, step: int):
+        """結果の保存と可視化"""
+        # データの保存
+        self.writer.save_state(
+            self.manager.phi,
+            self.manager.velocity,
+            self.manager.pressure,
+            step
+        )
+        
+        # 可視化
+        self.visualizer.create_visualization(
+            {
+                'phi': self.manager.phi,
+                'velocity': self.manager.velocity,
+                'pressure': self.manager.pressure,
+                'stats': self.manager.stats.__dict__
+            },
+            step,
+            save=True
+        )
+    
+    def _print_progress(self, results: Dict[str, Any]):
+        """進捗情報の表示"""
+        stats = self.manager.stats
+        print(f"\nステップ {self.current_step} (t = {stats.total_time:.3f}s)")
+        print(f"平均時間刻み幅: {stats.avg_timestep:.2e}s")
+        print(f"最大速度: {stats.max_velocity:.2e}m/s")
+        print(f"エネルギー保存: {stats.energy_conservation:.6f}")
+        print(f"質量保存: {stats.mass_conservation:.6f}")
+    
+    def _check_convergence(self, results: Dict[str, Any]) -> bool:
+        """収束判定"""
+        stats = self.manager.stats
+        
+        # エネルギーと質量の保存性チェック
+        energy_error = abs(1.0 - stats.energy_conservation)
+        mass_error = abs(1.0 - stats.mass_conservation)
+        
+        # 速度の最大値チェック
+        velocity_max = stats.max_velocity
+        
+        return (energy_error < 1e-6 and 
+                mass_error < 1e-8 and 
+                velocity_max < 1e-6)
+
+def main():
+    """メイン関数"""
+    # コマンドライン引数の解析
+    parser = argparse.ArgumentParser(description='二層流シミュレーション')
+    parser.add_argument('--config', default='config/simulation.yaml',
+                       help='設定ファイルのパス')
+    parser.add_argument('--checkpoint-interval', type=int, default=100,
+                       help='チェックポイント保存間隔')
+    args = parser.parse_args()
+    
+    # シミュレーションの実行
+    runner = SimulationRunner(args.config)
+    runner.run(checkpoint_interval=args.checkpoint_interval)
 
 if __name__ == "__main__":
-    run_simulation()
+    main()
