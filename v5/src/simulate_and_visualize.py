@@ -1,13 +1,37 @@
+import numpy as np
+import os 
+
 from physics.navier_stokes import NavierStokesSolver
 from physics.phase_field import PhaseFieldSolver, PhaseFieldParams
 from numerics.compact_scheme import CompactScheme
-from numerics.poisson_solver import PoissonSolver
+from numerics.poisson_solver.multigrid_poisson_solver import MultigridPoissonSolver
+from numerics.poisson_solver.classic_poisson_solver import ClassicPoissonSolver
 from core.boundary import DirectionalBC, PeriodicBC, NeumannBC
 from physics.fluid_properties import MultiPhaseProperties, FluidProperties
 from data_io.data_writer import DataWriter
 from utils.config import SimulationConfig
-import numpy as np
-import os 
+
+def validate_density(density):
+    """
+    密度場の整合性をチェック
+    
+    Args:
+        density (np.ndarray): 密度場
+    
+    Returns:
+        np.ndarray: 修正された密度場
+    """
+    # 負の値を0に置換
+    density = np.maximum(density, 0)
+    
+    # ゼロ除算を防ぐため、最小値を設定
+    min_density = 1e-10
+    density = np.maximum(density, min_density)
+    
+    # デバッグ情報の出力
+    print(f"Density stats: min={density.min()}, max={density.max()}, mean={density.mean()}")
+    
+    return density
 
 def setup_simulation():
     config = SimulationConfig('config/simulation.yaml')
@@ -16,9 +40,17 @@ def setup_simulation():
         x_bc=PeriodicBC(), y_bc=PeriodicBC(), z_bc=NeumannBC()
     )
     
-    poisson_solver = PoissonSolver(
+    # マルチグリッドポアソンソルバー
+    poisson_solver = MultigridPoissonSolver(
         scheme=scheme,
-        boundary_conditions=[boundary_conditions.get_condition(i) for i in range(3)]
+        boundary_conditions=[boundary_conditions.get_condition(i) for i in range(3)],
+        max_levels=5,           # マルチグリッドの最大レベル数
+        smoothing_method='gauss_seidel',  # スムージング手法
+        pre_smooth_steps=2,     # 前スムージングステップ数
+        post_smooth_steps=2,    # 後スムージングステップ数
+        coarse_solver='direct', # 粗いグリッドでの解法
+        tolerance=1e-6,         # 収束許容誤差
+        max_iterations=100       # 最大反復回数
     )
     
     fluids = {phase.name: FluidProperties(phase.name, phase.density, phase.viscosity) 
@@ -51,26 +83,28 @@ def initialize_fields(config):
     z = np.linspace(0, config.Lz, config.Nz)
     X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
     
-    # 相場の初期化
-    phi = np.zeros(shape, dtype=float)
+    density = np.zeros(shape)
     
     # レイヤーの設定
     for layer in config.layers:
         z_min, z_max = layer.z_range
-        phase_name = layer.phase
-        phi[Z >= z_min] = 1.0 if phase_name == config.phases[1].name else 0.0
+        phase_density = next(p.density for p in config.phases if p.name == layer.phase)
+        mask = (Z >= z_min) & (Z < z_max)
+        density[mask] = phase_density
     
     # 球の設定
     for sphere in config.spheres:
+        phase_density = next(p.density for p in config.phases if p.name == sphere.phase)
         r = np.sqrt(
             (X - sphere.center[0])**2 + 
             (Y - sphere.center[1])**2 + 
             (Z - sphere.center[2])**2
         )
-        phase_name = sphere.phase
-        phi[r <= sphere.radius] = 1.0 if phase_name == config.phases[1].name else 0.0
+        mask = r <= sphere.radius
+        density[mask] = phase_density
     
-    return velocity, pressure, phi
+    # 密度の安全性を確認して返す
+    return velocity, pressure, validate_density(density)
 
 def main():
     # 出力ディレクトリの設定
@@ -84,37 +118,30 @@ def main():
     
     # 初期場の設定
     print("Initializing fields...")
-    velocity, pressure, phi = initialize_fields(config)
+    velocity, pressure, density = initialize_fields(config)
     
     # 初期状態の保存
     print("Saving initial state...")
-    writer.save_density_field(phi, config, f"phase_t0.000")
-    writer.save_velocity_field(velocity, config, f"phase_t0.000")
+    writer.save_density_field(density, config, f"density_t0.000")
     
+    # シミュレーションパラメータの初期化
     time = 0.0
     step = 0
     save_count = 0
     
     print("Starting simulation...")
     while time < config.max_time:
-        # 相場の重み関数（ヘビサイド関数）
-        H = phase_solver.heaviside(phi)
-        
-        # 密度と粘度の計算
-        density = fluid_properties.get_density(H)
-        viscosity = fluid_properties.get_viscosity(H)
+        # 密度の安全性を確認
+        density = validate_density(density)
         
         # 時間発展
-        velocity = ns_solver.runge_kutta4(
-            velocity, 
-            density, 
-            viscosity,  
-            config.dt
-        )
-        velocity, pressure = ns_solver.pressure_projection(velocity, density, config.dt)
-        
-        # 相場の更新
-        phi = phase_solver.advance(phi, velocity, config.dt)
+        try:
+            velocity = ns_solver.runge_kutta4(velocity, density, config.dt)
+            velocity, pressure = ns_solver.pressure_projection(velocity, density, config.dt)
+            density = phase_solver.advance(density, velocity, config.dt)
+        except Exception as e:
+            print(f"Error in simulation step: {e}")
+            break
         
         time += config.dt
         step += 1
@@ -123,8 +150,7 @@ def main():
         if step % int(config.save_interval/config.dt) == 0:
             save_count += 1
             print(f"t = {time:.3f}, step = {step}, saving output {save_count}...")
-            writer.save_density_field(phi, config, f"phase_t{time:.3f}")
-            writer.save_velocity_field(velocity, config, f"phase_t{time:.3f}")
+            writer.save_density_field(density, config, f"density_t{time:.3f}")
     
     print("Simulation completed!")
 
