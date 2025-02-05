@@ -4,7 +4,7 @@ from pathlib import Path
 from config.base import Config
 from core.material.properties import MaterialManager
 from core.solver.navier_stokes.solver import NavierStokesSolver
-from core.solver.time_integrator import TimeIntegrator
+from core.solver.time_integrator.base import TimeIntegrator
 from physics.phase_field import PhaseField
 from core.field.scalar_field import ScalarField
 from core.field.vector_field import VectorField

@@ -8,7 +8,7 @@ from core.simulation import Simulation
 from core.material.properties import MaterialManager
 from core.solver.navier_stokes.solver import NavierStokesSolver
 from core.solver.time_integrator.runge_kutta import RK4
-from core.solver.poisson.multigrid import MultiGrid
+from core.solver.poisson.multigrid import MultigridSolver
 from physics.phase_field import PhaseField, PhaseFieldParameters
 from data_io.hdf5_io import HDF5IO
 from data_io.csv_io import CSVIO

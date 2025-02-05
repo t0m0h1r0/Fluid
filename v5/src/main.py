@@ -186,7 +186,7 @@ def main():
         "--config", default="config/simulation.yaml", help="設定ファイルのパス"
     )
     parser.add_argument(
-        "--checkpoint-interval", type=int, default=100, help="チェックポイント保存間隔"
+        "--checkpoint-interval", type=int, default=1, help="チェックポイント保存間隔"
     )
     args = parser.parse_args()
 

@@ -1,4 +1,4 @@
-.venv/
+**/.venv/**
 **/__pycache__/**
 v5/src/output/
 v5/src/logs/
