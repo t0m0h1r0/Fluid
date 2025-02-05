@@ -108,30 +108,66 @@ class MultiPhaseSimulation:
         }
 
     def set_initial_conditions(self):
-        """初期条件の設定"""
-        # 層の設定
+        """初期条件の詳細設定"""
+        # まず全体を初期化（デフォルトの相）
+        lowest_density_phase = min(
+            self.material_manager.fluids, 
+            key=lambda p: self.material_manager.fluids[p].density
+        )
+        initial_value = -1.0 if self.material_manager.fluids[lowest_density_phase].density == min(
+            fluid.density for fluid in self.material_manager.fluids.values()
+        ) else 1.0
+
+        self.phase.data = np.full(self.phase.data.shape, initial_value)
+
+        # レイヤーの処理
         for layer in self.config.initial_condition.layers:
-            # TODO: 層に応じて相場を初期化
+            # グリッド座標に変換
             z_min, z_max = layer.z_range
-            phase_data = self.phase.data
-            phase_data[(self.phase.metadata.domain_size[2] * z_min / self.phase.metadata.domain_size[2]):
-                       (self.phase.metadata.domain_size[2] * z_max / self.phase.metadata.domain_size[2])] = 1.0
-        
-        # 球の設定
+            Lz = self.config.domain.Lz
+            resolution = self.config.domain.resolution
+
+            # インデックスに変換
+            k_min = int(z_min / Lz * resolution[2])
+            k_max = int(z_max / Lz * resolution[2])
+
+            # 密度の高い相を1、低い相を-1に設定
+            max_density = max(
+                self.material_manager.fluids[ph].density for ph in self.material_manager.fluids
+            )
+            phase_density = self.material_manager.fluids[layer.phase].density
+
+            layer_value = 1.0 if phase_density == max_density else -1.0
+            
+            # 3次元のスライスを使用
+            self.phase.data[:, :, k_min:k_max] = layer_value
+
+        # 球の処理
         for sphere in self.config.initial_condition.spheres:
-            # TODO: 球の形状に応じて相場を初期化
-            center = sphere.center
-            radius = sphere.radius
-            
-            # 座標のグリッドを生成
-            x = np.linspace(0, self.phase.metadata.domain_size[0], self.phase.metadata.resolution[0])
-            y = np.linspace(0, self.phase.metadata.domain_size[1], self.phase.metadata.resolution[1])
-            z = np.linspace(0, self.phase.metadata.domain_size[2], self.phase.metadata.resolution[2])
-            X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
-            
+            # グリッド座標
+            X, Y, Z = [
+                np.linspace(0, size, resolution[i]) 
+                for i, size in enumerate(self.config.domain.size)
+            ]
+            X, Y, Z = np.meshgrid(X, Y, Z, indexing='ij')
+
             # 球の条件
-            sphere_mask = ((X - center[0])**2 + 
-                           (Y - center[1])**2 + 
-                           (Z - center[2])**2) <= radius**2
+            r = np.sqrt(
+                (X - sphere.center[0])**2 + 
+                (Y - sphere.center[1])**2 + 
+                (Z - sphere.center[2])**2
+            )
+            mask = r <= sphere.radius
+
+            # 密度の高い相を1、低い相を-1に設定
+            max_density = max(
+                self.material_manager.fluids[ph].density for ph in self.material_manager.fluids
+            )
+            phase_density = self.material_manager.fluids[sphere.phase].density
+
+            sphere_value = 1.0 if phase_density == max_density else -1.0
             
-            self.phase.data[sphere_mask] = 1.0
+            # マスクを適用
+            self.phase.data[mask] = sphere_value
+
+        return self.phase.data

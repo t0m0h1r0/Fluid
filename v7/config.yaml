@@ -1,79 +1,63 @@
-# 二層流体中の球のシミュレーション設定
+# 多相流体シミュレーション設定
 
 physical:
-  fluids:
-    water:
-      density: 1000.0  # [kg/m³]
-      viscosity: 1.0e-3  # [Pa·s]
-      surface_tension: 0.07  # [N/m]
-    air:
-      density: 1.225  # [kg/m³]
-      viscosity: 1.789e-5  # [Pa·s]
-      surface_tension: 0.0  # [N/m]
+  phases:
+    - name: "water"
+      density: 1000.0
+      viscosity: 1.0e-3
+      surface_tension_coefficient: 0.07  # 水の表面張力係数
+    - name: "nitrogen"
+      density: 1.225
+      viscosity: 1.79e-5
+      surface_tension_coefficient: 0.05  # 窒素の表面張力係数
+  gravity: 9.81  # 重力加速度 [m/s²]
+  surface_tension: 0.07  # デフォルトの表面張力係数 [N/m]
 
 domain:
-  size: [1.0, 1.0, 2.0]  # [m]
-  resolution: [64, 64, 128]  # 格子数
-  periodicity: [true, true, false]  # 境界条件
+  Nx: 16   # x方向のグリッド数
+  Ny: 16   # y方向のグリッド数
+  Nz: 32   # z方向のグリッド数
+  Lx: 1.0  # x方向の計算領域サイズ [m]
+  Ly: 1.0  # y方向の計算領域サイズ [m]
+  Lz: 2.0  # z方向の計算領域サイズ [m]
 
 initial_condition:
-  # 二層の設定
   layers:
-    # 下層の水
-    - phase: "water"
-      z_range: [0.0, 1.4]  # 高さ1.4mまでが水
-    
-    # 上層の空気
-    - phase: "air"
-      z_range: [1.4, 2.0]  # 高さ1.4m以上が空気
-  
-  # 球の配置
+    - phase: "water" 
+      z_range: [0.0, 1.4]  # 計算領域内に収める
+    - phase: "nitrogen" 
+      z_range: [1.4, 2.0]  # 計算領域内に収める
   spheres:
-    # 水中の空気球
-    - center: [0.5, 0.5, 0.7]  # 中心座標 [m]
-      radius: 0.1  # 半径 [m]
-      phase: "air"
-    
-    # 空気中の水球
-    - center: [0.5, 0.5, 1.7]  # 中心座標 [m]
-      radius: 0.1  # 半径 [m]
+    - center: [0.5, 0.5, 0.4]
+      radius: 0.2
+      phase: "nitrogen"
+    - center: [0.5, 0.5, 1.7]
+      radius: 0.2
       phase: "water"
+  initial_velocity: [0.0, 0.0, 0.0]  # 初期速度 [u, v, w]
 
-# 相場パラメータ
-phase:
-  epsilon: 0.01  # 界面厚さ
-  mobility: 1.0  # 移動度
-  surface_tension: 0.07  # [N/m]
-  stabilization: 0.1  # 安定化係数
-
-# 数値計算パラメータ
 numerical:
-  dt: 0.001  # 時間刻み幅 [s]
-  max_time: 3.0  # 最大計算時間 [s]
-  cfl_number: 0.5
-  tolerance: 1.0e-6
-  max_iterations: 1000
+  dt: 0.001           # 初期時間刻み幅 [s]
+  save_interval: 0.1  # データ保存間隔 [s]
+  max_time: 1.0       # 最大計算時間 [s]
+  max_steps: 1000     # 最大ステップ数
+  cfl_factor: 0.5     # CFL条件の係数
+  pressure_tolerance: 1e-6  # 圧力補正の収束判定
+  velocity_tolerance: 1e-6  # 速度収束判定
 
-# 出力設定
-output:
-  save_interval: 0.02  # 保存間隔 [s]
-  output_dir: "output/layer_with_spheres"
-  save_format: "hdf5"
-  visualization: true
+boundary_conditions:
+  x: periodic
+  y: periodic
+  z: neumann
 
-gravity: 9.81  # 重力加速度 [m/s²]
+visualization:
+  phase_3d:
+    elev: 30  # 相場の3D表示仰角 [度]
+    azim: 45  # 相場の3D表示方位角 [度]
+  velocity_3d:
+    elev: 45  # 速度場の3D表示仰角 [度]
+    azim: 60  # 速度場の3D表示方位角 [度]
 
-fluids:
-  water:
-    density: 1000.0  # [kg/m³]
-    viscosity: 1.0e-3  # [Pa·s]
-    surface_tension: 0.07  # [N/m]
-    specific_heat: 4182.0  # [J/kg·K]
-    thermal_conductivity: 0.6  # [W/m·K]
-  
-  air:
-    density: 1.225  # [kg/m³]
-    viscosity: 1.789e-5  # [Pa·s]
-    surface_tension: 0.0  # [N/m]
-    specific_heat: 1005.0  # [J/kg·K]
-    thermal_conductivity: 0.024  # [W/m·K]
+logging:
+  level: INFO
+  output_dir: logs
