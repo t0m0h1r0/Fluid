@@ -1,0 +1,1 @@
+2025-02-05 10:43:35,431 - simulation_20250205_104315 - ERROR - Error in timestep 0: NavierStokesSolver.runge_kutta4() got an unexpected keyword argument 'external_forces'

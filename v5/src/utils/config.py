@@ -1,4 +1,4 @@
-# config.py
+# utils/config.py
 from dataclasses import dataclass
 from typing import List, Tuple
 import yaml
@@ -28,7 +28,8 @@ class SphereConfig:
 
 @dataclass
 class LayerConfig:
-    phase: str          # phaseを使用
+    """レイヤーの設定"""
+    phase: str          # 相の名前
     z_range: List[float]  # z方向の範囲 [m]
 
 class SimulationConfig:
@@ -67,6 +68,9 @@ class SimulationConfig:
         self.save_interval = config['numerical']['save_interval']  # 保存間隔 [s]
         self.max_time = config['numerical']['max_time']    # 最大計算時間 [s]
         
+        # 最大ステップ数の計算
+        self.max_steps = int(self.max_time / self.dt)     # 最大ステップ数
+        
         # 可視化の設定
         vis_config = config.get('visualization', {})
         phase_3d = vis_config.get('phase_3d', {})
@@ -78,6 +82,9 @@ class SimulationConfig:
             velocity_3d_elev=velocity_3d.get('elev', 45),
             velocity_3d_azim=velocity_3d.get('azim', 60)
         )
+        
+        # グリッド形状のプロパティ
+        self.shape = (self.Nx, self.Ny, self.Nz)
     
     def validate(self) -> List[str]:
         """設定の検証
