@@ -25,8 +25,9 @@ def setup_simulation():
         z_bc=NeumannBC()
     )
     
-    # ポアソンソルバーの初期化
+    # ポアソンソルバーの初期化（schemeを追加）
     poisson_solver = PoissonSolver(
+        scheme=scheme,
         boundary_conditions=[boundary_conditions.get_condition(i) for i in range(3)]
     )
     

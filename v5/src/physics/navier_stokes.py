@@ -119,7 +119,14 @@ class NavierStokesSolver:
                 # 重力項（z方向のみ）
                 gravity = np.zeros_like(v[axis])
                 if axis == 2:  # z方向
-                    gravity = -self.gravity * (rho - rho.min()) / (rho.max() - rho.min())
+                    # 密度の正規化を安全に行う
+                    rho_min, rho_max = rho.min(), rho.max()
+                    if np.isclose(rho_min, rho_max):
+                        # 密度が一様な場合
+                        gravity = -self.gravity * np.ones_like(v[axis])
+                    else:
+                        # 密度に応じた重力項
+                        gravity = -self.gravity * (rho - rho_min) / (rho_max - rho_min)
                 
                 # 全項の合計
                 total = (-advection + viscosity * diffusion / rho + gravity)
