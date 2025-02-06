@@ -19,6 +19,7 @@ class Visualizer:
         plt.rcParams['font.size'] = 12
         plt.rcParams['figure.dpi'] = 100
         plt.rcParams['savefig.dpi'] = 300
+        plt.rcParams["font.family"] = 'Noto Sans CJK JP'
         
         self.colormaps = {
             'density': 'viridis',
@@ -97,7 +98,7 @@ class Visualizer:
         return path
 
     def create_isosurface_plot(self, field: ScalarField, 
-                              level: float, timestep: int, **kwargs) -> Path:
+                                level: float, timestep: int, **kwargs) -> Path:
         """等値面プロット作成"""
         from skimage import measure
         
@@ -121,10 +122,10 @@ class Visualizer:
             
             # 3Dサーフェスプロット
             ax.plot_trisurf(verts[:, 0], verts[:, 1], verts[:, 2],
-                           triangles=faces,
-                           facecolors=colors,
-                           edgecolor='none',
-                           alpha=0.7)
+                            triangles=faces,
+                            shade=True,
+                            cmap=cmap,
+                            alpha=0.7)
             
             # アクシスラベルと凡例
             ax.set_xlabel('X [m]')
@@ -138,8 +139,8 @@ class Visualizer:
             
         except ValueError as e:
             ax.text(0.5, 0.5, 0.5, "等値面が見つかりません",
-                   horizontalalignment='center',
-                   verticalalignment='center')
+                    horizontalalignment='center',
+                    verticalalignment='center')
         
         path = self._get_output_path(f"{field.metadata.name}_3d_iso_{timestep:06d}.png")
         plt.savefig(path, bbox_inches='tight', dpi=300)
