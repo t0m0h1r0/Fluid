@@ -1,18 +1,20 @@
 # 二相流体シミュレーションの設定ファイル
 
-# 流体相の物性値
-phases:
-  - name: "water"
-    density: 1000.0
-    viscosity: 1.0e-3
-    surface_tension: 0.07
-  - name: "air"
-    density: 1.225
-    viscosity: 1.79e-5
-    surface_tension: 0.0
+# 物理パラメータ
+physical:
+  phases:
+    - name: "water"
+      density: 1000.0
+      viscosity: 1.0e-3
+      surface_tension: 0.07
+    - name: "air"
+      density: 1.225
+      viscosity: 1.79e-5
+      surface_tension: 0.0
+  gravity: 9.81
 
 # 計算領域の設定
-grid:
+domain:
   nx: 64
   ny: 64
   nz: 128
@@ -35,7 +37,6 @@ solver:
   time_integrator: "rk4"
   convection_scheme: "weno"
   velocity_tolerance: 1e-6
-  poisson_tolerance: 1e-6
 
 # 境界条件の設定
 boundary:
@@ -48,7 +49,7 @@ initial_condition:
   # 領域全体の初期相
   base_phase: "air"
   
-  # 変更操作のリスト（上から順に適用）
+  # 変更操作のリスト
   operations:
     # z方向の範囲指定による相の設定
     - type: "z_range"

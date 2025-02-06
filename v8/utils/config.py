@@ -5,14 +5,20 @@ from pathlib import Path
 
 @dataclass
 class PhaseConfig:
-    """流体相の物性値設定"""
+    """相の設定"""
     name: str
     density: float
     viscosity: float
     surface_tension: Optional[float] = None
 
 @dataclass
-class GridConfig:
+class PhysicalConfig:
+    """物理パラメータの設定"""
+    phases: List[PhaseConfig]
+    gravity: float = 9.81
+
+@dataclass
+class DomainConfig:
     """計算領域の設定"""
     nx: int
     ny: int
@@ -38,7 +44,6 @@ class SolverConfig:
     time_integrator: str = "rk4"
     convection_scheme: str = "weno"
     velocity_tolerance: float = 1e-6
-    poisson_tolerance: float = 1e-6
 
 @dataclass
 class BoundaryConfig:
@@ -98,8 +103,8 @@ class SimulationConfig:
             config = yaml.safe_load(f)
         
         # 各コンポーネントの設定を解析
-        self.phases = self._parse_phases(config.get('phases', []))
-        self.grid = self._parse_grid(config.get('grid', {}))
+        self.physical = self._parse_physical(config.get('physical', {}))
+        self.domain = self._parse_domain(config.get('domain', {}))
         self.time = self._parse_time(config.get('time', {}))
         self.solver = self._parse_solver(config.get('solver', {}))
         self.boundary = self._parse_boundary(config.get('boundary', {}))
@@ -108,21 +113,25 @@ class SimulationConfig:
         )
         self.output = self._parse_output(config.get('output', {}))
     
-    def _parse_phases(self, config: List[Dict]) -> List[PhaseConfig]:
-        """相の設定を解析"""
-        return [
+    def _parse_physical(self, config: Dict) -> PhysicalConfig:
+        """物理パラメータの設定を解析"""
+        phases = [
             PhaseConfig(
                 name=phase['name'],
                 density=float(phase['density']),
                 viscosity=float(phase['viscosity']),
                 surface_tension=float(phase.get('surface_tension', 0.0))
             )
-            for phase in config
+            for phase in config.get('phases', [])
         ]
+        return PhysicalConfig(
+            phases=phases,
+            gravity=float(config.get('gravity', 9.81))
+        )
     
-    def _parse_grid(self, config: Dict) -> GridConfig:
+    def _parse_domain(self, config: Dict) -> DomainConfig:
         """計算領域の設定を解析"""
-        return GridConfig(
+        return DomainConfig(
             nx=int(config['nx']),
             ny=int(config['ny']),
             nz=int(config['nz']),
@@ -148,8 +157,7 @@ class SimulationConfig:
             poisson_max_iterations=int(config.get('poisson_max_iterations', 100)),
             time_integrator=str(config.get('time_integrator', 'rk4')),
             convection_scheme=str(config.get('convection_scheme', 'weno')),
-            velocity_tolerance=float(config.get('velocity_tolerance', 1e-6)),
-            poisson_tolerance=float(config.get('poisson_tolerance', 1e-6))
+            velocity_tolerance=float(config.get('velocity_tolerance', 1e-6))
         )
     
     def _parse_boundary(self, config: Dict) -> BoundaryConfig:
@@ -199,30 +207,33 @@ class SimulationConfig:
     def get_dx(self) -> Tuple[float, float, float]:
         """グリッド間隔を取得"""
         return (
-            self.grid.lx / self.grid.nx,
-            self.grid.ly / self.grid.ny,
-            self.grid.lz / self.grid.nz
+            self.domain.lx / self.domain.nx,
+            self.domain.ly / self.domain.ny,
+            self.domain.lz / self.domain.nz
         )
     
     def get_shape(self) -> Tuple[int, int, int]:
         """グリッド形状を取得"""
-        return (self.grid.nx, self.grid.ny, self.grid.nz)
+        return (self.domain.nx, self.domain.ny, self.domain.nz)
     
     def to_dict(self) -> Dict:
         """設定を辞書形式に変換"""
         return {
-            'phases': [
-                {
-                    'name': phase.name,
-                    'density': phase.density,
-                    'viscosity': phase.viscosity,
-                    'surface_tension': phase.surface_tension
-                }
-                for phase in self.phases
-            ],
-            'grid': {
-                'nx': self.grid.nx, 'ny': self.grid.ny, 'nz': self.grid.nz,
-                'lx': self.grid.lx, 'ly': self.grid.ly, 'lz': self.grid.lz
+            'physical': {
+                'phases': [
+                    {
+                        'name': phase.name,
+                        'density': phase.density,
+                        'viscosity': phase.viscosity,
+                        'surface_tension': phase.surface_tension
+                    }
+                    for phase in self.physical.phases
+                ],
+                'gravity': self.physical.gravity
+            },
+            'domain': {
+                'nx': self.domain.nx, 'ny': self.domain.ny, 'nz': self.domain.nz,
+                'lx': self.domain.lx, 'ly': self.domain.ly, 'lz': self.domain.lz
             },
             'time': {
                 'dt': self.time.dt,
@@ -236,8 +247,7 @@ class SimulationConfig:
                 'poisson_max_iterations': self.solver.poisson_max_iterations,
                 'time_integrator': self.solver.time_integrator,
                 'convection_scheme': self.solver.convection_scheme,
-                'velocity_tolerance': self.solver.velocity_tolerance,
-                'poisson_tolerance': self.solver.poisson_tolerance
+                'velocity_tolerance': self.solver.velocity_tolerance
             },
             'boundary': {
                 'x': self.boundary.x,
