@@ -1,11 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Tuple
 import yaml
 from pathlib import Path
 
 @dataclass
 class PhaseConfig:
-    """相の設定"""
+    """流体相の物性値設定"""
     name: str
     density: float
     viscosity: float
@@ -13,7 +13,7 @@ class PhaseConfig:
 
 @dataclass
 class GridConfig:
-    """グリッドの設定"""
+    """計算領域の設定"""
     nx: int
     ny: int
     nz: int
@@ -32,11 +32,13 @@ class TimeConfig:
 @dataclass
 class SolverConfig:
     """ソルバーの設定"""
-    poisson_solver: str = 'multigrid'
+    poisson_solver: str = "multigrid"
     poisson_tolerance: float = 1e-6
     poisson_max_iterations: int = 100
-    time_integrator: str = 'rk4'
-    convection_scheme: str = 'weno'
+    time_integrator: str = "rk4"
+    convection_scheme: str = "weno"
+    velocity_tolerance: float = 1e-6
+    poisson_tolerance: float = 1e-6
 
 @dataclass
 class BoundaryConfig:
@@ -46,10 +48,38 @@ class BoundaryConfig:
     z: str
 
 @dataclass
-class InitialConditionConfig:
-    """初期条件の設定"""
+class InitialConditionOperation:
+    """初期条件の操作"""
+    type: str
+    phase: str
+    center: Optional[List[float]] = None
+    radius: Optional[float] = None
+    z_min: Optional[float] = None
+    z_max: Optional[float] = None
+    min_point: Optional[List[float]] = None
+    max_point: Optional[List[float]] = None
+    height: Optional[float] = None
+    direction: Optional[str] = None
+
+@dataclass
+class InitialVelocityConfig:
+    """初期速度場の設定"""
     type: str
     parameters: Dict[str, float]
+
+@dataclass
+class InitialConditionConfig:
+    """初期条件の設定"""
+    base_phase: str
+    operations: List[InitialConditionOperation]
+    initial_velocity: InitialVelocityConfig
+
+@dataclass
+class OutputConfig:
+    """出力設定"""
+    directory: str
+    visualization_interval: float
+    checkpoint_interval: float
 
 class SimulationConfig:
     """シミュレーション全体の設定"""
@@ -64,52 +94,49 @@ class SimulationConfig:
             raise FileNotFoundError(f"設定ファイルが見つかりません: {config_file}")
         
         # 設定の読み込みと解析
-        with open(config_file, 'r') as f:
+        with open(config_file, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
         
         # 各コンポーネントの設定を解析
-        self.phases = self._parse_phases(config.get('phases', {}))
+        self.phases = self._parse_phases(config.get('phases', []))
         self.grid = self._parse_grid(config.get('grid', {}))
         self.time = self._parse_time(config.get('time', {}))
         self.solver = self._parse_solver(config.get('solver', {}))
         self.boundary = self._parse_boundary(config.get('boundary', {}))
-        self.initial = self._parse_initial(config.get('initial_condition', {}))
-        
-        # 出力設定
-        self.output_dir = config.get('output', {}).get('directory', 'output')
-        
-        # 設定の検証
-        self._validate()
+        self.initial_condition = self._parse_initial_condition(
+            config.get('initial_condition', {})
+        )
+        self.output = self._parse_output(config.get('output', {}))
     
-    def _parse_phases(self, config: Dict) -> List[PhaseConfig]:
+    def _parse_phases(self, config: List[Dict]) -> List[PhaseConfig]:
         """相の設定を解析"""
-        phases = []
-        for phase_data in config:
-            phases.append(PhaseConfig(
-                name=phase_data['name'],
-                density=float(phase_data['density']),
-                viscosity=float(phase_data['viscosity']),
-                surface_tension=float(phase_data.get('surface_tension', 0.0))
-            ))
-        return phases
+        return [
+            PhaseConfig(
+                name=phase['name'],
+                density=float(phase['density']),
+                viscosity=float(phase['viscosity']),
+                surface_tension=float(phase.get('surface_tension', 0.0))
+            )
+            for phase in config
+        ]
     
     def _parse_grid(self, config: Dict) -> GridConfig:
-        """グリッドの設定を解析"""
+        """計算領域の設定を解析"""
         return GridConfig(
-            nx=int(config.get('nx', 32)),
-            ny=int(config.get('ny', 32)),
-            nz=int(config.get('nz', 32)),
-            lx=float(config.get('lx', 1.0)),
-            ly=float(config.get('ly', 1.0)),
-            lz=float(config.get('lz', 1.0))
+            nx=int(config['nx']),
+            ny=int(config['ny']),
+            nz=int(config['nz']),
+            lx=float(config['lx']),
+            ly=float(config['ly']),
+            lz=float(config['lz'])
         )
     
     def _parse_time(self, config: Dict) -> TimeConfig:
         """時間発展の設定を解析"""
         return TimeConfig(
-            dt=float(config.get('dt', 0.001)),
-            max_time=float(config.get('max_time', 1.0)),
-            save_interval=float(config.get('save_interval', 0.1)),
+            dt=float(config['dt']),
+            max_time=float(config['max_time']),
+            save_interval=float(config['save_interval']),
             cfl=float(config.get('cfl', 0.5))
         )
     
@@ -120,7 +147,9 @@ class SimulationConfig:
             poisson_tolerance=float(config.get('poisson_tolerance', 1e-6)),
             poisson_max_iterations=int(config.get('poisson_max_iterations', 100)),
             time_integrator=str(config.get('time_integrator', 'rk4')),
-            convection_scheme=str(config.get('convection_scheme', 'weno'))
+            convection_scheme=str(config.get('convection_scheme', 'weno')),
+            velocity_tolerance=float(config.get('velocity_tolerance', 1e-6)),
+            poisson_tolerance=float(config.get('poisson_tolerance', 1e-6))
         )
     
     def _parse_boundary(self, config: Dict) -> BoundaryConfig:
@@ -131,42 +160,41 @@ class SimulationConfig:
             z=str(config.get('z', 'neumann'))
         )
     
-    def _parse_initial(self, config: Dict) -> InitialConditionConfig:
+    def _parse_initial_condition(self, config: Dict) -> InitialConditionConfig:
         """初期条件の設定を解析"""
+        # 初期操作の解析
+        operations = [
+            InitialConditionOperation(
+                type=op['type'],
+                phase=op['phase'],
+                **{k: v for k, v in op.items() 
+                   if k not in ['type', 'phase']}
+            )
+            for op in config.get('operations', [])
+        ]
+        
+        # 初期速度の設定
+        velocity_config = config.get('initial_velocity', {
+            'type': 'zero',
+            'parameters': {'u': 0.0, 'v': 0.0, 'w': 0.0}
+        })
+        
         return InitialConditionConfig(
-            type=str(config.get('type', 'two_layer')),
-            parameters=config.get('parameters', {})
+            base_phase=config['base_phase'],
+            operations=operations,
+            initial_velocity=InitialVelocityConfig(
+                type=velocity_config['type'],
+                parameters=velocity_config['parameters']
+            )
         )
     
-    def _validate(self):
-        """設定の妥当性を検証"""
-        # グリッドサイズの検証
-        if any(size <= 0 for size in [self.grid.nx, self.grid.ny, self.grid.nz]):
-            raise ValueError("グリッドサイズは正の整数である必要があります")
-        
-        # 時間パラメータの検証
-        if self.time.dt <= 0 or self.time.max_time <= 0:
-            raise ValueError("時間パラメータは正の実数である必要があります")
-        
-        if self.time.save_interval > self.time.max_time:
-            raise ValueError("保存間隔は最大時間以下である必要があります")
-        
-        # 相の設定の検証
-        if not self.phases:
-            raise ValueError("少なくとも1つの相を設定する必要があります")
-        
-        # 境界条件の検証
-        valid_boundaries = {'periodic', 'neumann', 'dirichlet'}
-        for bc in [self.boundary.x, self.boundary.y, self.boundary.z]:
-            if bc not in valid_boundaries:
-                raise ValueError(f"無効な境界条件: {bc}")
-        
-        # ソルバーの設定の検証
-        if self.solver.poisson_tolerance <= 0:
-            raise ValueError("Poissonソルバーの許容誤差は正の値である必要があります")
-        
-        if self.solver.poisson_max_iterations <= 0:
-            raise ValueError("最大反復回数は正の整数である必要があります")
+    def _parse_output(self, config: Dict) -> OutputConfig:
+        """出力設定の解析"""
+        return OutputConfig(
+            directory=str(config.get('directory', 'output')),
+            visualization_interval=float(config.get('visualization_interval', 0.1)),
+            checkpoint_interval=float(config.get('checkpoint_interval', 0.5))
+        )
     
     def get_dx(self) -> Tuple[float, float, float]:
         """グリッド間隔を取得"""
@@ -183,37 +211,63 @@ class SimulationConfig:
     def to_dict(self) -> Dict:
         """設定を辞書形式に変換"""
         return {
-            'phases': [vars(phase) for phase in self.phases],
-            'grid': vars(self.grid),
-            'time': vars(self.time),
-            'solver': vars(self.solver),
-            'boundary': vars(self.boundary),
-            'initial': vars(self.initial),
-            'output_dir': self.output_dir
+            'phases': [
+                {
+                    'name': phase.name,
+                    'density': phase.density,
+                    'viscosity': phase.viscosity,
+                    'surface_tension': phase.surface_tension
+                }
+                for phase in self.phases
+            ],
+            'grid': {
+                'nx': self.grid.nx, 'ny': self.grid.ny, 'nz': self.grid.nz,
+                'lx': self.grid.lx, 'ly': self.grid.ly, 'lz': self.grid.lz
+            },
+            'time': {
+                'dt': self.time.dt,
+                'max_time': self.time.max_time,
+                'save_interval': self.time.save_interval,
+                'cfl': self.time.cfl
+            },
+            'solver': {
+                'poisson_solver': self.solver.poisson_solver,
+                'poisson_tolerance': self.solver.poisson_tolerance,
+                'poisson_max_iterations': self.solver.poisson_max_iterations,
+                'time_integrator': self.solver.time_integrator,
+                'convection_scheme': self.solver.convection_scheme,
+                'velocity_tolerance': self.solver.velocity_tolerance,
+                'poisson_tolerance': self.solver.poisson_tolerance
+            },
+            'boundary': {
+                'x': self.boundary.x,
+                'y': self.boundary.y,
+                'z': self.boundary.z
+            },
+            'initial_condition': {
+                'base_phase': self.initial_condition.base_phase,
+                'operations': [
+                    {k: v for k, v in op.__dict__.items() if v is not None}
+                    for op in self.initial_condition.operations
+                ],
+                'initial_velocity': {
+                    'type': self.initial_condition.initial_velocity.type,
+                    'parameters': self.initial_condition.initial_velocity.parameters
+                }
+            },
+            'output': {
+                'directory': self.output.directory,
+                'visualization_interval': self.output.visualization_interval,
+                'checkpoint_interval': self.output.checkpoint_interval
+            }
         }
     
     def save(self, filename: str):
         """設定をファイルに保存"""
-        with open(filename, 'w') as f:
-            yaml.dump(self.to_dict(), f, default_flow_style=False)
+        with open(filename, 'w', encoding='utf-8') as f:
+            yaml.dump(self.to_dict(), f, allow_unicode=True, default_flow_style=False)
     
     @classmethod
     def load(cls, filename: str) -> 'SimulationConfig':
         """設定をファイルから読み込み"""
-        config = cls.__new__(cls)
-        
-        with open(filename, 'r') as f:
-            data = yaml.safe_load(f)
-        
-        config.phases = [PhaseConfig(**phase) for phase in data['phases']]
-        config.grid = GridConfig(**data['grid'])
-        config.time = TimeConfig(**data['time'])
-        config.solver = SolverConfig(**data['solver'])
-        config.boundary = BoundaryConfig(**data['boundary'])
-        config.initial = InitialConditionConfig(**data['initial'])
-        config.output_dir = data['output_dir']
-        
-        # 設定の検証
-        config._validate()
-        
-        return config
+        return cls(filename)

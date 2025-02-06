@@ -181,7 +181,7 @@ def run_simulation(config: Config):
                timestep < config.numerical.max_steps):
             
             # 時間発展
-            simulation.step(config.numerical.dt)
+            #simulation.step(config.numerical.dt)
             
             current_time += config.numerical.dt
             timestep += 1

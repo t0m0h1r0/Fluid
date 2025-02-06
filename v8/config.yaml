@@ -1,20 +1,18 @@
 # 二相流体シミュレーションの設定ファイル
 
-# 物理パラメータ
-physical:
-  phases:
-    - name: "water"
-      density: 1000.0
-      viscosity: 1.0e-3
-      surface_tension: 0.07
-    - name: "air"
-      density: 1.225
-      viscosity: 1.79e-5
-      surface_tension: 0.0
-  gravity: 9.81
+# 流体相の物性値
+phases:
+  - name: "water"
+    density: 1000.0
+    viscosity: 1.0e-3
+    surface_tension: 0.07
+  - name: "air"
+    density: 1.225
+    viscosity: 1.79e-5
+    surface_tension: 0.0
 
 # 計算領域の設定
-domain:
+grid:
   nx: 64
   ny: 64
   nz: 128
@@ -22,7 +20,30 @@ domain:
   ly: 1.0
   lz: 2.0
 
-# 初期条件（上から順に適用される）
+# 時間発展の設定
+time:
+  dt: 0.001
+  max_time: 10.0
+  save_interval: 0.1
+  cfl: 0.5
+
+# ソルバーの設定
+solver:
+  poisson_solver: "multigrid"
+  poisson_tolerance: 1e-6
+  poisson_max_iterations: 100
+  time_integrator: "rk4"
+  convection_scheme: "weno"
+  velocity_tolerance: 1e-6
+  poisson_tolerance: 1e-6
+
+# 境界条件の設定
+boundary:
+  x: "periodic"
+  y: "periodic"
+  z: "neumann"
+
+# 初期条件の設定
 initial_condition:
   # 領域全体の初期相
   base_phase: "air"
@@ -58,15 +79,18 @@ initial_condition:
       center: [0.5, 0.5, 0.0]
       radius: 0.1
       height: 0.5
-      direction: "z"  # 円柱の軸方向（"x", "y", "z"のいずれか）
+      direction: "z"
 
   # 速度場の初期条件
   initial_velocity:
-    type: "zero"  # "zero", "uniform", "vortex", "custom"のいずれか
-    parameters:    # type: "uniform"の場合の例
+    type: "zero"
+    parameters:
       u: 0.0
       v: 0.0
       w: 0.0
 
-# その他の設定は省略
-...
+# 出力設定
+output:
+  directory: "output"
+  visualization_interval: 0.1
+  checkpoint_interval: 0.5
