@@ -1,0 +1,72 @@
+# 二相流体シミュレーションの設定ファイル
+
+# 物理パラメータ
+physical:
+  phases:
+    - name: "water"
+      density: 1000.0
+      viscosity: 1.0e-3
+      surface_tension: 0.07
+    - name: "air"
+      density: 1.225
+      viscosity: 1.79e-5
+      surface_tension: 0.0
+  gravity: 9.81
+
+# 計算領域の設定
+domain:
+  nx: 64
+  ny: 64
+  nz: 128
+  lx: 1.0
+  ly: 1.0
+  lz: 2.0
+
+# 初期条件（上から順に適用される）
+initial_condition:
+  # 領域全体の初期相
+  base_phase: "air"
+  
+  # 変更操作のリスト（上から順に適用）
+  operations:
+    # z方向の範囲指定による相の設定
+    - type: "z_range"
+      phase: "water"
+      z_min: 0.0
+      z_max: 1.0
+
+    # 球形の相の配置
+    - type: "sphere"
+      phase: "air"
+      center: [0.5, 0.5, 0.8]
+      radius: 0.2
+
+    - type: "sphere"
+      phase: "water"
+      center: [0.5, 0.5, 1.2]
+      radius: 0.15
+
+    # 直方体領域の相の設定
+    - type: "box"
+      phase: "water"
+      min_point: [0.2, 0.2, 0.3]
+      max_point: [0.4, 0.4, 0.5]
+
+    # 円柱形の相の配置
+    - type: "cylinder"
+      phase: "air"
+      center: [0.5, 0.5, 0.0]
+      radius: 0.1
+      height: 0.5
+      direction: "z"  # 円柱の軸方向（"x", "y", "z"のいずれか）
+
+  # 速度場の初期条件
+  initial_velocity:
+    type: "zero"  # "zero", "uniform", "vortex", "custom"のいずれか
+    parameters:    # type: "uniform"の場合の例
+      u: 0.0
+      v: 0.0
+      w: 0.0
+
+# その他の設定は省略
+...
