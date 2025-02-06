@@ -17,8 +17,13 @@ class PhaseInitializer:
     """相の初期化を担当するクラス"""
     
     def __init__(self, config: SimulationConfig):
+        """
+        Args:
+            config: シミュレーション設定
+        """
         self.config = config
-        self.dx = config.get_dx()[0]  # 等方的なグリッドを仮定
+        dx_values = config.get_dx()
+        self.dx = min(dx_values)  # 等方的なグリッドを仮定
         self.shape = config.get_shape()
         
         # グリッドの生成
@@ -55,11 +60,11 @@ class PhaseInitializer:
         for op_config in self.config.initial_condition.operations:
             operations.append(
                 GeometricOperation(
-                    type=op_config['type'],
-                    phase=op_config['phase'],
+                    type=op_config.type,
+                    phase=op_config.phase,
                     parameters={
-                        k: v for k, v in op_config.items()
-                        if k not in ['type', 'phase']
+                        k: v for k, v in op_config.__dict__.items()
+                        if k not in ['type', 'phase'] and v is not None
                     }
                 )
             )
@@ -180,10 +185,68 @@ class PhaseInitializer:
         else:
             phi.data = np.maximum(phi.data, -new_phi)
 
+
 class VelocityInitializer:
     """速度場の初期化を担当するクラス"""
-    # 速度場の初期化も同様に実装...
+    
+    def __init__(self, config: SimulationConfig):
+        """
+        Args:
+            config: シミュレーション設定
+        """
+        self.config = config
+    
+    def initialize_velocity(self) -> VectorField:
+        """速度場の初期化"""
+        # フィールドの作成
+        velocity = VectorField(self.config.get_shape(), min(self.config.get_dx()))
+        
+        # 初期速度の設定
+        initial_velocity = self.config.initial_condition.initial_velocity
+        
+        if initial_velocity.type == 'zero':
+            # 全ての速度成分をゼロに設定
+            for component in velocity.components:
+                component.data = np.zeros_like(component.data)
+        elif initial_velocity.type == 'uniform':
+            # 一様な速度場を設定
+            for i, component in enumerate(velocity.components):
+                param_key = ['u', 'v', 'w'][i]
+                component.data = np.full_like(component.data, 
+                                             initial_velocity.parameters.get(param_key, 0.0))
+        else:
+            raise ValueError(f"未知の初期速度タイプ: {initial_velocity.type}")
+        
+        return velocity
+
 
 class SimulationInitializer:
     """シミュレーション全体の初期化を担当するクラス"""
-    # 既存の実装...
+    
+    def __init__(self, config: SimulationConfig):
+        """
+        Args:
+            config: シミュレーション設定
+        """
+        self.config = config
+        self.phase_initializer = PhaseInitializer(config)
+        self.velocity_initializer = VelocityInitializer(config)
+    
+    def initialize(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """シミュレーションの初期化を実行"""
+        # フィールドの初期化
+        phi = self.phase_initializer.initialize_field()
+        velocity = self.velocity_initializer.initialize_velocity()
+        
+        # TODO: 圧力場など他のフィールドの初期化
+        
+        # フィールドの辞書
+        fields = {
+            'phi': phi,
+            'velocity': velocity
+        }
+        
+        # ソルバーの初期化（仮のプレースホルダー）
+        solvers = {}
+        
+        return fields, solvers
