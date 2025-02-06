@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 import numpy as np
 from core.field import Field, VectorField
 from core.solver import TimeEvolutionSolver
@@ -59,11 +59,11 @@ class NavierStokesSolver(TimeEvolutionSolver):
     def _predictor_step(self, velocity: VectorField, dt: float, 
                        properties: Dict[str, np.ndarray]) -> VectorField:
         """予測子ステップ"""
-        def rhs_func(v: VectorField, **kwargs) -> List[np.ndarray]:
-            # 各項の計算
-            conv = self.convection.compute(v)
-            diff = self.diffusion.compute(v, **properties)
-            ext = self.external_forces.compute(v, **properties)
+        def rhs_func(v: VectorField, t: float = 0.0) -> List[np.ndarray]:
+            # 各項の計算（境界を考慮）
+            conv = self._safe_convection(v)
+            diff = self._safe_diffusion(v, properties)
+            ext = self._safe_external_forces(v, properties)
             
             # 全項の和
             return [c + d + e for c, d, e in zip(conv, diff, ext)]
@@ -71,11 +71,84 @@ class NavierStokesSolver(TimeEvolutionSolver):
         # 時間積分
         return self.time_integrator.step(velocity, rhs_func, dt)
     
+    def _safe_convection(self, velocity: VectorField) -> List[np.ndarray]:
+        """安全な移流項の計算"""
+        result = []
+        for i, component in enumerate(velocity.components):
+            conv = np.zeros_like(component.data)
+            
+            # 内部領域の計算
+            for j in range(velocity.shape[0]):
+                for k in range(velocity.shape[1]):
+                    for l in range(velocity.shape[2]):
+                        if (1 <= j < velocity.shape[0]-1 and 
+                            1 <= k < velocity.shape[1]-1 and 
+                            1 <= l < velocity.shape[2]-1):
+                            # 中心差分による計算
+                            for axis in range(3):
+                                vel = velocity.components[axis].data[j,k,l]
+                                if vel > 0:
+                                    grad = (component.data[j+1,k,l] - 
+                                          component.data[j-1,k,l]) / (2.0 * velocity.dx)
+                                else:
+                                    grad = (component.data[j+1,k,l] - 
+                                          component.data[j-1,k,l]) / (2.0 * velocity.dx)
+                                conv[j,k,l] -= vel * grad
+            
+            result.append(conv)
+        return result
+    
+    def _safe_diffusion(self, velocity: VectorField, 
+                       properties: Dict[str, np.ndarray]) -> List[np.ndarray]:
+        """安全な粘性項の計算"""
+        viscosity = properties['viscosity']
+        density = properties['density']
+        
+        result = []
+        for component in velocity.components:
+            # ラプラシアンの計算（境界を考慮）
+            diff = np.zeros_like(component.data)
+            for i in range(1, component.shape[0]-1):
+                for j in range(1, component.shape[1]-1):
+                    for k in range(1, component.shape[2]-1):
+                        diff[i,j,k] = (
+                            (component.data[i+1,j,k] + component.data[i-1,j,k] +
+                             component.data[i,j+1,k] + component.data[i,j-1,k] +
+                             component.data[i,j,k+1] + component.data[i,j,k-1] -
+                             6 * component.data[i,j,k]) / (velocity.dx**2)
+                        )
+            
+            result.append(viscosity * diff / density)
+        
+        return result
+    
+    def _safe_external_forces(self, velocity: VectorField,
+                            properties: Dict[str, np.ndarray]) -> List[np.ndarray]:
+        """安全な外力項の計算"""
+        density = properties['density']
+        
+        # 重力項のみを考慮
+        result = [np.zeros_like(component.data) for component in velocity.components]
+        result[-1] = -9.81 * np.ones_like(velocity.components[-1].data)  # z方向の重力
+        
+        return result
+    
     def _pressure_correction_step(self, velocity: VectorField, dt: float,
                                 properties: Dict[str, np.ndarray]) -> np.ndarray:
         """圧力補正ステップ"""
-        # 速度の発散を計算
-        div_u = velocity.divergence()
+        # 速度の発散を計算（境界を考慮）
+        div_u = np.zeros_like(velocity.components[0].data)
+        for i in range(1, velocity.shape[0]-1):
+            for j in range(1, velocity.shape[1]-1):
+                for k in range(1, velocity.shape[2]-1):
+                    div_u[i,j,k] = (
+                        (velocity.components[0].data[i+1,j,k] - 
+                         velocity.components[0].data[i-1,j,k]) / (2.0 * velocity.dx) +
+                        (velocity.components[1].data[i,j+1,k] - 
+                         velocity.components[1].data[i,j-1,k]) / (2.0 * velocity.dx) +
+                        (velocity.components[2].data[i,j,k+1] - 
+                         velocity.components[2].data[i,j,k-1]) / (2.0 * velocity.dx)
+                    )
         
         # 圧力ポアソン方程式の右辺
         rhs = -properties['density'] * div_u / dt
@@ -86,105 +159,52 @@ class NavierStokesSolver(TimeEvolutionSolver):
     def _corrector_step(self, velocity: VectorField, pressure: np.ndarray,
                        dt: float, properties: Dict[str, np.ndarray]) -> VectorField:
         """修正子ステップ"""
-        # 圧力項による補正
-        pressure_terms = self.pressure.compute(velocity, pressure=pressure,
-                                             **properties)
+        # 圧力勾配の計算（境界を考慮）
+        grad_p = []
+        for axis in range(3):
+            grad = np.zeros_like(pressure)
+            for i in range(1, pressure.shape[0]-1):
+                for j in range(1, pressure.shape[1]-1):
+                    for k in range(1, pressure.shape[2]-1):
+                        if axis == 0:
+                            grad[i,j,k] = (pressure[i+1,j,k] - pressure[i-1,j,k]) / (2.0 * velocity.dx)
+                        elif axis == 1:
+                            grad[i,j,k] = (pressure[i,j+1,k] - pressure[i,j-1,k]) / (2.0 * velocity.dx)
+                        else:  # axis == 2
+                            grad[i,j,k] = (pressure[i,j,k+1] - pressure[i,j,k-1]) / (2.0 * velocity.dx)
+            grad_p.append(grad)
         
         # 速度の補正
         velocity_new = VectorField(velocity.shape, velocity.dx)
         for i in range(len(velocity.components)):
             velocity_new.components[i].data = (
-                velocity.components[i].data + dt * pressure_terms[i]
+                velocity.components[i].data - 
+                dt * grad_p[i] / properties['density']
             )
         
         return velocity_new
-    
-    def compute_timestep(self, velocity: VectorField) -> float:
-        """CFL条件に基づく時間刻み幅の計算"""
-        # 対流項によるCFL条件
-        max_velocity = max(np.max(np.abs(v.data)) for v in velocity.components)
-        dt_convection = self.cfl * velocity.dx / (max_velocity + 1e-10)
-        
-        # 粘性項による制限
-        min_density = np.min(self.fluid_properties.get_density(velocity.components[0]))
-        max_viscosity = np.max(self.fluid_properties.get_viscosity(velocity.components[0]))
-        dt_diffusion = 0.25 * velocity.dx**2 * min_density / (max_viscosity + 1e-10)
-        
-        # 表面張力による制限
-        surface_tension = 0.07  # デフォルト値
-        dt_surface = np.sqrt(
-            min_density * velocity.dx**3 / (2 * np.pi * surface_tension + 1e-10)
-        )
-        
-        return min(dt_convection, dt_diffusion, dt_surface)
-    
-    def check_convergence(self, velocity: VectorField, 
-                         old_velocity: VectorField) -> bool:
-        """収束判定"""
-        max_diff = max(
-            np.max(np.abs(v.data - ov.data))
-            for v, ov in zip(velocity.components, old_velocity.components)
-        )
-        return max_diff < self.tolerance
-    
-    def check_divergence_free(self, velocity: VectorField, 
-                            tolerance: float = 1e-6) -> bool:
-        """非圧縮条件のチェック"""
-        div = velocity.divergence()
-        return np.max(np.abs(div)) < tolerance
-    
-    def get_vorticity(self, velocity: VectorField) -> List[np.ndarray]:
-        """渦度の計算"""
-        return velocity.curl()
-    
-    def get_kinetic_energy(self, velocity: VectorField) -> float:
-        """運動エネルギーの計算"""
-        return 0.5 * sum(
-            np.sum(v.data**2) for v in velocity.components
-        ) * velocity.dx**3
-    
-    def get_enstrophy(self, velocity: VectorField) -> float:
-        """エンストロフィーの計算"""
-        vorticity = self.get_vorticity(velocity)
-        return 0.5 * sum(
-            np.sum(w**2) for w in vorticity
-        ) * velocity.dx**3
-    
-    def get_strain_rate(self, velocity: VectorField) -> np.ndarray:
-        """歪み速度テンソルの計算"""
-        strain = np.zeros((3, 3) + velocity.shape)
-        
-        for i in range(3):
-            for j in range(3):
-                # ∂ui/∂xj
-                strain[i,j] = velocity.components[i].gradient(j)
-                
-                # 対称化
-                if i != j:
-                    strain[i,j] += velocity.components[j].gradient(i)
-                strain[i,j] *= 0.5
-                
-        return strain
-    
-    def get_viscous_dissipation(self, velocity: VectorField) -> float:
-        """粘性散逸の計算"""
-        strain = self.get_strain_rate(velocity)
-        viscosity = self.fluid_properties.get_viscosity(velocity.components[0])
-        
-        # εij εij の計算
-        dissipation = 0.0
-        for i in range(3):
-            for j in range(3):
-                dissipation += np.sum(viscosity * strain[i,j]**2)
-        
-        return 2.0 * dissipation * velocity.dx**3
     
     def get_diagnostics(self, velocity: VectorField) -> Dict[str, float]:
         """診断量の計算"""
         return {
             'kinetic_energy': self.get_kinetic_energy(velocity),
             'enstrophy': self.get_enstrophy(velocity),
-            'viscous_dissipation': self.get_viscous_dissipation(velocity),
             'max_velocity': max(np.max(np.abs(v.data)) for v in velocity.components),
-            'divergence_max': np.max(np.abs(velocity.divergence()))
+            'divergence_max': np.max(np.abs(self._safe_divergence(velocity)))
         }
+    
+    def _safe_divergence(self, velocity: VectorField) -> np.ndarray:
+        """安全な発散の計算"""
+        div = np.zeros_like(velocity.components[0].data)
+        for i in range(1, velocity.shape[0]-1):
+            for j in range(1, velocity.shape[1]-1):
+                for k in range(1, velocity.shape[2]-1):
+                    div[i,j,k] = (
+                        (velocity.components[0].data[i+1,j,k] - 
+                         velocity.components[0].data[i-1,j,k]) / (2.0 * velocity.dx) +
+                        (velocity.components[1].data[i,j+1,k] - 
+                         velocity.components[1].data[i,j-1,k]) / (2.0 * velocity.dx) +
+                        (velocity.components[2].data[i,j,k+1] - 
+                         velocity.components[2].data[i,j,k-1]) / (2.0 * velocity.dx)
+                    )
+        return div

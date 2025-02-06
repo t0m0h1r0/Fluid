@@ -50,13 +50,85 @@ class Field(ABC):
         self._time = value
 
     def gradient(self, axis: int) -> np.ndarray:
-        """指定軸方向の勾配を計算"""
-        return np.gradient(self._data, self.dx, axis=axis)
+        """指定軸方向の勾配を計算（境界での正しい処理を含む）"""
+        grad = np.zeros_like(self._data)
+        n = self._data.shape[axis]
+        
+        # Create slices for array indexing
+        slice_prev = [slice(None)] * self.ndim
+        slice_next = [slice(None)] * self.ndim
+        slice_current = [slice(None)] * self.ndim
+        
+        try:
+            # Interior points (central difference)
+            slice_current[axis] = slice(1, -1)
+            slice_next[axis] = slice(2, None)
+            slice_prev[axis] = slice(0, -2)
+            
+            grad[tuple(slice_current)] = (
+                self._data[tuple(slice_next)] - 
+                self._data[tuple(slice_prev)]
+            ) / (2.0 * self.dx)
+            
+            # Left boundary (forward difference)
+            slice_current[axis] = 0
+            slice_next[axis] = 1
+            grad[tuple(slice_current)] = (
+                self._data[tuple(slice_next)] - 
+                self._data[tuple(slice_current)]
+            ) / self.dx
+            
+            # Right boundary (backward difference)
+            slice_current[axis] = -1
+            slice_prev[axis] = -2
+            grad[tuple(slice_current)] = (
+                self._data[tuple(slice_current)] - 
+                self._data[tuple(slice_prev)]
+            ) / self.dx
+            
+            return grad
+            
+        except Exception as e:
+            print(f"Error in gradient calculation for axis {axis}:")
+            print(f"Input shape: {self._data.shape}")
+            print(f"Current operation failed: {str(e)}")
+            raise
     
     def laplacian(self) -> np.ndarray:
         """ラプラシアンを計算"""
-        return sum(np.gradient(np.gradient(self._data, self.dx, axis=i), 
-                             self.dx, axis=i) for i in range(self.ndim))
+        lap = np.zeros_like(self._data)
+        
+        for axis in range(self.ndim):
+            # Interior points
+            slices = [slice(None)] * self.ndim
+            slices[axis] = slice(1, -1)
+            
+            lap[tuple(slices)] += (
+                self._data[tuple(slice(2, None) if i == axis else slice(None) 
+                              for i in range(self.ndim))] +
+                self._data[tuple(slice(0, -2) if i == axis else slice(None) 
+                              for i in range(self.ndim))] -
+                2 * self._data[tuple(slices)]
+            ) / (self.dx ** 2)
+            
+            # Boundaries (one-sided differences)
+            # Left boundary
+            slices[axis] = 0
+            lap[tuple(slices)] += (
+                self._data[tuple(slice(1, 2) if i == axis else slice(None) 
+                              for i in range(self.ndim))] -
+                self._data[tuple(slices)]
+            ) / self.dx
+            
+            # Right boundary
+            slices[axis] = -1
+            lap[tuple(slices)] += (
+                self._data[tuple(slice(-2, -1) if i == axis else slice(None) 
+                              for i in range(self.ndim))] -
+                self._data[tuple(slices)]
+            ) / self.dx
+        
+        return lap
 
 class ConservedField(Field):
     """保存則を持つ場の基底クラス"""
@@ -83,7 +155,11 @@ class VectorField:
             shape: グリッドの形状
             dx: グリッド間隔
         """
-        self._components = [Field(shape, dx) for _ in range(len(shape))]
+        self._components = []
+        for _ in range(len(shape)):
+            field = Field(shape, dx)
+            field.data = np.zeros(shape)  # 明示的に0で初期化
+            self._components.append(field)
         self._dx = dx
         self._shape = shape
     
@@ -103,10 +179,12 @@ class VectorField:
         return self._shape
     
     def divergence(self) -> np.ndarray:
-        """発散を計算"""
-        div = np.zeros_like(self._components[0].data)
+        """発散を計算（境界での正しい処理を含む）"""
+        div = np.zeros(self.shape)
+        
         for i, component in enumerate(self._components):
             div += component.gradient(i)
+        
         return div
     
     def curl(self) -> List[np.ndarray]:
@@ -115,14 +193,20 @@ class VectorField:
             raise ValueError("回転は3次元ベクトル場でのみ定義されます")
             
         curl = []
-        u, v, w = [c.data for c in self._components]
-        dx = self._dx
-        
         # ∂w/∂y - ∂v/∂z
-        curl.append(np.gradient(w, dx, axis=1) - np.gradient(v, dx, axis=2))
+        curl.append(
+            self._components[2].gradient(1) - 
+            self._components[1].gradient(2)
+        )
         # ∂u/∂z - ∂w/∂x
-        curl.append(np.gradient(u, dx, axis=2) - np.gradient(w, dx, axis=0))
+        curl.append(
+            self._components[0].gradient(2) - 
+            self._components[2].gradient(0)
+        )
         # ∂v/∂x - ∂u/∂y
-        curl.append(np.gradient(v, dx, axis=0) - np.gradient(u, dx, axis=1))
+        curl.append(
+            self._components[1].gradient(0) - 
+            self._components[0].gradient(1)
+        )
         
         return curl
