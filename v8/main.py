@@ -9,6 +9,23 @@ from simulation.runner import SimulationRunner
 from visualization.visualizer import Visualizer
 from data_io.data_manager import DataManager
 
+from utils.config import SimulationConfig
+from simulation.initialization import SimulationInitializer
+
+def debug_initialization(config_file):
+    config = SimulationConfig(config_file)
+    initializer = SimulationInitializer(config)
+    
+    fields, _ = initializer.initialize()
+    
+    print("フィールドの形状:")
+    for name, field in fields.items():
+        print(f"{name}: {field.shape}")
+        if hasattr(field, 'components'):
+            for i, comp in enumerate(field.components):
+                print(f"  component {i}: {comp.shape}")
+
+
 def parse_arguments():
     """コマンドライン引数の解析"""
     parser = argparse.ArgumentParser(description='二相流体シミュレーション')
@@ -119,7 +136,9 @@ def main():
     """メイン関数"""
     # コマンドライン引数の解析
     args = parse_arguments()
-    
+    # main.py内の適切な場所に追加
+    debug_initialization(args.config)
+
     try:
         # 設定ファイルの読み込みと検証
         config = validate_config_file(args.config)

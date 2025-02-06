@@ -85,6 +85,7 @@ class VectorField:
         """
         self._components = [Field(shape, dx) for _ in range(len(shape))]
         self._dx = dx
+        self._shape = shape
     
     @property
     def components(self) -> List[Field]:
@@ -95,6 +96,11 @@ class VectorField:
     def dx(self) -> float:
         """グリッド間隔を取得"""
         return self._dx
+    
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        """場の形状を取得"""
+        return self._shape
     
     def divergence(self) -> np.ndarray:
         """発散を計算"""

@@ -24,25 +24,27 @@ class PhaseInitializer:
         self.config = config
         dx_values = config.get_dx()
         self.dx = min(dx_values)  # 等方的なグリッドを仮定
-        self.shape = config.get_shape()
         
-        # グリッドの生成
-        self.x = np.linspace(0, config.domain.lx, config.domain.nx)
-        self.y = np.linspace(0, config.domain.ly, config.domain.ny)
-        self.z = np.linspace(0, config.domain.lz, config.domain.nz)
+        # グリッドの形状を明示的に取得
+        self.nx, self.ny, self.nz = config.domain.nx, config.domain.ny, config.domain.nz
+        
+        # グリッドの生成（indexing='ij'を明示的に指定）
+        self.x = np.linspace(0, config.domain.lx, self.nx)
+        self.y = np.linspace(0, config.domain.ly, self.ny)
+        self.z = np.linspace(0, config.domain.lz, self.nz)
         self.X, self.Y, self.Z = np.meshgrid(self.x, self.y, self.z, indexing='ij')
-    
+
     def initialize_field(self) -> LevelSetField:
         """Level Set場の初期化"""
         # フィールドの作成
-        phi = LevelSetField(self.shape, self.dx)
+        phi = LevelSetField((self.nx, self.ny, self.nz), self.dx)
         
         # 基本相の設定
         base_phase = self.config.initial_condition.base_phase
         phase_ops = self._parse_operations()
         
         # 初期値を設定（基本相を-1、その他を1とする）
-        phi.data = np.ones(self.shape)
+        phi.data = np.ones((self.nx, self.ny, self.nz))
         
         # 各操作を順に適用
         for op in phase_ops:
@@ -198,8 +200,11 @@ class VelocityInitializer:
     
     def initialize_velocity(self) -> VectorField:
         """速度場の初期化"""
+        # グリッドの形状を取得
+        nx, ny, nz = self.config.domain.nx, self.config.domain.ny, self.config.domain.nz
+        
         # フィールドの作成
-        velocity = VectorField(self.config.get_shape(), min(self.config.get_dx()))
+        velocity = VectorField((nx, ny, nz), min(self.config.get_dx()))
         
         # 初期速度の設定
         initial_velocity = self.config.initial_condition.initial_velocity
@@ -207,13 +212,13 @@ class VelocityInitializer:
         if initial_velocity.type == 'zero':
             # 全ての速度成分をゼロに設定
             for component in velocity.components:
-                component.data = np.zeros_like(component.data)
+                component.data = np.zeros((nx, ny, nz))
         elif initial_velocity.type == 'uniform':
             # 一様な速度場を設定
             for i, component in enumerate(velocity.components):
                 param_key = ['u', 'v', 'w'][i]
-                component.data = np.full_like(component.data, 
-                                             initial_velocity.parameters.get(param_key, 0.0))
+                component.data = np.full((nx, ny, nz), 
+                                         initial_velocity.parameters.get(param_key, 0.0))
         else:
             raise ValueError(f"未知の初期速度タイプ: {initial_velocity.type}")
         
