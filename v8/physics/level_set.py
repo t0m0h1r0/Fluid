@@ -95,57 +95,6 @@ class LevelSetField(ConservedField):
             # 境界付近でスムージング
             self._data = gaussian_filter(self._data, sigma=self.dx)
 
-class LevelSetSolver(TimeEvolutionSolver):
-    """Level Set方程式のソルバー"""
-    
-    def __init__(self, params: Optional[LevelSetParameters] = None):
-        super().__init__()
-        self.params = params or LevelSetParameters()
-    
-    def initialize(self, **kwargs) -> None:
-        """初期化"""
-        pass
-    
-    def solve(self, field: LevelSetField, dt: float) -> LevelSetField:
-        """Level Set方程式を1ステップ解く"""
-        if not isinstance(field, LevelSetField):
-            raise TypeError("フィールドはLevelSetField型である必要があります")
-            
-        # 速度場の取得
-        velocity = kwargs.get('velocity', None)
-        if velocity is None:
-            raise ValueError("速度場が指定されていません")
-            
-        # 移流項の計算
-        advection = sum(-v * field.gradient(i) 
-                       for i, v in enumerate(velocity))
-        
-        # 時間発展
-        new_field = LevelSetField(field.shape, field.dx, field.params)
-        new_field.data = field.data + dt * advection
-        
-        # 必要に応じてリフレッシュ
-        field._steps_since_refresh += 1
-        if field.need_refresh():
-            field.refresh()
-        
-        return new_field
-    
-    def compute_timestep(self, field: LevelSetField) -> float:
-        """CFL条件に基づく時間刻み幅を計算"""
-        velocity = kwargs.get('velocity', None)
-        if velocity is None:
-            raise ValueError("速度場が指定されていません")
-            
-        # CFL条件に基づく時間刻み幅
-        max_velocity = max(np.max(np.abs(v)) for v in velocity)
-        if max_velocity < self.params.delta_min:
-            return float('inf')
-            
-        return 0.5 * field.dx / max_velocity
-    
-    def check_convergence(self, field: LevelSetField, 
-                         old_field: LevelSetField) -> bool:
-        """収束判定"""
-        diff = np.max(np.abs(field.data - old_field.data))
-        return diff < self.tolerance
+    def reinitialize(self):
+        """外部から呼び出す再初期化メソッド"""
+        self._reinitialize()
