@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
 from pathlib import Path
@@ -18,6 +19,7 @@ class Visualizer:
         plt.rcParams['font.size'] = 12
         plt.rcParams['figure.dpi'] = 100
         plt.rcParams['savefig.dpi'] = 300
+        plt.rcParams["font.family"] = 'Noto Sans CJK JP'
         
         self.colormaps = {
             'density': 'viridis',
@@ -96,11 +98,11 @@ class Visualizer:
         return path
 
     def create_isosurface_plot(self, field: ScalarField, 
-                              level: float, timestep: int, **kwargs) -> Path:
+                                level: float, timestep: int, **kwargs) -> Path:
         """等値面プロット作成"""
         from skimage import measure
         
-        fig = plt.figure(figsize=(10, 10))
+        fig = plt.figure(figsize=(12, 10))
         ax = fig.add_subplot(111, projection='3d')
         
         try:
@@ -110,20 +112,85 @@ class Visualizer:
                 spacing=field.dx
             )
             
+            # カラーマップの設定（デフォルトは青-赤のグラデーション）
+            cmap = kwargs.get('cmap', 'coolwarm')
+            color_mapper = cm.ScalarMappable(cmap=cmap)
+            
+            # 頂点の高さに基づいて色を設定
+            z_normalized = (verts[:, 2] - verts[:, 2].min()) / (verts[:, 2].max() - verts[:, 2].min())
+            colors = color_mapper.to_rgba(z_normalized)
+            
+            # 3Dサーフェスプロット
             ax.plot_trisurf(verts[:, 0], verts[:, 1], verts[:, 2],
-                           triangles=faces,
-                           cmap=kwargs.get('cmap', 'viridis'),
-                           alpha=0.8)
+                            triangles=faces,
+                            shade=True,
+                            cmap=cmap,
+                            alpha=0.7)
+            
+            # アクシスラベルと凡例
+            ax.set_xlabel('X [m]')
+            ax.set_ylabel('Y [m]')
+            ax.set_zlabel('Z [m]')
+            
+            # カラーバーの追加
+            plt.colorbar(color_mapper, ax=ax, label='高さ方向の相分率')
+            
+            ax.set_title(f'{field.metadata.name} (等値面 {level})')
             
         except ValueError as e:
             ax.text(0.5, 0.5, 0.5, "等値面が見つかりません",
-                   horizontalalignment='center',
-                   verticalalignment='center')
+                    horizontalalignment='center',
+                    verticalalignment='center')
         
-        ax.set_title(f'{field.metadata.name} (等値面 {level})')
+        path = self._get_output_path(f"{field.metadata.name}_3d_iso_{timestep:06d}.png")
+        plt.savefig(path, bbox_inches='tight', dpi=300)
+        plt.close()
+        return path
+
+    def create_3d_density_plot(self, field: ScalarField, timestep: int, **kwargs) -> Path:
+        """密度の3D可視化"""
+        fig = plt.figure(figsize=(12, 10))
+        ax = fig.add_subplot(111, projection='3d')
         
-        path = self._get_output_path(f"{field.metadata.name}_iso_{timestep:06d}.png")
-        plt.savefig(path, bbox_inches='tight')
+        # グリッドの作成
+        dx, dy, dz = field.dx
+        X, Y, Z = np.meshgrid(
+            np.arange(0, field.data.shape[0]*dx, dx),
+            np.arange(0, field.data.shape[1]*dy, dy),
+            np.arange(0, field.data.shape[2]*dz, dz),
+            indexing='ij'
+        )
+        
+        # データの正規化
+        data_normalized = (field.data - field.data.min()) / (field.data.max() - field.data.min())
+        
+        # 等値面と密度をボリュームレンダリング風に可視化
+        cmap = kwargs.get('cmap', 'viridis')
+        scatter = ax.scatter(
+            X.ravel(), Y.ravel(), Z.ravel(), 
+            c=data_normalized.ravel(), 
+            cmap=cmap, 
+            alpha=0.1,  # 透明度を低く
+            s=10  # 点のサイズ
+        )
+        
+        # カラーバーの追加
+        plt.colorbar(scatter, ax=ax, label='相分率（正規化）')
+        
+        # ラベルとタイトル
+        ax.set_xlabel('X [m]')
+        ax.set_ylabel('Y [m]')
+        ax.set_zlabel('Z [m]')
+        ax.set_title(f'{field.metadata.name} 3D密度分布')
+        
+        # 視点の設定
+        ax.view_init(
+            elev=kwargs.get('elev', 30), 
+            azim=kwargs.get('azim', 45)
+        )
+        
+        path = self._get_output_path(f"{field.metadata.name}_3d_density_{timestep:06d}.png")
+        plt.savefig(path, bbox_inches='tight', dpi=300)
         plt.close()
         return path
 

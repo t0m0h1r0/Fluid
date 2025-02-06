@@ -8,9 +8,10 @@ from core.field.vector_field import VectorField
 class PhaseFieldParameters:
     """Phase-Field法のパラメータ"""
     epsilon: float = 0.01        # 界面厚さ
-    mobility: float = 1.0        # 移動度
+    mobility: float = 0.1         # 移動度（値を小さく）
     surface_tension: float = 0.07  # 表面張力係数
     double_well_height: float = 1.0  # 二重井戸ポテンシャルの高さ
+    stability_factor: float = 1e-6  # 数値安定化のための小さな項
 
 class PhaseField:
     """Phase-Field法による界面追跡"""
@@ -24,12 +25,19 @@ class PhaseField:
 
     def _initialize_energy_functions(self):
         """エネルギー関数の初期化"""
-        # 二重井戸ポテンシャル f(φ) = (φ²-1)²
-        self.f = lambda phi: (phi**2 - 1.0)**2
-        self.df = lambda phi: 4.0 * phi * (phi**2 - 1.0)
+        # 数値安定性を考慮した二重井戸ポテンシャル
+        def safe_square(x):
+            # オーバーフロー防止のため、値を制限
+            x_clipped = np.clip(x, -1e3, 1e3)
+            return x_clipped**2
         
-        # 勾配エネルギー g(∇φ) = |∇φ|²/2
-        self.g = lambda grad_phi: 0.5 * sum(g**2 for g in grad_phi)
+        # 変分導関数の安全な計算
+        def safe_df(phi):
+            phi_clipped = np.clip(phi, -1.0, 1.0)
+            return 4.0 * phi_clipped * (phi_clipped**2 - 1.0)
+        
+        self.f = lambda phi: safe_square(phi**2 - 1.0)
+        self.df = safe_df
 
     def compute_chemical_potential(self) -> np.ndarray:
         """化学ポテンシャルの計算
@@ -42,15 +50,15 @@ class PhaseField:
         # 変分項
         mu = self.df(phi)
         
-        # ラプラシアン項
+        # ラプラシアン項（数値安定性を考慮）
         laplacian = np.zeros_like(phi)
         for i in range(3):
-            laplacian += np.gradient(
-                np.gradient(phi, dx[i], axis=i),
-                dx[i], axis=i
-            )
+            grad = np.gradient(phi, dx[i], axis=i)
+            laplacian += np.gradient(grad, dx[i], axis=i)
         
-        mu -= eps2 * laplacian
+        # 安定化項を追加
+        mu -= eps2 * (laplacian + self.params.stability_factor * phi)
+        
         return mu
 
     def compute_interface_normal(self) -> list[np.ndarray]:
@@ -111,13 +119,21 @@ class PhaseField:
         """デルタ関数の計算"""
         phi = self.phi.data
         eps = self.params.epsilon
-        return (1.0 / (2.0 * eps)) * (1.0 - np.tanh(phi/eps)**2)
+        
+        # 数値安定性を考慮したデルタ関数
+        return (1.0 / (2.0 * eps)) * np.maximum(
+            1.0 - np.tanh(phi/eps)**2, 
+            1e-10
+        )
 
     def compute_heaviside_function(self) -> np.ndarray:
         """ヘビサイド関数の計算"""
         phi = self.phi.data
         eps = self.params.epsilon
-        return 0.5 * (1.0 + np.tanh(phi/eps))
+        
+        # クリッピングを追加
+        phi_clipped = np.clip(phi, -1.0, 1.0)
+        return 0.5 * (1.0 + np.tanh(phi_clipped/eps))
 
     def compute_mixing_energy(self) -> float:
         """混合エネルギーの計算"""
@@ -172,10 +188,12 @@ class PhaseField:
             for i in range(3)
         )
         
-        # 移流項の追加
+        # 移流項の追加（数値安定性を考慮）
         if velocity_field is not None:
             for i, v in enumerate(velocity_field.data):
-                dphi_dt -= v * np.gradient(phi, dx[i], axis=i)
+                # 移流項の計算時に値をクリッピング
+                grad = np.gradient(phi, dx[i], axis=i)
+                dphi_dt -= np.clip(v, -1e3, 1e3) * grad
         
-        # 時間発展
-        self.phi.data = phi + dt * dphi_dt
+        # 時間発展（値をクリッピング）
+        self.phi.data = np.clip(phi + dt * dphi_dt, -1.0, 1.0)
