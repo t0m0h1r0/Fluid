@@ -281,3 +281,8 @@ class SimulationConfig:
     def load(cls, filename: str) -> 'SimulationConfig':
         """設定をファイルから読み込み"""
         return cls(filename)
+    
+    @property
+    def output_dir(self) -> str:
+        """出力ディレクトリを取得"""
+        return self.output.directory
