@@ -14,7 +14,7 @@ class Field(ABC):
         self._data = np.zeros(shape)
         self.dx = dx
         self._time = 0.0
-        
+    
     @property
     def data(self) -> np.ndarray:
         """場のデータを取得"""
@@ -84,11 +84,17 @@ class VectorField:
             dx: グリッド間隔
         """
         self._components = [Field(shape, dx) for _ in range(len(shape))]
-        
+        self._dx = dx
+    
     @property
     def components(self) -> List[Field]:
         """ベクトル場の各成分を取得"""
         return self._components
+    
+    @property
+    def dx(self) -> float:
+        """グリッド間隔を取得"""
+        return self._dx
     
     def divergence(self) -> np.ndarray:
         """発散を計算"""
@@ -104,7 +110,7 @@ class VectorField:
             
         curl = []
         u, v, w = [c.data for c in self._components]
-        dx = self._components[0].dx
+        dx = self._dx
         
         # ∂w/∂y - ∂v/∂z
         curl.append(np.gradient(w, dx, axis=1) - np.gradient(v, dx, axis=2))
