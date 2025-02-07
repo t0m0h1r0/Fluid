@@ -1,0 +1,41 @@
+# Default configuration for two-phase flow simulation
+
+# Domain settings
+domain:
+  nx: 64  # Number of grid points in x-direction
+  ny: 64  # Number of grid points in y-direction
+  nz: 64  # Number of grid points in z-direction
+  lx: 1.0  # Domain length in x-direction [m]
+  ly: 1.0  # Domain length in y-direction [m]
+  lz: 1.0  # Domain length in z-direction [m]
+
+# Solver settings
+solver:
+  time_integrator: "rk4"  # Time integration method (euler, rk4)
+  use_weno: true  # Use WENO scheme for advection
+  pressure_solver:
+    type: "sor"  # Pressure Poisson solver (jacobi, gauss_seidel, sor)
+    omega: 1.5  # Relaxation parameter for SOR
+    max_iterations: 100
+    tolerance: 1.0e-6
+  convergence_criteria:
+    velocity: 1.0e-6
+    pressure: 1.0e-6
+
+# Time settings
+time:
+  dt: 0.001  # Initial time step [s]
+  max_time: 1.0  # Maximum simulation time [s]
+  cfl: 0.5  # CFL number
+  save_interval: 0.1  # Time interval for saving results [s]
+
+# Phase properties
+phases:
+  water:  # First phase (typically heavier fluid)
+    density: 1000.0  # Density [kg/m³]
+    viscosity: 1.0e-3  # Dynamic viscosity [Pa·s]
+    surface_tension: 0.07  # Surface tension coefficient [N/m]
+  air:  # Second phase (typically lighter fluid)
+    density: 1.225  # Density [kg/m³]
+    viscosity: 1.81e-5  # Dynamic viscosity [Pa·s]
+    surface_tension: 0.0  # Surface tension coefficient [N/m]
