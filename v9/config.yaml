@@ -1,0 +1,79 @@
+# Two-phase flow simulation configuration
+
+# Physical parameters
+physics:
+  gravity: 9.81  # Gravity acceleration [m/s²]
+  surface_tension: 0.072  # Surface tension coefficient [N/m]
+  phases:
+    water:
+      density: 1000.0  # Density [kg/m³]
+      viscosity: 1.0e-3  # Dynamic viscosity [Pa·s]
+    air:
+      density: 1.225  # Density [kg/m³]
+      viscosity: 1.81e-5  # Dynamic viscosity [Pa·s]
+
+# Computational domain
+domain:
+  dimensions: [128, 128, 128]  # Number of grid points in each direction
+  size: [1.0, 1.0, 1.0]  # Physical size in each direction [m]
+  boundary_conditions:
+    x: ["periodic", "periodic"]  # [left, right]
+    y: ["periodic", "periodic"]  # [bottom, top]
+    z: ["periodic", "periodic"]  # [front, back]
+
+# Numerical parameters
+numerical:
+  cfl: 0.5  # CFL number for time step calculation
+  max_time: 2.0  # Maximum simulation time [s]
+  save_interval: 0.1  # Time interval for saving results [s]
+  pressure_solver:
+    type: "sor"  # SOR, Jacobi, or Gauss-Seidel
+    max_iterations: 100
+    tolerance: 1.0e-6
+    omega: 1.5  # Relaxation parameter for SOR
+  level_set:
+    reinit_interval: 5  # Steps between reinitialization
+    reinit_steps: 2  # Number of reinitialization steps
+    epsilon: 1.5  # Interface thickness parameter
+
+# Initial conditions
+initial_conditions:
+  objects:
+    - type: "sphere"
+      phase: "water"
+      center: [0.5, 0.5, 0.5]
+      radius: 0.2
+    - type: "layer"
+      phase: "water"
+      normal: [0, 1, 0]
+      position: 0.25
+      thickness: 0.1
+
+# Visualization settings
+visualization:
+  output_dir: "results"
+  format: "png"
+  dpi: 300
+  camera:
+    elevation: 30  # Camera elevation angle [degrees]
+    azimuth: 45   # Camera azimuth angle [degrees]
+  vector_plot:
+    density: 20  # Number of arrows in each direction
+    scale: 1.0   # Arrow scale factor
+  color_schemes:
+    velocity: "coolwarm"
+    pressure: "RdBu_r"
+    vorticity: "viridis"
+  show:
+    velocity: true
+    pressure: true
+    vorticity: true
+    interface: true
+
+# Debug settings
+debug:
+  level: "info"  # debug, info, warning, error
+  save_fields: true  # Save raw field data for debugging
+  check_divergence: true  # Check velocity divergence
+  plot_residuals: true  # Plot pressure solver residuals
+  profiling: false  # Enable performance profiling
