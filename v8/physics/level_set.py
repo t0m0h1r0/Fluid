@@ -1,10 +1,10 @@
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from scipy.ndimage import gaussian_filter
 from core.field import ConservedField
 from core.solver import TimeEvolutionSolver
-from typing import Tuple
+from core.field import VectorField
 
 @dataclass
 class LevelSetParameters:
@@ -40,24 +40,111 @@ class LevelSetField(ConservedField):
     
     def curvature(self) -> np.ndarray:
         """界面の曲率を計算"""
-        # 勾配を計算
-        grad = np.array([self.gradient(i) for i in range(self.ndim)])
+        # 勾配を安全に計算
+        grad = np.zeros((self.ndim,) + self.shape)
+        for i in range(self.ndim):
+            grad[i] = self.safe_gradient(i)
         
         # 勾配の大きさ
         grad_norm = np.sqrt(np.sum(grad ** 2, axis=0))
         grad_norm = np.maximum(grad_norm, self.params.delta_min)
         
         # 正規化された勾配
-        grad_normalized = grad / grad_norm
+        grad_normalized = grad / grad_norm[np.newaxis, ...]
         
-        # 発散を計算
-        kappa = sum(np.gradient(grad_normalized[i], self.dx, axis=i)
-                   for i in range(self.ndim))
+        # 発散を計算（境界を考慮）
+        kappa = np.zeros(self.shape)
+        for i in range(self.ndim):
+            kappa += self.safe_gradient_divergence(grad_normalized[i], i)
         
         # 曲率を制限
         return np.clip(kappa, -self.params.curvature_cutoff,
                       self.params.curvature_cutoff)
     
+    def safe_gradient(self, axis: int) -> np.ndarray:
+        """安全な勾配計算（境界を適切に処理）"""
+        grad = np.zeros_like(self._data)
+        
+        # 内部領域の計算（中心差分）
+        slices_inner = [slice(1, -1) if i == axis else slice(None) 
+                       for i in range(self.ndim)]
+        slices_forward = [slice(2, None) if i == axis else slice(None) 
+                         for i in range(self.ndim)]
+        slices_backward = [slice(0, -2) if i == axis else slice(None) 
+                          for i in range(self.ndim)]
+        
+        grad[tuple(slices_inner)] = (
+            self._data[tuple(slices_forward)] -
+            self._data[tuple(slices_backward)]
+        ) / (2.0 * self.dx)
+        
+        # 境界の計算（片側差分）
+        # 左境界
+        slices_left = [slice(0, 1) if i == axis else slice(None) 
+                      for i in range(self.ndim)]
+        slices_left_next = [slice(1, 2) if i == axis else slice(None) 
+                           for i in range(self.ndim)]
+        
+        grad[tuple(slices_left)] = (
+            self._data[tuple(slices_left_next)] -
+            self._data[tuple(slices_left)]
+        ) / self.dx
+        
+        # 右境界
+        slices_right = [slice(-1, None) if i == axis else slice(None) 
+                       for i in range(self.ndim)]
+        slices_right_prev = [slice(-2, -1) if i == axis else slice(None) 
+                            for i in range(self.ndim)]
+        
+        grad[tuple(slices_right)] = (
+            self._data[tuple(slices_right)] -
+            self._data[tuple(slices_right_prev)]
+        ) / self.dx
+        
+        return grad
+    
+    def safe_gradient_divergence(self, field: np.ndarray, axis: int) -> np.ndarray:
+        """安全な勾配の発散計算"""
+        div = np.zeros_like(field)
+        
+        # 内部領域の計算
+        slices_inner = [slice(1, -1) if i == axis else slice(None) 
+                       for i in range(self.ndim)]
+        slices_forward = [slice(2, None) if i == axis else slice(None) 
+                         for i in range(self.ndim)]
+        slices_backward = [slice(0, -2) if i == axis else slice(None) 
+                          for i in range(self.ndim)]
+        
+        div[tuple(slices_inner)] = (
+            field[tuple(slices_forward)] -
+            field[tuple(slices_backward)]
+        ) / (2.0 * self.dx)
+        
+        # 境界の計算
+        # 左境界
+        slices_left = [slice(0, 1) if i == axis else slice(None) 
+                      for i in range(self.ndim)]
+        slices_left_next = [slice(1, 2) if i == axis else slice(None) 
+                           for i in range(self.ndim)]
+        
+        div[tuple(slices_left)] = (
+            field[tuple(slices_left_next)] -
+            field[tuple(slices_left)]
+        ) / self.dx
+        
+        # 右境界
+        slices_right = [slice(-1, None) if i == axis else slice(None) 
+                       for i in range(self.ndim)]
+        slices_right_prev = [slice(-2, -1) if i == axis else slice(None) 
+                            for i in range(self.ndim)]
+        
+        div[tuple(slices_right)] = (
+            field[tuple(slices_right)] -
+            field[tuple(slices_right_prev)]
+        ) / self.dx
+        
+        return div
+
     def need_refresh(self) -> bool:
         """リフレッシュが必要かどうかを判定"""
         return (self._steps_since_refresh >= 
@@ -83,10 +170,12 @@ class LevelSetField(ConservedField):
     
     def _reinitialize(self):
         """Level Set関数の再初期化"""
-        # 符号付き距離関数に変換
         for _ in range(self.params.reinitialization_steps):
-            # 勾配の計算
-            grad = np.array([self.gradient(i) for i in range(self.ndim)])
+            # 勾配の安全な計算
+            grad = np.zeros((self.ndim,) + self.shape)
+            for i in range(self.ndim):
+                grad[i] = self.safe_gradient(i)
+            
             grad_norm = np.sqrt(np.sum(grad ** 2, axis=0))
             
             # 時間発展
@@ -95,10 +184,6 @@ class LevelSetField(ConservedField):
             
             # 境界付近でスムージング
             self._data = gaussian_filter(self._data, sigma=self.dx)
-
-    def reinitialize(self):
-        """外部から呼び出す再初期化メソッド"""
-        self._reinitialize()
 
 class LevelSetSolver(TimeEvolutionSolver):
     """Level Set方程式のソルバー"""
@@ -118,18 +203,22 @@ class LevelSetSolver(TimeEvolutionSolver):
             
         # 速度場の取得
         velocity = kwargs.get('velocity', None)
-        if velocity is None:
-            raise ValueError("速度場が指定されていません")
-            
-        # 移流項の計算
-        advection = sum(-v * field.gradient(i) 
-                       for i, v in enumerate(velocity.components))
+        if not isinstance(velocity, VectorField):
+            raise ValueError("速度場が正しく指定されていません")
+        
+        # 新しいフィールドの作成
+        new_field = LevelSetField(field.shape, field.dx, field.params)
+        
+        # 移流項の計算（各方向の勾配を安全に計算）
+        advection = np.zeros_like(field.data)
+        for i, v in enumerate(velocity.components):
+            grad = field.safe_gradient(i)
+            advection -= v.data * grad
         
         # 時間発展
-        new_field = LevelSetField(field.shape, field.dx, field.params)
         new_field.data = field.data + dt * advection
         
-        # 必要に応じてリフレッシュ
+        # リフレッシュが必要な場合は実行
         field._steps_since_refresh += 1
         if field.need_refresh():
             field.refresh()
@@ -141,16 +230,10 @@ class LevelSetSolver(TimeEvolutionSolver):
         velocity = kwargs.get('velocity', None)
         if velocity is None:
             raise ValueError("速度場が指定されていません")
-            
+        
         # CFL条件に基づく時間刻み幅
         max_velocity = max(np.max(np.abs(v.data)) for v in velocity.components)
         if max_velocity < self.params.delta_min:
             return float('inf')
-            
+        
         return 0.5 * field.dx / max_velocity
-    
-    def check_convergence(self, field: LevelSetField, 
-                         old_field: LevelSetField) -> bool:
-        """収束判定"""
-        diff = np.max(np.abs(field.data - old_field.data))
-        return diff < self.tolerance

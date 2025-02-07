@@ -108,7 +108,15 @@ class TimeEvolutionManager:
     ) -> float:
         """安定性条件を考慮した時間刻み幅の計算"""
         # CFL条件による制限
-        dt_convection = self._compute_convection_timestep(fields['velocity'])
+        velocity = fields['velocity']
+        max_velocity = 0.0
+        for component in velocity.components:
+            max_velocity = max(max_velocity, np.max(np.abs(component.data)))
+            
+        if max_velocity < 1e-10:
+            dt_convection = self.max_dt
+        else:
+            dt_convection = self.cfl * velocity.dx / max_velocity
         
         # 粘性項による制限
         dt_viscous = self._compute_viscous_timestep(
@@ -127,13 +135,6 @@ class TimeEvolutionManager:
         
         # 設定された範囲に制限
         return np.clip(dt, self.min_dt, self.max_dt)
-    
-    def _compute_convection_timestep(self, velocity: VectorField) -> float:
-        """移流項による時間刻み幅の制限"""
-        max_velocity = max(np.max(np.abs(v.data)) for v in velocity.components)
-        if max_velocity < 1e-10:
-            return self.max_dt
-        return self.cfl * velocity.dx / max_velocity
     
     def _compute_viscous_timestep(
         self,
@@ -174,6 +175,7 @@ class TimeEvolutionManager:
         dt: float
     ) -> LevelSetField:
         """Level Set方程式の時間発展"""
+        # 配列形状の一貫性を確保するための修正
         new_phi = level_set_solver.solve(phi, dt, velocity=velocity)
         
         # 必要に応じてリフレッシュ
