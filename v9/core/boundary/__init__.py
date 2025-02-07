@@ -9,9 +9,9 @@ from .dirichlet import DirichletBoundary
 from .neumann import NeumannBoundary
 
 __all__ = [
-    'BoundaryCondition',
-    'StencilInfo',
-    'PeriodicBoundary',
-    'DirichletBoundary',
-    'NeumannBoundary'
+    "BoundaryCondition",
+    "StencilInfo",
+    "PeriodicBoundary",
+    "DirichletBoundary",
+    "NeumannBoundary",
 ]

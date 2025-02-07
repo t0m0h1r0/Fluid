@@ -7,8 +7,4 @@ from .base import Solver
 from .temporal import TemporalSolver
 from .iterative import IterativeSolver
 
-__all__ = [
-    'Solver',
-    'TemporalSolver',
-    'IterativeSolver'
-]
+__all__ = ["Solver", "TemporalSolver", "IterativeSolver"]

@@ -9,16 +9,17 @@ from typing import List, Dict, Any
 from core.field import VectorField
 from ..base_term import NavierStokesTerm
 
+
 class AdvectionTerm(NavierStokesTerm):
     """移流項クラス
-    
+
     移流項 (u・∇)u を計算します。
     WENOスキームによる高精度な空間離散化を提供します。
     """
-    
+
     def __init__(self, use_weno: bool = True, weno_order: int = 5):
         """移流項を初期化
-        
+
         Args:
             use_weno: WENOスキームを使用するかどうか
             weno_order: WENOスキームの次数（3または5）
@@ -26,42 +27,42 @@ class AdvectionTerm(NavierStokesTerm):
         super().__init__(name="Advection")
         self.use_weno = use_weno
         self.weno_order = weno_order
-        
+
         # WENOスキームの係数を初期化
         if use_weno:
             self._init_weno_coefficients()
-    
+
     def _init_weno_coefficients(self):
         """WENOスキームの係数を初期化"""
         # WENO5の場合の係数
         if self.weno_order == 5:
             # 線形重み
             self.weno_weights = np.array([0.1, 0.6, 0.3])
-            
+
             # 各ステンシルでの係数
             self.weno_coeffs = [
-                np.array([1/3, -7/6, 11/6]),      # 左側ステンシル
-                np.array([-1/6, 5/6, 1/3]),       # 中央ステンシル
-                np.array([1/3, 5/6, -1/6])        # 右側ステンシル
+                np.array([1 / 3, -7 / 6, 11 / 6]),  # 左側ステンシル
+                np.array([-1 / 6, 5 / 6, 1 / 3]),  # 中央ステンシル
+                np.array([1 / 3, 5 / 6, -1 / 6]),  # 右側ステンシル
             ]
-            
+
         # WENO3の場合の係数
         elif self.weno_order == 3:
-            self.weno_weights = np.array([1/3, 2/3])
+            self.weno_weights = np.array([1 / 3, 2 / 3])
             self.weno_coeffs = [
-                np.array([-1/2, 3/2]),            # 左側ステンシル
-                np.array([1/2, 1/2])              # 右側ステンシル
+                np.array([-1 / 2, 3 / 2]),  # 左側ステンシル
+                np.array([1 / 2, 1 / 2]),  # 右側ステンシル
             ]
         else:
             raise ValueError(f"未対応のWENO次数です: {self.weno_order}")
-    
+
     def _weno_reconstruction(self, values: np.ndarray, axis: int) -> np.ndarray:
         """WENOスキームによる再構築
-        
+
         Args:
             values: 再構築する値の配列
             axis: 再構築を行う軸
-            
+
         Returns:
             再構築された値
         """
@@ -72,56 +73,72 @@ class AdvectionTerm(NavierStokesTerm):
             v3 = values
             v4 = np.roll(values, -1, axis=axis)
             v5 = np.roll(values, -2, axis=axis)
-            
+
             # 各ステンシルでの滑らかさ指標を計算
             eps = 1e-6  # ゼロ除算防止用
-            beta0 = 13/12 * (v1 - 2*v2 + v3)**2 + 1/4 * (v1 - 4*v2 + 3*v3)**2
-            beta1 = 13/12 * (v2 - 2*v3 + v4)**2 + 1/4 * (v2 - v4)**2
-            beta2 = 13/12 * (v3 - 2*v4 + v5)**2 + 1/4 * (3*v3 - 4*v4 + v5)**2
-            
+            beta0 = (
+                13 / 12 * (v1 - 2 * v2 + v3) ** 2 + 1 / 4 * (v1 - 4 * v2 + 3 * v3) ** 2
+            )
+            beta1 = 13 / 12 * (v2 - 2 * v3 + v4) ** 2 + 1 / 4 * (v2 - v4) ** 2
+            beta2 = (
+                13 / 12 * (v3 - 2 * v4 + v5) ** 2 + 1 / 4 * (3 * v3 - 4 * v4 + v5) ** 2
+            )
+
             # 非線形重みを計算
-            alpha = self.weno_weights / (eps + beta0)**2
+            alpha = self.weno_weights / (eps + beta0) ** 2
             omega = alpha / np.sum(alpha, axis=0)
-            
+
             # 各ステンシルでの補間値を計算
-            p0 = self.weno_coeffs[0][0]*v1 + self.weno_coeffs[0][1]*v2 + self.weno_coeffs[0][2]*v3
-            p1 = self.weno_coeffs[1][0]*v2 + self.weno_coeffs[1][1]*v3 + self.weno_coeffs[1][2]*v4
-            p2 = self.weno_coeffs[2][0]*v3 + self.weno_coeffs[2][1]*v4 + self.weno_coeffs[2][2]*v5
-            
-            return omega[0]*p0 + omega[1]*p1 + omega[2]*p2
-            
+            p0 = (
+                self.weno_coeffs[0][0] * v1
+                + self.weno_coeffs[0][1] * v2
+                + self.weno_coeffs[0][2] * v3
+            )
+            p1 = (
+                self.weno_coeffs[1][0] * v2
+                + self.weno_coeffs[1][1] * v3
+                + self.weno_coeffs[1][2] * v4
+            )
+            p2 = (
+                self.weno_coeffs[2][0] * v3
+                + self.weno_coeffs[2][1] * v4
+                + self.weno_coeffs[2][2] * v5
+            )
+
+            return omega[0] * p0 + omega[1] * p1 + omega[2] * p2
+
         else:  # WENO3
             v1 = np.roll(values, 1, axis=axis)
             v2 = values
             v3 = np.roll(values, -1, axis=axis)
-            
-            beta0 = (v2 - v1)**2
-            beta1 = (v3 - v2)**2
-            
+
+            beta0 = (v2 - v1) ** 2
+            beta1 = (v3 - v2) ** 2
+
             eps = 1e-6
-            alpha = self.weno_weights / (eps + beta0)**2
+            alpha = self.weno_weights / (eps + beta0) ** 2
             omega = alpha / np.sum(alpha, axis=0)
-            
-            p0 = self.weno_coeffs[0][0]*v1 + self.weno_coeffs[0][1]*v2
-            p1 = self.weno_coeffs[1][0]*v2 + self.weno_coeffs[1][1]*v3
-            
-            return omega[0]*p0 + omega[1]*p1
-    
+
+            p0 = self.weno_coeffs[0][0] * v1 + self.weno_coeffs[0][1] * v2
+            p1 = self.weno_coeffs[1][0] * v2 + self.weno_coeffs[1][1] * v3
+
+            return omega[0] * p0 + omega[1] * p1
+
     def compute(self, velocity: VectorField, **kwargs) -> List[np.ndarray]:
         """移流項の寄与を計算
-        
+
         Args:
             velocity: 現在の速度場
             **kwargs: 未使用
-            
+
         Returns:
             各方向の速度成分への寄与のリスト
         """
         if not self.enabled:
             return [np.zeros_like(v.data) for v in velocity.components]
-        
+
         result = []
-        
+
         if self.use_weno:
             # WENOスキームによる空間離散化
             for i, v_i in enumerate(velocity.components):
@@ -129,52 +146,56 @@ class AdvectionTerm(NavierStokesTerm):
                 for j, v_j in enumerate(velocity.components):
                     # 風上差分の方向を決定
                     upwind = v_j.data < 0
-                    
+
                     # 正の速度に対する flux
                     v_plus = self._weno_reconstruction(v_i.data, j)
                     # 負の速度に対する flux
                     v_minus = self._weno_reconstruction(np.flip(v_i.data, j), j)
                     v_minus = np.flip(v_minus, j)
-                    
+
                     # 風上方向に応じてfluxを選択
                     flux += v_j.data * np.where(upwind, v_minus, v_plus)
-                
+
                 result.append(-flux)
-                
+
         else:
             # 標準的な中心差分
             for i, v_i in enumerate(velocity.components):
-                result.append(-sum(
-                    v_j.data * v_i.gradient(j)
-                    for j, v_j in enumerate(velocity.components)
-                ))
-        
+                result.append(
+                    -sum(
+                        v_j.data * v_i.gradient(j)
+                        for j, v_j in enumerate(velocity.components)
+                    )
+                )
+
         return result
-    
+
     def compute_timestep(self, velocity: VectorField, **kwargs) -> float:
         """CFL条件に基づく時間刻み幅の制限を計算
-        
+
         Args:
             velocity: 現在の速度場
             **kwargs: 未使用
-            
+
         Returns:
             計算された時間刻み幅の制限
         """
         if not self.enabled:
-            return float('inf')
-            
+            return float("inf")
+
         # 最大速度を計算
         max_velocity = max(np.max(np.abs(v.data)) for v in velocity.components)
-        
+
         # CFL条件に基づく時間刻み幅
         return velocity.dx / (max_velocity + 1e-10)
-    
+
     def get_diagnostics(self, velocity: VectorField, **kwargs) -> Dict[str, Any]:
         """移流項の診断情報を取得"""
         diag = super().get_diagnostics(velocity, **kwargs)
-        diag.update({
-            'scheme': 'WENO' if self.use_weno else 'central',
-            'weno_order': self.weno_order if self.use_weno else None
-        })
+        diag.update(
+            {
+                "scheme": "WENO" if self.use_weno else "central",
+                "weno_order": self.weno_order if self.use_weno else None,
+            }
+        )
         return diag
