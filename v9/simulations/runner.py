@@ -78,7 +78,9 @@ class SimulationRunner:
         # デフォルトの最大時間刻み幅
         max_dt = numerical_config.get("max_dt", 0.1)
         initial_dt = numerical_config.get("initial_dt", 0.001)
+        cfl_safety_factor = numerical_config.get("cfl_safety_factor", 0.5)
 
+        # CFL条件に基づく時間刻み幅
         # Navier-Stokesソルバーからの推奨時間刻み幅
         try:
             recommended_dt = self.ns_solver.compute_timestep(state.velocity)
@@ -86,7 +88,10 @@ class SimulationRunner:
             self.logger.warning(f"時間刻み幅の計算中にエラー: {e}")
             recommended_dt = initial_dt
 
-        # 安全のため、最大時間刻み幅を超えないようにする
+        # CFL安全係数を適用
+        recommended_dt *= cfl_safety_factor
+
+        # 最大時間刻み幅を超えないようにする
         return min(recommended_dt, max_dt)
 
     def run(self, initial_state: SimulationState, output_dir: Path) -> SimulationState:
@@ -111,10 +116,17 @@ class SimulationRunner:
         try:
             # 初期状態の設定
             current_state = initial_state.copy()
+
+            # 時間設定の初期化
             current_time = 0.0
+            next_save_time = save_interval
+
+            # 各フィールドの時間を初期化
+            current_state.velocity.time = 0.0
+            current_state.pressure.time = 0.0
+            current_state.levelset.time = 0.0
 
             # シミュレーションループ
-            next_save_time = save_interval
             while current_time < max_time:
                 # 時間刻み幅の計算
                 dt = self._compute_timestep(current_state)
@@ -135,11 +147,11 @@ class SimulationRunner:
 
                 # 時間を更新
                 current_time += dt
-                current_state.velocity.time = current_time
-                current_state.pressure.time = current_time
-                current_state.levelset.time = current_time
+                velocity.time = current_time
+                pressure.time = current_time
+                levelset.time = current_time
 
-                # モニターを更新（引数を1つに）
+                # モニターを更新
                 self.monitor.update(current_state)
 
                 # 結果を保存（必要に応じて）

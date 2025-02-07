@@ -43,6 +43,9 @@ class InterfaceVisualizer(BaseVisualizer):
         slice_index = kwargs.get("slice_index", None)
         levelset_2d = prepare_2d_slice(levelset, slice_axis, slice_index)
 
+        # データの前処理: NaNとInfを除去
+        levelset_2d = np.nan_to_num(levelset_2d, nan=0.0, posinf=0.0, neginf=0.0)
+
         # 図とAxesを作成
         fig, ax = self.create_figure()
 
@@ -54,27 +57,63 @@ class InterfaceVisualizer(BaseVisualizer):
             "colors", self.config.interface_plot.get("colors", ["lightblue", "white"])
         )
 
-        # 領域の塗りつぶし
-        if filled:
-            cs_filled = ax.contourf(
-                levelset_2d.T, levels=[-np.inf, 0, np.inf], colors=colors, alpha=0.5
-            )
+        # データの範囲を確認
+        if not np.isfinite(levelset_2d).any():
+            # データが全て非有効な場合は単色の画像を生成
+            ax.imshow(np.zeros_like(levelset_2d), cmap="gray")
+            ax.set_title(f"Interface (t = {timestamp:.3f}s) - No Valid Data")
+        else:
+            # 領域の塗りつぶし
+            if filled:
+                # 有効な等高線レベルを見つける
+                unique_levels = np.unique(levelset_2d)
+                valid_levels = unique_levels[np.isfinite(unique_levels)]
 
-            # カラーバーの追加
-            if self.config.show_colorbar:
-                plt.colorbar(cs_filled, ax=ax, label="Phase")
+                if len(valid_levels) > 1:
+                    # 有効な等高線レベルが2つ以上ある場合
+                    try:
+                        # 等高線で塗りつぶし
+                        cs_filled = ax.contourf(
+                            levelset_2d.T,
+                            levels=[-np.inf, 0, np.inf],
+                            colors=colors,
+                            alpha=0.5,
+                        )
 
-        # 追加の等高線（オプション）
-        extra_contours = kwargs.get("extra_contours", False)
-        if extra_contours:
-            levels = np.linspace(np.min(levelset_2d), np.max(levelset_2d), 10)
-            cs_extra = ax.contour(
-                levelset_2d.T, levels=levels, colors="gray", alpha=0.3, linestyles="--"
-            )
-            ax.clabel(cs_extra, inline=True, fontsize=8)
+                        # カラーバーの追加を試みる
+                        if self.config.show_colorbar:
+                            # カラーバーのマッピングを手動で作成
+                            plt.colorbar(cs_filled, ax=ax, label="Phase")
 
-        # タイトルの設定
-        ax.set_title(f"Interface (t = {timestamp:.3f}s)")
+                    except Exception as e:
+                        # 等高線描画に失敗した場合の代替表示
+                        print(f"等高線描画エラー: {e}")
+                        ax.imshow(levelset_2d.T, cmap="coolwarm", alpha=0.5)
+
+            # 追加の等高線（オプション）
+            extra_contours = kwargs.get("extra_contours", False)
+            if extra_contours:
+                try:
+                    # 有効な等高線レベルを計算
+                    levels = np.linspace(
+                        np.nanmin(levelset_2d), np.nanmax(levelset_2d), 10
+                    )
+                    levels = levels[np.isfinite(levels)]
+
+                    if len(levels) > 1:
+                        cs_extra = ax.contour(
+                            levelset_2d.T,
+                            levels=levels,
+                            colors="gray",
+                            alpha=0.3,
+                            linestyles="--",
+                        )
+                        ax.clabel(cs_extra, inline=True, fontsize=8)
+                except Exception as e:
+                    print(f"追加等高線描画エラー: {e}")
+
+            # タイトルの設定
+            ax.set_title(f"Interface (t = {timestamp:.3f}s)")
 
         # 図を保存
         return self.save_figure(fig, "interface", timestamp)

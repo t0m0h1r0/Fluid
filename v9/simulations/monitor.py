@@ -30,6 +30,29 @@ class SimulationMonitor:
             "levelset_area": [],
         }
 
+    def __enter__(self):
+        """コンテキストマネージャーのエントリーポイント
+
+        Returns:
+            SimulationMonitorインスタンス
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """コンテキストマネージャーの終了処理
+
+        Args:
+            exc_type: 例外の型
+            exc_val: 例外のインスタンス
+            exc_tb: トレースバック
+        """
+        # 例外の種類に関わらず、統計情報の保存などの終了処理を実行
+        if self.logger:
+            self.logger.info("シミュレーションモニターを終了")
+
+        # 任意の終了処理を追加できます
+        return False  # 例外を再送出
+
     def update(self, state: SimulationState):
         """状態を更新
 

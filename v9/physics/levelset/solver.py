@@ -44,6 +44,34 @@ class LevelSetSolver(TemporalSolver):
         # 現時点では特別な初期化は必要ないため、パスします
         pass
 
+    def compute_timestep(
+        self, phi: LevelSetField, velocity: VectorField = None, **kwargs
+    ) -> float:
+        """時間刻み幅を計算
+
+        Args:
+            phi: Level Set場
+            velocity: 速度場（オプション）
+            **kwargs: 追加のパラメータ
+
+        Returns:
+            計算された時間刻み幅
+        """
+        # デフォルトの時間刻み幅
+        default_dt = 0.001
+
+        # 速度場が提供されている場合
+        if velocity is not None:
+            # 最大速度を計算
+            max_velocity = max(np.max(np.abs(v.data)) for v in velocity.components)
+
+            # CFL条件に基づく時間刻み幅
+            dt = self.cfl * phi.dx / (max_velocity + 1e-10)
+
+            return np.clip(dt, self._min_dt, self._max_dt)
+
+        return default_dt
+
     def _init_weno_coefficients(self):
         """WENOスキームの係数を初期化"""
         # WENO5の場合の係数
@@ -96,9 +124,16 @@ class LevelSetSolver(TemporalSolver):
                 13 / 12 * (v3 - 2 * v4 + v5) ** 2 + 1 / 4 * (3 * v3 - 4 * v4 + v5) ** 2
             )
 
-            # 非線形重みを計算
-            alpha = self.weno_weights / (eps + beta0) ** 2
-            omega = alpha / np.sum(alpha, axis=0)
+            # 非線形重みを計算（ブロードキャスト対応）
+            weights = np.array([0.1, 0.6, 0.3])[:, np.newaxis, np.newaxis]
+            alpha0 = weights[0] / (eps + beta0) ** 2
+            alpha1 = weights[1] / (eps + beta1) ** 2
+            alpha2 = weights[2] / (eps + beta2) ** 2
+            alpha_sum = alpha0 + alpha1 + alpha2
+
+            omega0 = alpha0 / alpha_sum
+            omega1 = alpha1 / alpha_sum
+            omega2 = alpha2 / alpha_sum
 
             # 各ステンシルでの補間値を計算
             p0 = (
@@ -106,18 +141,20 @@ class LevelSetSolver(TemporalSolver):
                 + self.weno_coeffs[0][1] * v2
                 + self.weno_coeffs[0][2] * v3
             )
+
             p1 = (
                 self.weno_coeffs[1][0] * v2
                 + self.weno_coeffs[1][1] * v3
                 + self.weno_coeffs[1][2] * v4
             )
+
             p2 = (
                 self.weno_coeffs[2][0] * v3
                 + self.weno_coeffs[2][1] * v4
                 + self.weno_coeffs[2][2] * v5
             )
 
-            return omega[0] * p0 + omega[1] * p1 + omega[2] * p2
+            return omega0 * p0 + omega1 * p1 + omega2 * p2
 
         else:  # WENO3
             v1 = np.roll(values, 1, axis=axis)
@@ -128,34 +165,18 @@ class LevelSetSolver(TemporalSolver):
             beta1 = (v3 - v2) ** 2
 
             eps = 1e-6
-            alpha = self.weno_weights / (eps + beta0) ** 2
-            omega = alpha / np.sum(alpha, axis=0)
+            weights = np.array([1 / 3, 2 / 3])[:, np.newaxis, np.newaxis]
+            alpha0 = weights[0] / (eps + beta0) ** 2
+            alpha1 = weights[1] / (eps + beta1) ** 2
+            alpha_sum = alpha0 + alpha1
+
+            omega0 = alpha0 / alpha_sum
+            omega1 = alpha1 / alpha_sum
 
             p0 = self.weno_coeffs[0][0] * v1 + self.weno_coeffs[0][1] * v2
             p1 = self.weno_coeffs[1][0] * v2 + self.weno_coeffs[1][1] * v3
 
-            return omega[0] * p0 + omega[1] * p1
-
-    def compute_timestep(
-        self, phi: LevelSetField, velocity: VectorField, **kwargs
-    ) -> float:
-        """CFL条件に基づく時間刻み幅を計算
-
-        Args:
-            phi: Level Set場
-            velocity: 速度場
-            **kwargs: 追加のパラメータ
-
-        Returns:
-            計算された時間刻み幅
-        """
-        # 最大速度を計算
-        max_velocity = max(np.max(np.abs(v.data)) for v in velocity.components)
-
-        # CFL条件に基づく時間刻み幅
-        dt = self.cfl * phi.dx / (max_velocity + 1e-10)
-
-        return np.clip(dt, self._min_dt, self._max_dt)
+            return omega0 * p0 + omega1 * p1
 
     def advance(
         self, dt: float, phi: LevelSetField, velocity: VectorField, **kwargs
