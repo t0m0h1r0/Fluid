@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import numpy as np
 
-from visualization import Visualizer2D
+# 循環インポートを回避するために、直接インポートではなく遅延インポート
 from simulations.state import SimulationState
 
 
@@ -84,7 +84,6 @@ class StateVisualizer:
 
     def _visualize_field(
         self,
-        visualizer: Visualizer2D,
         state: SimulationState,
         plane: Dict[str, Any],
         field_name: str,
@@ -93,12 +92,14 @@ class StateVisualizer:
         """特定のフィールドを可視化
 
         Args:
-            visualizer: 可視化システム
             state: シミュレーション状態
             plane: 可視化する面の情報
             field_name: 可視化するフィールド名
             timestamp: 現在の時刻
         """
+        # 遅延インポート
+        from visualization import Visualizer2D
+
         if not hasattr(state, field_name):
             return
 
@@ -109,6 +110,7 @@ class StateVisualizer:
             return
 
         field_obj = getattr(state, field_name)
+        visualizer = Visualizer2D()
 
         # フィールドの種類に応じて可視化メソッドを選択
         if field_name == "velocity":
@@ -274,9 +276,6 @@ class StateVisualizer:
 
             # 2D可視化
             if "2D" in dimensions:
-                # 2D可視化システムを作成
-                visualizer = Visualizer2D()
-
                 # 可視化する面を取得
                 planes = self._get_slice_planes(state)
 
@@ -285,7 +284,7 @@ class StateVisualizer:
                     # 個別のフィールドを可視化
                     for field_name in ["velocity", "pressure", "levelset"]:
                         self._visualize_field(
-                            visualizer, state, plane, field_name, timestamp
+                            state, plane, field_name, timestamp
                         )
 
                     # 複合フィールドの可視化
@@ -294,7 +293,10 @@ class StateVisualizer:
                         .get("combined", {})
                         .get("enabled", True)
                     ):
-                        visualizer.visualize_combined(
+                        # 遅延インポート
+                        from visualization import Visualizer2D
+
+                        Visualizer2D().visualize_combined(
                             {
                                 "pressure": state.pressure.data,
                                 "velocity_x": state.velocity.components[0].data,

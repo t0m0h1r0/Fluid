@@ -124,8 +124,8 @@ visualization:
   # 3D可視化の設定（VTKやParaViewでの可視化）
   3d:
     enabled: true
-    method: ["vtk"]  # 複数の出力方法を指定可能
-    #method: ["vtk", "pyvista", "plotly"]  # 複数の出力方法を指定可能
+    #method: ["vtk"]  # 複数の出力方法を指定可能
+    method: ["vtk", "pyvista", "plotly"]  # 複数の出力方法を指定可能
     fields: 
       - velocity
       - pressure
