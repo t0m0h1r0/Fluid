@@ -9,8 +9,8 @@ physics:
       density: 1000.0  # 密度 [kg/m³]
       viscosity: 1.0e-3  # 動粘性係数 [Pa·s]
       surface_tension: 0.07  # 表面張力係数 [N/m]
-    air:
-      density: 1.225  # 密度 [kg/m³]
+    nitrogen:
+      density: 1.25  # 密度 [kg/m³]
       viscosity: 1.81e-5  # 動粘性係数 [Pa·s]
       surface_tension: 0.0  # 表面張力係数 [N/m]
 
@@ -34,21 +34,19 @@ boundary_conditions:
 # 初期条件
 initial_conditions:
   # 初期界面の形状と配置
+  background:
+    phase: water  # 背景相を水に
+    height_fraction: 0.75  # 領域の下3/4を水で満たす
+  
   objects:
-    - type: sphere  # 可能な値: sphere, droplet, layer, custom
-      phase: water
+    - type: sphere  # 窒素球
+      phase: nitrogen
       center: [0.5, 0.5, 0.5]  # 中心座標 [x, y, z]
-      radius: 0.25  # 半径
-    # 追加のオブジェクトを必要に応じて追加可能
-    # - type: layer
-    #   phase: water
-    #   position: 0.3
-    #   thickness: 0.1
+      radius: 0.2  # 半径
 
   # 初期速度場
   velocity:
-    type: zero  # 可能な値: zero, uniform, vortex, custom
-    uniform_value: [0.0, 0.0, 0.0]  # 一様速度 [vx, vy, vz]
+    type: zero  # 速度をゼロに設定
 
 # 数値スキーム
 numerical:

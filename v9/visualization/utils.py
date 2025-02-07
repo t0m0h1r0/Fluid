@@ -5,21 +5,29 @@
 
 import numpy as np
 from typing import Tuple, List
+from core.field import ScalarField
+from core.field.vector import VectorField
 
 
 def prepare_2d_slice(
-    data: np.ndarray, slice_axis: int = 2, slice_index: int = None
+    data: np.ndarray | ScalarField | VectorField,
+    slice_axis: int = 2,
+    slice_index: int = None,
 ) -> np.ndarray:
     """3Dデータから2Dスライスを取得
 
     Args:
-        data: 入力データ（2Dまたは3D）
+        data: 入力データ
         slice_axis: スライスする軸
         slice_index: スライスのインデックス（デフォルトは中央）
 
     Returns:
         2Dスライス
     """
+    # データの型に応じて処理を変更
+    if isinstance(data, (ScalarField, VectorField)):
+        data = data.data
+
     # 2Dデータの場合はそのまま返す
     if data.ndim == 2:
         return data
@@ -29,7 +37,7 @@ def prepare_2d_slice(
         slice_index = data.shape[slice_axis] // 2
 
     # スライスを取得
-    slices = [slice(None)] * 3
+    slices = [slice(None)] * data.ndim
     slices[slice_axis] = slice_index
 
     return data[tuple(slices)]
