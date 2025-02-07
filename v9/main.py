@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 import traceback
 
-from logging import SimulationLogger, LogConfig
+from logger import SimulationLogger, LogConfig
 from simulations import SimulationInitializer, SimulationRunner, SimulationMonitor
 
 

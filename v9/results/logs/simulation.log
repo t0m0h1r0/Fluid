@@ -1,0 +1,138 @@
+2025-02-07 20:17:26.389 - TwoPhaseFlow - INFO - [logger.py:69] - ロギングシステムを初期化: TwoPhaseFlow
+2025-02-07 20:17:26.389 - TwoPhaseFlow - INFO - [logger.py:69] - Starting new simulation
+2025-02-07 20:17:26.390 - TwoPhaseFlow.init - INFO - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:17:26.390 - TwoPhaseFlow.init - [32mINFO[0m - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:17:26.390 - TwoPhaseFlow.init - ERROR - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'AttributeError', 'error_msg': "'LevelSetField' object has no attribute 'params'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state
+    levelset = self._create_levelset_field()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field
+    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__
+    super().__init__(shape, dx)
+  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__
+    self._initial_integral = self.integrate()
+                             ^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate
+    return self.compute_volume()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume
+    return compute_volume(self._data, self.dx, self.params.epsilon)
+                                               ^^^^^^^^^^^
+AttributeError: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:17:26.390 - TwoPhaseFlow.init - [31mERROR[0m - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'AttributeError', 'error_msg': "'LevelSetField' object has no attribute 'params'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state
+    levelset = self._create_levelset_field()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field
+    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__
+    super().__init__(shape, dx)
+  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__
+    self._initial_integral = self.integrate()
+                             ^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate
+    return self.compute_volume()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume
+    return compute_volume(self._data, self.dx, self.params.epsilon)
+                                               ^^^^^^^^^^^
+AttributeError: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:17:26.391 - TwoPhaseFlow.monitor - ERROR - [logger.py:77] - Simulation terminated with error: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:17:26.391 - TwoPhaseFlow.monitor - [31mERROR[0m - [logger.py:77] - Simulation terminated with error: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:17:26.392 - TwoPhaseFlow - ERROR - [logger.py:108] - Error occurred: {'message': 'Error during simulation', 'error_type': 'AttributeError', 'error_msg': "'LevelSetField' object has no attribute 'params'", 'context': {'traceback': 'Traceback (most recent call last):\n  File "/root/Fluid/v9/main.py", line 79, in main\n    state = initializer.create_initial_state()\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state\n    levelset = self._create_levelset_field()\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field\n    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__\n    super().__init__(shape, dx)\n  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__\n    self._initial_integral = self.integrate()\n                             ^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate\n    return self.compute_volume()\n           ^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume\n    return compute_volume(self._data, self.dx, self.params.epsilon)\n                                               ^^^^^^^^^^^\nAttributeError: \'LevelSetField\' object has no attribute \'params\'\n'}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/main.py", line 79, in main
+    state = initializer.create_initial_state()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state
+    levelset = self._create_levelset_field()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field
+    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__
+    super().__init__(shape, dx)
+  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__
+    self._initial_integral = self.integrate()
+                             ^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate
+    return self.compute_volume()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume
+    return compute_volume(self._data, self.dx, self.params.epsilon)
+                                               ^^^^^^^^^^^
+AttributeError: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:17:39.097 - TwoPhaseFlow - INFO - [logger.py:69] - ロギングシステムを初期化: TwoPhaseFlow
+2025-02-07 20:17:39.098 - TwoPhaseFlow - INFO - [logger.py:69] - Starting new simulation
+2025-02-07 20:17:39.098 - TwoPhaseFlow.init - INFO - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:17:39.098 - TwoPhaseFlow.init - [32mINFO[0m - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:17:39.098 - TwoPhaseFlow.init - ERROR - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'AttributeError', 'error_msg': "'LevelSetField' object has no attribute 'params'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state
+    levelset = self._create_levelset_field()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field
+    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__
+    super().__init__(shape, dx)
+  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__
+    self._initial_integral = self.integrate()
+                             ^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate
+    return self.compute_volume()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume
+    return compute_volume(self._data, self.dx, self.params.epsilon)
+                                               ^^^^^^^^^^^
+AttributeError: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:17:39.098 - TwoPhaseFlow.init - [31mERROR[0m - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'AttributeError', 'error_msg': "'LevelSetField' object has no attribute 'params'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state
+    levelset = self._create_levelset_field()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field
+    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__
+    super().__init__(shape, dx)
+  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__
+    self._initial_integral = self.integrate()
+                             ^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate
+    return self.compute_volume()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume
+    return compute_volume(self._data, self.dx, self.params.epsilon)
+                                               ^^^^^^^^^^^
+AttributeError: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:17:39.100 - TwoPhaseFlow.monitor - ERROR - [logger.py:77] - Simulation terminated with error: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:17:39.100 - TwoPhaseFlow.monitor - [31mERROR[0m - [logger.py:77] - Simulation terminated with error: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:17:39.101 - TwoPhaseFlow - ERROR - [logger.py:108] - Error occurred: {'message': 'Error during simulation', 'error_type': 'AttributeError', 'error_msg': "'LevelSetField' object has no attribute 'params'", 'context': {'traceback': 'Traceback (most recent call last):\n  File "/root/Fluid/v9/main.py", line 79, in main\n    state = initializer.create_initial_state()\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state\n    levelset = self._create_levelset_field()\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field\n    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__\n    super().__init__(shape, dx)\n  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__\n    self._initial_integral = self.integrate()\n                             ^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate\n    return self.compute_volume()\n           ^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume\n    return compute_volume(self._data, self.dx, self.params.epsilon)\n                                               ^^^^^^^^^^^\nAttributeError: \'LevelSetField\' object has no attribute \'params\'\n'}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/main.py", line 79, in main
+    state = initializer.create_initial_state()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state
+    levelset = self._create_levelset_field()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field
+    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__
+    super().__init__(shape, dx)
+  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__
+    self._initial_integral = self.integrate()
+                             ^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate
+    return self.compute_volume()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume
+    return compute_volume(self._data, self.dx, self.params.epsilon)
+                                               ^^^^^^^^^^^
+AttributeError: 'LevelSetField' object has no attribute 'params'

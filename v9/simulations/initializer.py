@@ -10,7 +10,7 @@ from core.field import VectorField, ScalarField
 from physics.levelset import LevelSetField, LevelSetParameters
 from physics.properties import PropertiesManager, FluidProperties
 from .state import SimulationState
-from logging import SimulationLogger
+from logger import SimulationLogger
 
 
 class SimulationInitializer:

@@ -7,9 +7,9 @@ import time
 from typing import Dict, Any, Optional, Callable
 from pathlib import Path
 
-from physics.solver import NavierStokesSolver
+from physics.navier_stokes.solver import NavierStokesSolver
 from physics.levelset import LevelSetSolver
-from logging import SimulationLogger
+from logger import SimulationLogger
 from .state import SimulationState
 from .monitor import SimulationMonitor
 

@@ -9,7 +9,7 @@ from pathlib import Path
 import time
 import json
 import numpy as np
-from logging import SimulationLogger
+from logger import SimulationLogger
 from .state import SimulationState
 
 
