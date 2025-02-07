@@ -10,10 +10,7 @@ import matplotlib.cm as cm
 
 from .base import BaseVisualizer
 from .config import VisualizationConfig
-from .utils import (
-    prepare_2d_slice, 
-    compute_data_range
-)
+from .utils import prepare_2d_slice, compute_data_range
 
 
 class ScalarVisualizer(BaseVisualizer):
@@ -27,13 +24,7 @@ class ScalarVisualizer(BaseVisualizer):
         """
         super().__init__(config)
 
-    def visualize(
-        self, 
-        data: np.ndarray, 
-        name: str, 
-        timestamp: float, 
-        **kwargs
-    ) -> str:
+    def visualize(self, data: np.ndarray, name: str, timestamp: float, **kwargs) -> str:
         """スカラー場を可視化
 
         Args:
@@ -51,41 +42,36 @@ class ScalarVisualizer(BaseVisualizer):
             保存された画像のファイルパス
         """
         # 2Dスライスを取得
-        slice_axis = kwargs.get('slice_axis', 2)
-        slice_index = kwargs.get('slice_index', None)
+        slice_axis = kwargs.get("slice_axis", 2)
+        slice_index = kwargs.get("slice_index", None)
         data_2d = prepare_2d_slice(data, slice_axis, slice_index)
 
         # 図とAxesを作成
         fig, ax = self.create_figure()
 
         # カラーマップと色範囲の設定
-        symmetric = kwargs.get('symmetric', name in ['pressure', 'vorticity'])
+        symmetric = kwargs.get("symmetric", name in ["pressure", "vorticity"])
         vmin, vmax = compute_data_range(data_2d, symmetric)
-        
+
         # カラーマップを決定
-        colormap = kwargs.get('colormap', self.config.colormap)
+        colormap = kwargs.get("colormap", self.config.colormap)
         cmap = cm.get_cmap(colormap)
 
         # 画像のプロット
-        interpolation = self.config.scalar_plot.get('interpolation', 'nearest')
+        interpolation = self.config.scalar_plot.get("interpolation", "nearest")
         im = ax.imshow(
-            data_2d.T, 
-            origin='lower', 
+            data_2d.T,
+            origin="lower",
             cmap=cmap,
             norm=Normalize(vmin=vmin, vmax=vmax),
-            interpolation=interpolation
+            interpolation=interpolation,
         )
 
         # 等高線の追加（オプション）
-        contour = kwargs.get('contour', self.config.scalar_plot.get('contour', False))
+        contour = kwargs.get("contour", self.config.scalar_plot.get("contour", False))
         if contour:
             levels = np.linspace(vmin, vmax, 10)
-            cs = ax.contour(
-                data_2d.T, 
-                levels=levels, 
-                colors='k', 
-                alpha=0.5
-            )
+            cs = ax.contour(data_2d.T, levels=levels, colors="k", alpha=0.5)
             ax.clabel(cs, inline=True, fontsize=8)
 
         # カラーバーの追加

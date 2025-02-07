@@ -8,9 +8,7 @@ from typing import Tuple, List
 
 
 def prepare_2d_slice(
-    data: np.ndarray, 
-    slice_axis: int = 2, 
-    slice_index: int = None
+    data: np.ndarray, slice_axis: int = 2, slice_index: int = None
 ) -> np.ndarray:
     """3Dデータから2Dスライスを取得
 
@@ -25,21 +23,20 @@ def prepare_2d_slice(
     # 2Dデータの場合はそのまま返す
     if data.ndim == 2:
         return data
-    
+
     # スライスのインデックスを決定
     if slice_index is None:
         slice_index = data.shape[slice_axis] // 2
-    
+
     # スライスを取得
     slices = [slice(None)] * 3
     slices[slice_axis] = slice_index
-    
+
     return data[tuple(slices)]
 
 
 def compute_data_range(
-    data: np.ndarray, 
-    symmetric: bool = False
+    data: np.ndarray, symmetric: bool = False
 ) -> Tuple[float, float]:
     """データの範囲を計算
 
@@ -56,13 +53,11 @@ def compute_data_range(
     if symmetric:
         abs_max = max(abs(data_min), abs(data_max))
         return -abs_max, abs_max
-    
+
     return data_min, data_max
 
 
-def compute_vector_magnitude(
-    vector_components: List[np.ndarray]
-) -> np.ndarray:
+def compute_vector_magnitude(vector_components: List[np.ndarray]) -> np.ndarray:
     """ベクトル場の大きさを計算
 
     Args:
@@ -73,7 +68,7 @@ def compute_vector_magnitude(
     """
     if len(vector_components) < 2:
         raise ValueError("少なくとも2つの成分が必要です")
-    
+
     return np.sqrt(sum(c**2 for c in vector_components[:2]))
 
 

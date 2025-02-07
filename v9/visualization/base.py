@@ -22,17 +22,15 @@ class BaseVisualizer:
         """
         # デフォルト設定を使用
         self.config = config or VisualizationConfig()
-        
+
         # 出力ディレクトリを作成
         self.config.ensure_output_dir()
-        
+
         # デフォルトのプロットスタイル
         plt.style.use("default")
 
     def create_figure(
-        self, 
-        size: Tuple[float, float] = (8, 6), 
-        projection: str = None
+        self, size: Tuple[float, float] = (8, 6), projection: str = None
     ) -> Tuple[plt.Figure, plt.Axes]:
         """図とAxesを作成
 
@@ -44,9 +42,9 @@ class BaseVisualizer:
             (図, Axes)のタプル
         """
         fig, ax = plt.subplots(figsize=size)
-        
+
         # 背景色の設定
-        ax.set_facecolor('white')
+        ax.set_facecolor("white")
 
         # 軸の設定
         if self.config.show_axes:
@@ -57,16 +55,11 @@ class BaseVisualizer:
 
         # グリッドの設定
         if self.config.show_grid:
-            ax.grid(True, linestyle='--', alpha=0.7)
+            ax.grid(True, linestyle="--", alpha=0.7)
 
         return fig, ax
 
-    def save_figure(
-        self, 
-        fig: plt.Figure, 
-        prefix: str, 
-        timestamp: float
-    ) -> str:
+    def save_figure(self, fig: plt.Figure, prefix: str, timestamp: float) -> str:
         """図を保存
 
         Args:
@@ -79,14 +72,10 @@ class BaseVisualizer:
         """
         # ファイル名を生成
         filename = self.config.get_output_filename(prefix, timestamp)
-        
+
         # 図を保存
-        fig.savefig(
-            filename, 
-            dpi=self.config.dpi, 
-            bbox_inches="tight"
-        )
-        
+        fig.savefig(filename, dpi=self.config.dpi, bbox_inches="tight")
+
         # figureを閉じる
         plt.close(fig)
 

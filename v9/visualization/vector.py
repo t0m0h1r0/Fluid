@@ -3,17 +3,11 @@
 ベクトル場（速度場など）の可視化機能を実装します。
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 
 from .base import BaseVisualizer
 from .config import VisualizationConfig
-from .utils import (
-    prepare_2d_slice, 
-    compute_vector_magnitude,
-    create_grid
-)
+from .utils import prepare_2d_slice, compute_vector_magnitude, create_grid
 
 
 class VectorVisualizer(BaseVisualizer):
@@ -28,11 +22,7 @@ class VectorVisualizer(BaseVisualizer):
         super().__init__(config)
 
     def visualize(
-        self, 
-        vector_components: list, 
-        name: str, 
-        timestamp: float, 
-        **kwargs
+        self, vector_components: list, name: str, timestamp: float, **kwargs
     ) -> str:
         """ベクトル場を可視化
 
@@ -54,10 +44,10 @@ class VectorVisualizer(BaseVisualizer):
             raise ValueError("2D可視化には少なくとも2つの成分が必要です")
 
         # 各成分の2Dスライスを取得
-        slice_axis = kwargs.get('slice_axis', 2)
-        slice_index = kwargs.get('slice_index', None)
+        slice_axis = kwargs.get("slice_axis", 2)
+        slice_index = kwargs.get("slice_index", None)
         components_2d = [
-            prepare_2d_slice(comp, slice_axis, slice_index) 
+            prepare_2d_slice(comp, slice_axis, slice_index)
             for comp in vector_components[:2]
         ]
 
@@ -69,11 +59,11 @@ class VectorVisualizer(BaseVisualizer):
         x, y = create_grid((nx, ny))
 
         # ベクトルの密度を調整
-        density = self.config.vector_plot.get('density', 20)
+        density = self.config.vector_plot.get("density", 20)
         skip = max(1, min(nx, ny) // density)
-        
+
         # ベクトル矢印のスケール
-        scale = kwargs.get('scale', self.config.vector_plot.get('scale', None))
+        scale = kwargs.get("scale", self.config.vector_plot.get("scale", None))
 
         # ベクトル場をプロット
         q = ax.quiver(
@@ -86,19 +76,16 @@ class VectorVisualizer(BaseVisualizer):
 
         # ベクトルの大きさも表示（オプション）
         magnitude_display = kwargs.get(
-            'magnitude', 
-            True  # デフォルトは大きさを表示
+            "magnitude",
+            True,  # デフォルトは大きさを表示
         )
         if magnitude_display:
             # ベクトルの大きさを計算
             magnitude = compute_vector_magnitude(components_2d)
-            
+
             # 大きさを画像として表示
             im = ax.imshow(
-                magnitude.T, 
-                origin='lower', 
-                cmap=self.config.colormap, 
-                alpha=0.3
+                magnitude.T, origin="lower", cmap=self.config.colormap, alpha=0.3
             )
 
             # カラーバーの追加
@@ -106,12 +93,7 @@ class VectorVisualizer(BaseVisualizer):
                 plt.colorbar(im, ax=ax, label=f"{name} magnitude")
 
         # スケールバーの追加
-        ax.quiverkey(
-            q, 0.9, 0.9, 1.0, 
-            r"1 m/s", 
-            labelpos="E", 
-            coordinates="figure"
-        )
+        ax.quiverkey(q, 0.9, 0.9, 1.0, r"1 m/s", labelpos="E", coordinates="figure")
 
         # タイトルの設定
         ax.set_title(f"{name} (t = {timestamp:.3f}s)")

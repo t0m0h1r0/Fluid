@@ -1,77 +1,133 @@
 # Two-phase flow simulation configuration
 
-# Physical parameters
+# 物理パラメータ
 physics:
-  gravity: 9.81  # Gravity acceleration [m/s²]
-  surface_tension: 0.072  # Surface tension coefficient [N/m]
+  gravity: 9.81  # 重力加速度 [m/s²]
+  surface_tension: 0.072  # 表面張力係数 [N/m]
   phases:
     water:
-      density: 1000.0  # Density [kg/m³]
-      viscosity: 1.0e-3  # Dynamic viscosity [Pa·s]
+      density: 1000.0  # 密度 [kg/m³]
+      viscosity: 1.0e-3  # 動粘性係数 [Pa·s]
+      surface_tension: 0.07  # 表面張力係数 [N/m]
     air:
-      density: 1.225  # Density [kg/m³]
-      viscosity: 1.81e-5  # Dynamic viscosity [Pa·s]
+      density: 1.225  # 密度 [kg/m³]
+      viscosity: 1.81e-5  # 動粘性係数 [Pa·s]
+      surface_tension: 0.0  # 表面張力係数 [N/m]
 
-# Computational domain
+# 計算領域の設定
 domain:
-  dimensions: [128, 128, 128]  # Number of grid points in each direction
-  size: [1.0, 1.0, 1.0]  # Physical size in each direction [m]
-  boundary_conditions:
-    x: ["periodic", "periodic"]  # [left, right]
-    y: ["periodic", "periodic"]  # [bottom, top]
-    z: ["periodic", "periodic"]  # [front, back]
+  dimensions: 3  # 計算次元 (2 or 3)
+  grid:
+    nx: 128  # X方向のグリッドポイント数
+    ny: 128  # Y方向のグリッドポイント数
+    nz: 128  # Z方向のグリッドポイント数
+  size:
+    lx: 1.0  # X方向の物理的サイズ [m]
+    ly: 1.0  # Y方向の物理的サイズ [m]
+    lz: 1.0  # Z方向の物理的サイズ [m]
 
-# Numerical parameters
-numerical:
-  cfl: 0.5  # CFL number for time step calculation
-  max_time: 2.0  # Maximum simulation time [s]
-  save_interval: 0.1  # Time interval for saving results [s]
-  pressure_solver:
-    type: "sor"  # SOR, Jacobi, or Gauss-Seidel
+# 境界条件
+boundary_conditions:
+  x: 
+    left: periodic
+    right: periodic
+  y: 
+    bottom: periodic
+    top: periodic
+  z: 
+    front: periodic
+    back: periodic
+
+# 初期条件
+initial_conditions:
+  # 初期界面の形状と配置
+  interface:
+    type: sphere  # 可能な値: sphere, droplet, layer, custom
+    center: [0.5, 0.5, 0.5]  # 中心座標 [x, y, z]
+    radius: 0.25  # 半径または厚さ
+    phase: water  # 初期の主相
+
+  # 初期速度場
+  velocity:
+    type: zero  # 可能な値: zero, uniform, vortex, custom
+    uniform_value: [0.0, 0.0, 0.0]  # 一様速度 [vx, vy, vz]
+
+# 数値スキーム
+numerical_schemes:
+  time_integration:
+    method: rk4  # 時間積分法 (euler, rk4)
+    cfl: 0.5  # CFL数
+  
+  advection:
+    scheme: weno  # 移流スキーム (central, upwind, weno)
+    weno_order: 5  # WENOスキームの次数 (3 or 5)
+  
+  diffusion:
+    method: symmetric  # 拡散項の離散化方法
+  
+  pressure:
+    solver: sor  # 圧力ソルバー (jacobi, gauss_seidel, sor)
     max_iterations: 100
     tolerance: 1.0e-6
-    omega: 1.5  # Relaxation parameter for SOR
-  level_set:
-    reinit_interval: 5  # Steps between reinitialization
-    reinit_steps: 2  # Number of reinitialization steps
-    epsilon: 1.5  # Interface thickness parameter
 
-# Initial conditions
-initial_conditions:
-  objects:
-    - type: "sphere"
-      phase: "water"
-      center: [0.5, 0.5, 0.5]
-      radius: 0.2
-    - type: "layer"
-      phase: "water"
-      normal: [0, 1, 0]
-      position: 0.25
-      thickness: 0.1
+# シミュレーション制御
+simulation:
+  max_time: 2.0  # 最大シミュレーション時間 [s]
+  initial_dt: 0.001  # 初期時間刻み [s]
+  save_interval: 0.1  # 結果の保存間隔 [s]
 
-# Visualization settings
+# 可視化設定
 visualization:
   output_dir: "results/visualization"
   format: "png"
   dpi: 300
   colormap: "viridis"
-  show_colorbar: true
-  show_axes: true
-  show_grid: false
-  vector_plot:
-    density: 20
-    scale: 1.0
-  scalar_plot:
-    interpolation: "nearest"
-    contour: false
-  interface_plot:
-    filled: true
-    colors: ["lightblue", "white"]
+  
+  # 初期状態可視化の設定
+  initial_state:
+    enabled: true
+    dimensions: 
+      - 2D  # 2Dスライス可視化
+      - 3D  # 3D可視化（可能な場合）
+    
+    # 2Dスライス可視化の設定
+    slice:
+      axis: 2  # デフォルトではz軸の中央スライス
+      interpolation: "nearest"
+    
+    # 可視化するフィールド
+    fields:
+      velocity: 
+        enabled: true
+        plot_types: 
+          - vector
+          - magnitude
+      pressure: 
+        enabled: true
+        plot_types: 
+          - scalar
+          - contour
+      levelset: 
+        enabled: true
+        plot_types: 
+          - interface
+          - contour
+      combined:
+        enabled: true
 
-# Debug settings
+  # 3D可視化の設定（VTKやParaViewでの可視化）
+  3d:
+    enabled: true
+    format: "vti"  # VTK Image Data
+    fields: 
+      - velocity
+      - pressure
+      - levelset
+
+# デバッグ設定
 debug:
   level: "info"  # debug, info, warning, error
-  save_fields: true  # Save raw field data for debugging
-  check_divergence: true  # Check velocity divergence
-  plot_residuals: true  # Plot pressure solver residuals
-  profiling: false  # Enable performance profiling
+  save_fields: true  # デバッグ用のフィールドデータを保存
+  check_divergence: true  # 速度発散のチェック
+  plot_residuals: true  # 残差プロット
+  profiling: false  # パフォーマンスプロファイリングを有効化
