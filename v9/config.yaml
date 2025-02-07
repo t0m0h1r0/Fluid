@@ -51,24 +51,22 @@ initial_conditions:
 
 # Visualization settings
 visualization:
-  output_dir: "results"
+  output_dir: "results/visualization"
   format: "png"
   dpi: 300
-  camera:
-    elevation: 30  # Camera elevation angle [degrees]
-    azimuth: 45   # Camera azimuth angle [degrees]
+  colormap: "viridis"
+  show_colorbar: true
+  show_axes: true
+  show_grid: false
   vector_plot:
-    density: 20  # Number of arrows in each direction
-    scale: 1.0   # Arrow scale factor
-  color_schemes:
-    velocity: "coolwarm"
-    pressure: "RdBu_r"
-    vorticity: "viridis"
-  show:
-    velocity: true
-    pressure: true
-    vorticity: true
-    interface: true
+    density: 20
+    scale: 1.0
+  scalar_plot:
+    interpolation: "nearest"
+    contour: false
+  interface_plot:
+    filled: true
+    colors: ["lightblue", "white"]
 
 # Debug settings
 debug:
