@@ -52,7 +52,11 @@
 ├── results
 │   ├── logs
 │   │   └── simulation.log
-│   └── statistics.json
+│   ├── statistics.json
+│   └── visualization
+│       ├── logs
+│       │   └── simulation.log
+│       └── statistics.json
 ├── simulations
 │   ├── __init__.py
 │   ├── initializer.py
@@ -62,7 +66,12 @@
 │   └── state.py
 ├── tree.txt
 └── visualization
+    ├── __init__.py
     ├── base.py
-    └── visualizer2d.py
+    ├── combined.py
+    ├── interface.py
+    ├── scalar.py
+    ├── utils.py
+    └── vector.py
 
-16 directories, 50 files
+18 directories, 57 files
