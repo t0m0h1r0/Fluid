@@ -8,26 +8,18 @@
 from .solver import NavierStokesSolver
 
 # 各項のインポート
-from .terms import (
-    AdvectionTerm, 
-    DiffusionTerm, 
-    PressureTerm, 
-    ForceTerm
-)
+from .terms import AdvectionTerm, DiffusionTerm, PressureTerm, ForceTerm
 
 # 力項のインポート
-from .terms.force import (
-    GravityForce, 
-    SurfaceTensionForce
-)
+from .terms.force import GravityForce, SurfaceTensionForce
 
 # エクスポートするモジュール
 __all__ = [
-    'NavierStokesSolver',
-    'AdvectionTerm',
-    'DiffusionTerm',
-    'PressureTerm',
-    'ForceTerm',
-    'GravityForce',
-    'SurfaceTensionForce'
+    "NavierStokesSolver",
+    "AdvectionTerm",
+    "DiffusionTerm",
+    "PressureTerm",
+    "ForceTerm",
+    "GravityForce",
+    "SurfaceTensionForce",
 ]
