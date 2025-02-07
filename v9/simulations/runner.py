@@ -1,138 +1,151 @@
 """シミュレーションの実行を管理するモジュール
 
-このモジュールは、シミュレーションの時間発展計算を管理します。
+Navier-Stokes方程式のソルバーを用いて、シミュレーションを実行します。
 """
 
-import time
-from typing import Dict, Any, Optional, Callable
+import numpy as np
+from typing import Dict, Any
 from pathlib import Path
 
-from physics.navier_stokes.solver import NavierStokesSolver
-from physics.levelset import LevelSetSolver
-from physics.poisson.sor import SORSolver
 from logger import SimulationLogger
-from .state import SimulationState
-from .monitor import SimulationMonitor
+from simulations.monitor import SimulationMonitor
+from physics.navier_stokes import NavierStokesSolver
+from physics.poisson import SORSolver
+from core.field import VectorField, ScalarField
+from physics.levelset import LevelSetField
 
 
 class SimulationRunner:
     """シミュレーションの実行を管理するクラス
 
-    時間発展計算の実行、状態の保存、モニタリングを行います。
+    Navier-Stokes方程式を解き、シミュレーションを進行させます。
     """
 
     def __init__(
         self,
         config: Dict[str, Any],
         logger: SimulationLogger,
-        monitor: Optional[SimulationMonitor] = None,
+        monitor: SimulationMonitor,
     ):
         """シミュレーションランナーを初期化
 
         Args:
             config: シミュレーション設定
             logger: ロガー
-            monitor: シミュレーションモニター
+            monitor: モニター
         """
         self.config = config
-        self.logger = logger.start_section("runner")
+        self.logger = logger
         self.monitor = monitor
 
-        # Poissonソルバーの初期化
-        poisson_config = config["numerical"]["pressure_solver"]
+        # 数値スキーム設定の取得
+        numerical_config = config.get("numerical", {})
+
+        # 最大シミュレーション時間の取得
+        self.max_time = numerical_config.get("max_time", 2.0)
+
+        # 初期時間刻みの取得
+        self.initial_dt = numerical_config.get("initial_dt", 0.001)
+
+        # 保存間隔の取得
+        self.save_interval = numerical_config.get("save_interval", 0.1)
+
+        # 圧力ソルバーの設定
+        pressure_solver_config = numerical_config.get("pressure_solver", {})
+
+        # SORソルバーの初期化
         poisson_solver = SORSolver(
-            omega=poisson_config.get("omega", 1.5),
-            tolerance=poisson_config.get("tolerance", 1e-6),
-            max_iterations=poisson_config.get("max_iterations", 100),
+            omega=pressure_solver_config.get("omega", 1.5),
+            max_iterations=pressure_solver_config.get("max_iterations", 200),
+            tolerance=pressure_solver_config.get("tolerance", 1.0e-8),
         )
 
-        # ソルバーの初期化
+        # Navier-Stokesソルバーの初期化
         self.ns_solver = NavierStokesSolver(
-            poisson_solver=poisson_solver,
-            use_weno=config.get("numerical", {}).get("use_weno", True),
+            logger=logger, poisson_solver=poisson_solver
         )
-        self.ls_solver = LevelSetSolver()
 
-        # 数値パラメータの設定
-        self.max_time = config["numerical"]["max_time"]
-        self.save_interval = config["numerical"]["save_interval"]
+        # デバッグ設定の取得
+        self.debug_config = config.get("debug", {})
 
-        # 停止条件のチェック用コールバック
-        self._stop_check: Optional[Callable[[SimulationState], bool]] = None
-
-    def run(
-        self,
-        state: SimulationState,
-        output_dir: Path,
-        stop_check: Optional[Callable[[SimulationState], bool]] = None,
-    ) -> SimulationState:
+    def run(self, initial_state, output_dir: Path):
         """シミュレーションを実行
 
         Args:
-            state: 初期状態
+            initial_state: 初期状態
             output_dir: 出力ディレクトリ
-            stop_check: 停止条件をチェックするコールバック関数
 
         Returns:
             最終状態
         """
         self.logger.info("シミュレーション開始")
-        start_time = time.time()
-        self._stop_check = stop_check
+        current_state = initial_state
+        current_time = 0.0
+        iteration = 0
+
+        # 出力ディレクトリの作成
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # 結果の保存先
+        results_dir = output_dir / "results"
+        results_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            while self._should_continue(state):
-                state = self._advance_step(state)
+            # メインシミュレーションループ
+            while current_time < self.max_time:
+                # 時間刻みの計算
+                dt = self._compute_timestep(current_state)
+
+                # 1ステップ進める
+                current_state = self._advance_step(current_state)
+
+                # 時間と反復回数を更新
+                current_time += dt
+                iteration += 1
 
                 # 結果の保存
-                if state.time >= state.next_save:
-                    self._save_results(state, output_dir)
-                    state.next_save += self.save_interval
+                if iteration % int(self.save_interval / dt) == 0:
+                    self._save_state(current_state, results_dir, current_time)
 
-                # モニタリング
-                if self.monitor:
-                    self.monitor.update(state)
+                # モニターへの更新
+                self.monitor.update(current_state, current_time)
 
-            # 最終状態の保存
-            self._save_results(state, output_dir)
+                # デバッグ出力
+                if self.debug_config.get("check_divergence", False):
+                    self._check_divergence(current_state)
 
-            elapsed = time.time() - start_time
-            self.logger.info(f"シミュレーション完了: {elapsed:.1f}秒")
-            return state
+                # プロファイリング
+                if self.debug_config.get("profiling", False):
+                    self._profile_simulation(current_state)
 
         except Exception as e:
-            self.logger.log_error_with_context(
-                "シミュレーション実行中にエラーが発生",
-                e,
-                {"time": state.time, "iteration": state.iteration},
-            )
+            self.logger.error(f"シミュレーション実行中にエラーが発生: {e}")
             raise
 
-    def _should_continue(self, state: SimulationState) -> bool:
-        """シミュレーションを継続するか判定
+        self.logger.info("シミュレーション終了")
+        return current_state
+
+    def _compute_timestep(self, state):
+        """適応的な時間刻みを計算
 
         Args:
             state: 現在の状態
 
         Returns:
-            継続するかどうか
+            時間刻み
         """
-        if not state.is_valid():
-            self.logger.error("Invalid simulation state detected")
-            return False
+        # Navier-Stokesソルバーから推奨される時間刻みを取得
+        recommended_dt = self.ns_solver.compute_timestep(state)
 
-        if state.time >= self.max_time:
-            self.logger.info("Maximum simulation time reached")
-            return False
+        # CFL条件に基づいて調整
+        numerical_config = self.config.get("numerical", {})
+        cfl = numerical_config.get("time_integration", {}).get("cfl", 0.3)
 
-        if self._stop_check and self._stop_check(state):
-            self.logger.info("Stop condition met")
-            return False
+        return min(self.initial_dt, cfl * recommended_dt)
 
-        return True
-
-    def _advance_step(self, state: SimulationState) -> SimulationState:
-        """1ステップ進める
+    def _advance_step(self, state):
+        """1時間ステップを進める
 
         Args:
             state: 現在の状態
@@ -140,79 +153,127 @@ class SimulationRunner:
         Returns:
             更新された状態
         """
-        # 時間刻み幅の計算
-        dt_ns = self.ns_solver.compute_timestep(
-            state.velocity, properties=state.properties
-        )
-        dt_ls = self.ls_solver.compute_timestep(state.levelset, state.velocity)
-        dt = min(dt_ns, dt_ls)
-
-        # Navier-Stokes方程式の時間発展
+        # Navier-Stokesソルバーで1ステップ進める
         ns_result = self.ns_solver.advance(
-            dt,
-            state.velocity,
-            state.pressure,
-            levelset=state.levelset,
-            properties=state.properties,
+            state,
+            max_iterations=200,  # 必要に応じて調整
         )
 
-        # Level Set関数の移流
-        ls_result = self.ls_solver.advance(dt, state.levelset, state.velocity)
+        return ns_result
 
-        # 状態の更新
-        state.velocity = ns_result["velocity"]
-        state.pressure = ns_result["pressure"]
-        state.time += dt
-        state.iteration += 1
+    def _save_state(self, state, results_dir, current_time):
+        """状態を保存
 
-        # 統計情報の更新
-        state.update_statistics()
+        Args:
+            state: 現在の状態
+            results_dir: 結果の保存先ディレクトリ
+            current_time: 現在の時刻
+        """
+        # VTK形式で保存
+        try:
+            # 必要に応じてPyEVTKをインポート
+            from pyevtk.hl import gridToVTK
 
-        if state.iteration % 100 == 0:  # 定期的な進捗報告
-            self.logger.info(
-                f"Time: {state.time:.3f}, "
-                f"Max div: {state.statistics['max_divergence']:.2e}, "
-                f"Max vel: {state.statistics['max_velocity']:.2e}"
+            # 保存するフィールド
+            fields_to_save = {
+                "velocity_x": state.velocity.components[0].data,
+                "velocity_y": state.velocity.components[1].data,
+                "pressure": state.pressure.data,
+                "levelset": state.levelset.data,
+            }
+
+            # ファイルパスの生成
+            filepath = results_dir / f"state_{current_time:.6f}"
+
+            # グリッド座標の生成
+            shape = list(list(fields_to_save.values())[0].shape)
+            x = np.linspace(0, 1, shape[0])
+            y = np.linspace(0, 1, shape[1])
+            z = np.linspace(0, 1, shape[2])
+
+            # VTKファイルに出力
+            gridToVTK(str(filepath), x, y, z, pointData=fields_to_save)
+
+        except ImportError:
+            self.logger.warning(
+                "PyEVTKがインストールされていないため、状態の保存をスキップします。"
             )
+        except Exception as e:
+            self.logger.error(f"状態の保存中にエラーが発生: {e}")
 
-        return state
-
-    def _save_results(self, state: SimulationState, output_dir: Path):
-        """結果を保存
-
-        Args:
-            state: 保存する状態
-            output_dir: 出力ディレクトリ
-        """
-        save_dir = output_dir / f"time_{state.time:.6f}"
-        state.save(save_dir)
-
-        self.logger.info(f"Results saved at t = {state.time:.3f}")
-
-    def checkpoint(self, state: SimulationState, path: Path):
-        """チェックポイントを保存
+    def _check_divergence(self, state):
+        """発散をチェック
 
         Args:
-            state: 保存する状態
-            path: 保存先パス
+            state: 現在の状態
         """
-        state.save(path / "checkpoint")
-        self.logger.info(f"Checkpoint saved at iteration {state.iteration}")
+        # 速度場の発散を計算
+        divergence = state.velocity.divergence()
+        max_divergence = np.max(np.abs(divergence.data))
+
+        if max_divergence > 1e-3:
+            self.logger.warning(f"大きな速度発散を検出: {max_divergence}")
+
+    def _profile_simulation(self, state):
+        """シミュレーションのプロファイリング
+
+        Args:
+            state: 現在の状態
+        """
+        # プロファイリング情報の収集
+        profile_info = {
+            "velocity_magnitude": np.max(
+                np.sqrt(sum(c.data**2 for c in state.velocity.components))
+            ),
+            "pressure_range": (
+                np.min(state.pressure.data),
+                np.max(state.pressure.data),
+            ),
+            "levelset_interface_width": np.sum(state.levelset.delta()),
+        }
+
+        self.logger.info(f"プロファイリング情報: {profile_info}")
 
     @classmethod
-    def from_checkpoint(
-        cls, path: Path, config: Dict[str, Any], logger: SimulationLogger
-    ) -> tuple["SimulationRunner", SimulationState]:
-        """チェックポイントから復元
+    def from_checkpoint(cls, checkpoint_path, config, logger):
+        """チェックポイントからシミュレーションを再開
 
         Args:
-            path: チェックポイントのパス
+            checkpoint_path: チェックポイントファイルのパス
             config: シミュレーション設定
             logger: ロガー
 
         Returns:
-            (ランナー, 状態)のタプル
+            (SimulationRunner, 復元された状態)のタプル
         """
-        runner = cls(config, logger)
-        state = SimulationState.load(path / "checkpoint", config)
-        return runner, state
+        # モニターの作成
+        monitor = SimulationMonitor(config, logger)
+
+        # ランナーの作成
+        runner = cls(config, logger, monitor)
+
+        # チェックポイントファイルの読み込み
+        with open(checkpoint_path, "rb") as f:
+            checkpoint_data = np.load(f, allow_pickle=True)
+
+        # 状態の復元
+        velocity = VectorField(checkpoint_data["velocity_shape"])
+        velocity.components[0].data = checkpoint_data["velocity_x"]
+        velocity.components[1].data = checkpoint_data["velocity_y"]
+
+        pressure = ScalarField(checkpoint_data["pressure_shape"])
+        pressure.data = checkpoint_data["pressure"]
+
+        levelset = LevelSetField(checkpoint_data["levelset_shape"])
+        levelset.data = checkpoint_data["levelset"]
+
+        # 状態のフィールドを持つクラスを作成（必要に応じて調整）
+        class SimulationState:
+            def __init__(self, velocity, pressure, levelset):
+                self.velocity = velocity
+                self.pressure = pressure
+                self.levelset = levelset
+
+        restored_state = SimulationState(velocity, pressure, levelset)
+
+        return runner, restored_state

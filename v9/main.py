@@ -61,10 +61,7 @@ class InitialStateVisualizer:
             if fields_config.get("velocity", {}).get("enabled", True) and hasattr(
                 state, "velocity"
             ):
-                velocity_components = [
-                    getattr(state.velocity, f"component_{i}").data
-                    for i in range(state.velocity.ndim)
-                ]
+                velocity_components = state.velocity.components
 
                 # ベクトルプロット
                 if "vector" in fields_config["velocity"].get("plot_types", []):
@@ -74,7 +71,7 @@ class InitialStateVisualizer:
 
                 # 速度大きさプロット
                 if "magnitude" in fields_config["velocity"].get("plot_types", []):
-                    magnitude = np.sqrt(sum(c**2 for c in velocity_components))
+                    magnitude = np.sqrt(sum(c.data**2 for c in velocity_components))
                     visualizer.visualize_scalar(
                         magnitude, "initial_velocity_magnitude", timestamp=0.0
                     )
@@ -144,8 +141,8 @@ class InitialStateVisualizer:
                 visualizer.visualize_combined(
                     {
                         "pressure": state.pressure.data,
-                        "velocity_x": state.velocity.component_0.data,
-                        "velocity_y": state.velocity.component_1.data,
+                        "velocity_x": state.velocity.components[0].data,
+                        "velocity_y": state.velocity.components[1].data,
                         "levelset": state.levelset.data,
                     },
                     timestamp=0.0,
@@ -171,7 +168,6 @@ class InitialStateVisualizer:
 
             # 必要なライブラリをインポート
             try:
-                import pyevtk
                 from pyevtk.hl import gridToVTK
             except ImportError:
                 self.logger.warning("PyEVTK not installed. Skipping 3D visualization.")
@@ -191,8 +187,18 @@ class InitialStateVisualizer:
             # 各フィールドを追加
             for field_name in fields_to_visualize:
                 if hasattr(state, field_name):
-                    field_data = getattr(state, field_name).data
-                    vtk_data[field_name] = field_data
+                    field_obj = getattr(state, field_name)
+
+                    # VectorFieldの特別な処理
+                    if field_name == "velocity":
+                        vtk_data.update(
+                            {
+                                f"velocity_{comp}": comp.data
+                                for comp in field_obj.components
+                            }
+                        )
+                    else:
+                        vtk_data[field_name] = field_obj.data
 
             # VTKファイルのパス
             vtk_path = self.output_dir / f"initial_state.{output_format}"

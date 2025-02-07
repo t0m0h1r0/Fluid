@@ -7,6 +7,8 @@
 from dataclasses import dataclass
 from typing import Dict, Any, Optional
 import numpy as np
+import traceback
+
 from core.solver import TemporalSolver
 from core.field import VectorField, ScalarField
 from physics.levelset import LevelSetField
@@ -44,6 +46,7 @@ class NavierStokesSolver(TemporalSolver):
 
     def __init__(
         self,
+        logger=None,
         params: Optional[NavierStokesParameters] = None,
         use_weno: bool = True,
         poisson_solver: Optional[PoissonSolver] = None,
@@ -51,11 +54,17 @@ class NavierStokesSolver(TemporalSolver):
         """Navier-Stokesソルバーを初期化
 
         Args:
+            logger: ロガー
             params: ソルバーのパラメータ
             use_weno: WENOスキームを使用するかどうか
             poisson_solver: 圧力Poisson方程式のソルバー
         """
         super().__init__(name="NavierStokes")
+
+        # ロガーの設定
+        self.logger = logger
+
+        # パラメータの設定
         self.params = params or NavierStokesParameters()
 
         # 各項の初期化
@@ -125,10 +134,9 @@ class NavierStokesSolver(TemporalSolver):
 
     def advance(
         self,
-        dt: float,
-        velocity: VectorField,
-        pressure: ScalarField,
-        levelset: Optional[LevelSetField] = None,
+        state,
+        dt: Optional[float] = None,
+        max_iterations: int = 200,
         **kwargs,
     ) -> Dict[str, Any]:
         """1時間ステップを進める
@@ -139,46 +147,63 @@ class NavierStokesSolver(TemporalSolver):
         3. 修正子ステップ：速度場を補正
 
         Args:
-            dt: 時間刻み幅
-            velocity: 現在の速度場
-            pressure: 圧力場
-            levelset: Level Set場（二相流体の場合）
+            state: 現在の状態
+            dt: 時間刻み幅（Noneの場合は自動計算）
+            max_iterations: 最大反復回数
             **kwargs: 追加のパラメータ
 
         Returns:
-            計算結果と統計情報を含む辞書
+            更新された状態
         """
-        # 予測子ステップ
-        velocity_star = self._predictor_step(dt, velocity, levelset, **kwargs)
+        try:
+            # 時間刻みの計算
+            if dt is None:
+                dt = self.compute_timestep(state.velocity, **kwargs)
 
-        # 圧力補正ステップ
-        pressure_correction = self._pressure_correction_step(
-            dt, velocity_star, pressure, **kwargs
-        )
+            # 圧力場と速度場を取得
+            velocity = state.velocity
+            pressure = state.pressure
+            levelset = getattr(state, "levelset", None)
 
-        # 修正子ステップ
-        velocity_new = self._corrector_step(
-            dt, velocity_star, pressure_correction, **kwargs
-        )
+            # 予測子ステップ
+            velocity_star = self._predictor_step(dt, velocity, levelset, **kwargs)
 
-        # 非圧縮性条件のチェック
-        div = velocity_new.divergence()
-        self._max_divergence = np.max(np.abs(div.data))
+            # 圧力補正ステップ
+            pressure_correction = self._pressure_correction_step(
+                dt, velocity_star, pressure, **kwargs
+            )
 
-        # 圧力場の更新
-        pressure.data += pressure_correction.data
+            # 修正子ステップ
+            velocity_new = self._corrector_step(
+                dt, velocity_star, pressure_correction, **kwargs
+            )
 
-        # 統計情報の収集
-        stats = self._collect_diagnostics(
-            velocity_new, pressure, levelset, div, **kwargs
-        )
+            # 非圧縮性条件のチェック
+            div = velocity_new.divergence()
+            self._max_divergence = np.max(np.abs(div.data))
 
-        return {
-            "velocity": velocity_new,
-            "pressure": pressure,
-            "converged": self._max_divergence < self.params.divergence_tolerance,
-            "stats": stats,
-        }
+            # 圧力場の更新
+            pressure.data += pressure_correction.data
+
+            # 状態の更新
+            state.velocity = velocity_new
+            state.pressure = pressure
+
+            # 診断情報の収集
+            diagnostics = self._collect_diagnostics(
+                velocity_new, pressure, levelset, div, **kwargs
+            )
+
+            return state
+
+        except Exception as e:
+            # エラーログの出力
+            if self.logger:
+                self.logger.error(f"シミュレーション実行中にエラーが発生: {e}")
+                self.logger.error(traceback.format_exc())
+
+            # エラー時の状態を返す（または例外を再送出）
+            raise
 
     def _predictor_step(
         self,
@@ -190,6 +215,15 @@ class NavierStokesSolver(TemporalSolver):
         """予測子ステップ
 
         圧力項を除いた方程式を解きます。
+
+        Args:
+            dt: 時間刻み幅
+            velocity: 現在の速度場
+            levelset: Level Set場
+            **kwargs: 追加のパラメータ
+
+        Returns:
+            予測速度場
         """
         # 各項の寄与を計算
         advection = self.advection.compute(velocity, **kwargs)
@@ -210,51 +244,56 @@ class NavierStokesSolver(TemporalSolver):
     ) -> ScalarField:
         """圧力補正ステップ
 
-        圧力Poisson方程式を解きます。
-
         Args:
             dt: 時間刻み幅
             velocity: 予測速度場
             pressure: 現在の圧力場
-            **kwargs: 追加のパラメータ（密度など）
+            **kwargs: 追加のパラメータ
 
         Returns:
             圧力補正場
         """
-        # 発散を計算
-        div = velocity.divergence()
-
-        # 圧力Poisson方程式の右辺
-        # 非圧縮条件: ∇・u^(n+1) = 0 より
-        # ∇²p = ρ/dt * ∇・u^*
-        density = kwargs.get("density", None)
-        if density is not None:
-            rhs = density.data * div.data / dt
-        else:
-            rhs = div.data / dt
-
-        # 境界条件の設定
-        # 圧力の境界条件は速度場の境界条件から導出
-        self.poisson_solver.boundary_conditions = (
-            self._get_pressure_boundary_conditions()
-        )
-
-        # 圧力補正値の初期推定値
-        p_corr = ScalarField(pressure.shape, pressure.dx)
-
-        # Poisson方程式を解く
         try:
+            # 発散を計算
+            div = velocity.divergence()
+
+            # 圧力Poisson方程式の右辺
+            # 非圧縮条件: ∇・u^(n+1) = 0 より
+            # ∇²p = ρ/dt * ∇・u^*
+            density = kwargs.get("density", None)
+            if density is not None:
+                rhs = density.data * div.data / dt
+            else:
+                rhs = div.data / dt
+
+            # 境界条件の設定
+            # 圧力の境界条件は速度場の境界条件から導出
+            self.poisson_solver.boundary_conditions = (
+                self._get_pressure_boundary_conditions()
+            )
+
+            # 圧力補正値の初期推定値
+            p_corr = ScalarField(pressure.shape, pressure.dx)
+
+            # Poisson方程式を解く
             p_corr.data = self.poisson_solver.solve(
                 initial_solution=np.zeros_like(pressure.data), rhs=rhs, dx=velocity.dx
             )
+
+            # 圧力補正の反復回数を記録
             self._pressure_iterations = self.poisson_solver.iteration_count
 
-        except RuntimeError as e:
-            # ソルバーが収束しない場合の処理
-            self.logger.warning(f"圧力ソルバーが収束しませんでした: {str(e)}")
-            self._pressure_iterations = self.params.pressure_iterations
+            return p_corr
 
-        return p_corr
+        except Exception as e:
+            # エラーログの出力
+            if self.logger:
+                self.logger.warning(f"圧力補正ステップでエラーが発生: {str(e)}")
+
+            # デフォルトの圧力補正を返す
+            p_corr = ScalarField(pressure.shape, pressure.dx)
+            p_corr.data = np.zeros_like(pressure.data)
+            return p_corr
 
     def _corrector_step(
         self,
@@ -266,10 +305,28 @@ class NavierStokesSolver(TemporalSolver):
         """修正子ステップ
 
         圧力勾配に基づいて速度場を補正します。
+
+        Args:
+            dt: 時間刻み幅
+            velocity: 予測速度場
+            pressure_correction: 圧力補正場
+            **kwargs: 追加のパラメータ
+
+        Returns:
+            補正された速度場
         """
         return self.pressure.compute_correction(
             velocity, pressure_correction, dt, **kwargs
         )
+
+    def _get_pressure_boundary_conditions(self):
+        """圧力場の境界条件を取得
+
+        Returns:
+            圧力場の境界条件
+        """
+        # デフォルトはすべての境界でノイマン条件
+        return None
 
     def _collect_diagnostics(
         self,
@@ -279,7 +336,19 @@ class NavierStokesSolver(TemporalSolver):
         divergence: ScalarField,
         **kwargs,
     ) -> Dict[str, Any]:
-        """診断情報の収集"""
+        """診断情報の収集
+
+        Args:
+            velocity: 速度場
+            pressure: 圧力場
+            levelset: Level Set場
+            divergence: 速度発散場
+            **kwargs: 追加のパラメータ
+
+        Returns:
+            診断情報の辞書
+        """
+        # 診断情報の収集
         diag = {
             "max_velocity": max(np.max(np.abs(v.data)) for v in velocity.components),
             "max_pressure": np.max(np.abs(pressure.data)),
@@ -303,8 +372,3 @@ class NavierStokesSolver(TemporalSolver):
         )
 
         return diag
-
-    def _get_pressure_boundary_conditions(self):
-        """圧力場の境界条件を取得"""
-        # デフォルトはすべての境界でノイマン条件
-        return None
