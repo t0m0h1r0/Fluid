@@ -36,12 +36,12 @@ initial_conditions:
   # 初期界面の形状と配置
   background:
     phase: water  # 背景相を水に
-    height_fraction: 0.75  # 領域の下3/4を水で満たす
+    height_fraction: 0.80  # 領域の下80%を水で満たす
   
   objects:
     - type: sphere  # 窒素球
       phase: nitrogen
-      center: [0.5, 0.5, 0.5]  # 中心座標 [x, y, z]
+      center: [0.5, 0.5, 0.4]  # 中心座標 [x, y, z]
       radius: 0.2  # 半径
 
   # 初期速度場
