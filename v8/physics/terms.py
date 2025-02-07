@@ -10,15 +10,48 @@ class Term(ABC):
     @abstractmethod
     def compute(self, velocity: VectorField, **kwargs) -> List[np.ndarray]:
         """項の計算
-        
         Args:
             velocity: 速度場
             **kwargs: 追加のパラメータ
-            
         Returns:
             各方向の項の値
         """
         pass
+
+    def _safe_gradient(self, data: np.ndarray, dx: float, axis: int) -> np.ndarray:
+        """安全な勾配計算（境界を適切に処理）"""
+        grad = np.zeros_like(data)
+        
+        # 内部領域（中心差分）
+        slices_inner = [slice(1, -1) if i == axis else slice(None) 
+                       for i in range(data.ndim)]
+        grad[tuple(slices_inner)] = (
+            data[tuple(slice(2, None) if i == axis else slice(None) 
+                      for i in range(data.ndim))] -
+            data[tuple(slice(0, -2) if i == axis else slice(None) 
+                      for i in range(data.ndim))]
+        ) / (2.0 * dx)
+        
+        # 境界（片側差分）
+        # 左境界
+        slices_left = [slice(0, 1) if i == axis else slice(None) 
+                      for i in range(data.ndim)]
+        grad[tuple(slices_left)] = (
+            data[tuple(slice(1, 2) if i == axis else slice(None) 
+                      for i in range(data.ndim))] -
+            data[tuple(slices_left)]
+        ) / dx
+        
+        # 右境界
+        slices_right = [slice(-1, None) if i == axis else slice(None) 
+                       for i in range(data.ndim)]
+        grad[tuple(slices_right)] = (
+            data[tuple(slices_right)] -
+            data[tuple(slice(-2, -1) if i == axis else slice(None) 
+                      for i in range(data.ndim))]
+        ) / dx
+        
+        return grad
 
 class ConvectionTerm(Term):
     """移流項"""
@@ -39,54 +72,46 @@ class ConvectionTerm(Term):
     def _compute_standard_safe(self, velocity: VectorField) -> List[np.ndarray]:
         """標準的な中心差分による移流項の計算（安全版）"""
         result = []
+        dx = velocity.dx
+        
         for i in range(len(velocity.components)):
             conv = np.zeros_like(velocity.components[i].data)
             
-            # 内部領域のみで計算
-            for j in range(1, velocity.shape[0]-1):
-                for k in range(1, velocity.shape[1]-1):
-                    for l in range(1, velocity.shape[2]-1):
-                        for m in range(len(velocity.components)):
-                            # 中心差分での勾配計算
-                            if m == 0:
-                                grad = (velocity.components[i].data[j+1,k,l] - 
-                                      velocity.components[i].data[j-1,k,l]) / (2.0 * velocity.dx)
-                            elif m == 1:
-                                grad = (velocity.components[i].data[j,k+1,l] - 
-                                      velocity.components[i].data[j,k-1,l]) / (2.0 * velocity.dx)
-                            else:
-                                grad = (velocity.components[i].data[j,k,l+1] - 
-                                      velocity.components[i].data[j,k,l-1]) / (2.0 * velocity.dx)
-                            
-                            conv[j,k,l] -= velocity.components[m].data[j,k,l] * grad
+            for j in range(len(velocity.components)):
+                grad = self._safe_gradient(velocity.components[i].data, dx, j)
+                conv -= velocity.components[j].data * grad
             
             result.append(conv)
+        
         return result
     
     def _compute_weno_safe(self, velocity: VectorField) -> List[np.ndarray]:
         """WENO法による移流項の計算（安全版）"""
         result = []
+        dx = velocity.dx
+        
         for i in range(len(velocity.components)):
             conv = np.zeros_like(velocity.components[i].data)
             
-            # 内部領域のみで計算
-            for j in range(2, velocity.shape[0]-2):
-                for k in range(2, velocity.shape[1]-2):
-                    for l in range(2, velocity.shape[2]-2):
-                        for m in range(len(velocity.components)):
-                            v = velocity.components[m].data[j,k,l]
-                            
+            for j in range(len(velocity.components)):
+                # 内部領域のみでWENOを使用
+                for k in range(2, velocity.shape[0]-2):
+                    for l in range(2, velocity.shape[1]-2):
+                        for m in range(2, velocity.shape[2]-2):
+                            v = velocity.components[j].data[k,l,m]
+                            if abs(v) < 1e-10:
+                                continue
+                                
                             # 方向に応じたステンシルの選択
-                            if m == 0:
-                                stencil = velocity.components[i].data[j-2:j+3,k,l]
-                            elif m == 1:
-                                stencil = velocity.components[i].data[j,k-2:k+3,l]
-                            else:
-                                stencil = velocity.components[i].data[j,k,l-2:l+3]
+                            if j == 0:
+                                stencil = velocity.components[i].data[k-2:k+3,l,m]
+                            elif j == 1:
+                                stencil = velocity.components[i].data[k,l-2:l+3,m]
+                            else:  # j == 2
+                                stencil = velocity.components[i].data[k,l,m-2:m+3]
                             
                             # WENO5による勾配計算
-                            flux = self._weno5_flux(stencil, v > 0)
-                            conv[j,k,l] -= v * flux / velocity.dx
+                            conv[k,l,m] -= v * self._weno5_flux(stencil, v > 0) / dx
             
             result.append(conv)
         return result
@@ -125,6 +150,7 @@ class DiffusionTerm(Term):
     """粘性項"""
     
     def compute(self, velocity: VectorField, **kwargs) -> List[np.ndarray]:
+        """粘性項の計算（境界を適切に処理）"""
         viscosity = kwargs.get('viscosity', None)
         density = kwargs.get('density', None)
         
@@ -132,27 +158,18 @@ class DiffusionTerm(Term):
             raise ValueError("粘性係数と密度が必要です")
         
         result = []
+        dx = velocity.dx
+        
         for i in range(len(velocity.components)):
-            # 内部領域でのラプラシアンの計算
+            # ラプラシアンの計算
             diff = np.zeros_like(velocity.components[i].data)
-            
-            for j in range(1, velocity.shape[0]-1):
-                for k in range(1, velocity.shape[1]-1):
-                    for l in range(1, velocity.shape[2]-1):
-                        # 6点ステンシルによるラプラシアン
-                        diff[j,k,l] = (
-                            velocity.components[i].data[j+1,k,l] +
-                            velocity.components[i].data[j-1,k,l] +
-                            velocity.components[i].data[j,k+1,l] +
-                            velocity.components[i].data[j,k-1,l] +
-                            velocity.components[i].data[j,k,l+1] +
-                            velocity.components[i].data[j,k,l-1] -
-                            6 * velocity.components[i].data[j,k,l]
-                        ) / (velocity.dx**2)
+            for j in range(velocity.components[i].data.ndim):
+                grad = self._safe_gradient(velocity.components[i].data, dx, j)
+                diff += self._safe_gradient(grad, dx, j)
             
             # 密度で割って加速度に変換
             result.append(viscosity * diff / density)
-            
+        
         return result
 
 class PressureTerm(Term):
@@ -167,24 +184,11 @@ class PressureTerm(Term):
         
         result = []
         for i in range(len(velocity.components)):
-            # 内部領域での圧力勾配の計算
-            grad_p = np.zeros_like(velocity.components[i].data)
-            
-            for j in range(1, velocity.shape[0]-1):
-                for k in range(1, velocity.shape[1]-1):
-                    for l in range(1, velocity.shape[2]-1):
-                        if i == 0:
-                            grad_p[j,k,l] = (pressure[j+1,k,l] - pressure[j-1,k,l])
-                        elif i == 1:
-                            grad_p[j,k,l] = (pressure[j,k+1,l] - pressure[j,k-1,l])
-                        else:  # i == 2
-                            grad_p[j,k,l] = (pressure[j,k,l+1] - pressure[j,k,l-1])
-            
-            grad_p /= (2.0 * velocity.dx)
-            
+            # 圧力勾配の計算
+            grad_p = self._safe_gradient(pressure, velocity.dx, i)
             # 密度で割って加速度に変換
             result.append(-grad_p / density)
-            
+        
         return result
 
 class ExternalForcesTerm(Term):
@@ -201,10 +205,7 @@ class ExternalForcesTerm(Term):
             raise ValueError("密度が必要です")
         
         # 結果配列の初期化
-        result = [
-            np.zeros_like(velocity.components[i].data)
-            for i in range(len(velocity.components))
-        ]
+        result = [np.zeros_like(comp.data) for comp in velocity.components]
         
         # 重力の追加（z方向）
         result[-1] = -self.gravity * np.ones_like(velocity.components[-1].data)
