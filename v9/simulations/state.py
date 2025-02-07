@@ -21,7 +21,7 @@ class SimulationState:
         """初期化後の処理"""
         # components属性を追加
         self.components = self.velocity.components
-        
+
         # dx属性を追加（velocityのdxを使用）
         self.dx = self.velocity.dx
 
@@ -33,10 +33,10 @@ class SimulationState:
         """
         for key, value in kwargs.items():
             setattr(self, key, value)
-        
+
         # components属性を再設定
         self.components = self.velocity.components
-        
+
         # dx属性を更新
         self.dx = self.velocity.dx
 
@@ -50,10 +50,10 @@ class SimulationState:
             velocity=self.velocity.copy(),
             pressure=self.pressure.copy(),
             levelset=self.levelset.copy(),
-            properties=self.properties
+            properties=self.properties,
         )
-        
+
         # コピーした際にdx属性も正しく設定
         new_state.dx = self.dx
-        
+
         return new_state

@@ -46,43 +46,60 @@ class ScalarVisualizer(BaseVisualizer):
         slice_index = kwargs.get("slice_index", None)
         data_2d = prepare_2d_slice(data, slice_axis, slice_index)
 
+        # データの前処理: NaNとInfを除去
+        data_2d = np.nan_to_num(data_2d, nan=0.0, posinf=0.0, neginf=0.0)
+
         # 図とAxesを作成
         fig, ax = self.create_figure()
 
         # カラーマップと色範囲の設定
         symmetric = kwargs.get("symmetric", name in ["pressure", "vorticity"])
-        vmin, vmax = compute_data_range(data_2d, symmetric)
 
-        # カラーマップを決定
-        colormap = kwargs.get("colormap", self.config.colormap)
-        cmap = cm.get_cmap(colormap)
+        # データに有効な範囲があるか確認
+        finite_data = data_2d[np.isfinite(data_2d)]
+        if len(finite_data) == 0:
+            # データが全て非有効な場合は単色の画像を生成
+            im = ax.imshow(np.zeros_like(data_2d), cmap="gray")
+            ax.set_title(f"{name} (t = {timestamp:.3f}s) - No Valid Data")
+        else:
+            # データの範囲を計算
+            vmin, vmax = compute_data_range(finite_data, symmetric)
 
-        # 画像のプロット
-        interpolation = self.config.scalar_plot.get("interpolation", "nearest")
-        im = ax.imshow(
-            data_2d.T,
-            origin="lower",
-            cmap=cmap,
-            norm=Normalize(vmin=vmin, vmax=vmax),
-            interpolation=interpolation,
-        )
+            # カラーマップを決定
+            colormap = kwargs.get("colormap", self.config.colormap)
+            cmap = cm.get_cmap(colormap)
 
-        # 等高線の追加（オプション）
-        contour = kwargs.get("contour", self.config.scalar_plot.get("contour", False))
-        if contour:
-            # 等高線レベルを安全に生成
-            n_levels = 10
-            if vmin != vmax:
-                levels = np.linspace(vmin, vmax, n_levels)
-                cs = ax.contour(data_2d.T, levels=levels, colors="k", alpha=0.5)
-                ax.clabel(cs, inline=True, fontsize=8)
+            # 画像のプロット
+            interpolation = self.config.scalar_plot.get("interpolation", "nearest")
+            im = ax.imshow(
+                data_2d.T,
+                origin="lower",
+                cmap=cmap,
+                norm=Normalize(vmin=vmin, vmax=vmax),
+                interpolation=interpolation,
+            )
 
-        # カラーバーの追加
-        if self.config.show_colorbar:
-            plt.colorbar(im, ax=ax, label=name)
+            # 等高線の追加（オプション）
+            contour = kwargs.get(
+                "contour", self.config.scalar_plot.get("contour", False)
+            )
+            if contour:
+                # 等高線レベルを安全に生成
+                n_levels = 10
+                if vmin != vmax:
+                    levels = np.linspace(vmin, vmax, n_levels)
+                    try:
+                        cs = ax.contour(data_2d.T, levels=levels, colors="k", alpha=0.5)
+                        ax.clabel(cs, inline=True, fontsize=8)
+                    except Exception as e:
+                        print(f"等高線描画エラー: {e}")
 
-        # タイトルの設定
-        ax.set_title(f"{name} (t = {timestamp:.3f}s)")
+            # カラーバーの追加
+            if self.config.show_colorbar:
+                plt.colorbar(im, ax=ax, label=name)
+
+            # タイトルの設定
+            ax.set_title(f"{name} (t = {timestamp:.3f}s)")
 
         # 図を保存
         return self.save_figure(fig, name, timestamp)
