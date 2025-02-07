@@ -70,9 +70,12 @@ class ScalarVisualizer(BaseVisualizer):
         # 等高線の追加（オプション）
         contour = kwargs.get("contour", self.config.scalar_plot.get("contour", False))
         if contour:
-            levels = np.linspace(vmin, vmax, 10)
-            cs = ax.contour(data_2d.T, levels=levels, colors="k", alpha=0.5)
-            ax.clabel(cs, inline=True, fontsize=8)
+            # 等高線レベルを安全に生成
+            n_levels = 10
+            if vmin != vmax:
+                levels = np.linspace(vmin, vmax, n_levels)
+                cs = ax.contour(data_2d.T, levels=levels, colors="k", alpha=0.5)
+                ax.clabel(cs, inline=True, fontsize=8)
 
         # カラーバーの追加
         if self.config.show_colorbar:
