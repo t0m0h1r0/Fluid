@@ -8,6 +8,7 @@ from .scalar import ScalarVisualizer
 from .vector import VectorVisualizer
 from .interface import InterfaceVisualizer
 from .combined import CombinedVisualizer
+from .state import StateVisualizer  # 追加
 
 
 class Visualizer2D:
@@ -76,4 +77,9 @@ def create_visualizer(config_path=None):
 
 
 # エクスポートする公開インターフェース
-__all__ = ["Visualizer2D", "VisualizationConfig", "create_visualizer"]
+__all__ = [
+    "Visualizer2D",
+    "VisualizationConfig",
+    "create_visualizer",
+    "StateVisualizer",  # 追加
+]
