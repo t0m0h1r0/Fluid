@@ -136,3 +136,274 @@ Traceback (most recent call last):
     return compute_volume(self._data, self.dx, self.params.epsilon)
                                                ^^^^^^^^^^^
 AttributeError: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:19:22.151 - TwoPhaseFlow - INFO - [logger.py:69] - ロギングシステムを初期化: TwoPhaseFlow
+2025-02-07 20:19:22.152 - TwoPhaseFlow - INFO - [logger.py:69] - Starting new simulation
+2025-02-07 20:19:22.152 - TwoPhaseFlow.init - INFO - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:19:22.152 - TwoPhaseFlow.init - [32mINFO[0m - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:19:22.152 - TwoPhaseFlow.init - ERROR - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'AttributeError', 'error_msg': "'LevelSetField' object has no attribute 'params'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state
+    levelset = self._create_levelset_field()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field
+    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__
+    super().__init__(shape, dx)
+  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__
+    self._initial_integral = self.integrate()
+                             ^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate
+    return self.compute_volume()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume
+    return compute_volume(self._data, self.dx, self.params.epsilon)
+                                               ^^^^^^^^^^^
+AttributeError: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:19:22.152 - TwoPhaseFlow.init - [31mERROR[0m - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'AttributeError', 'error_msg': "'LevelSetField' object has no attribute 'params'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state
+    levelset = self._create_levelset_field()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field
+    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__
+    super().__init__(shape, dx)
+  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__
+    self._initial_integral = self.integrate()
+                             ^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate
+    return self.compute_volume()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume
+    return compute_volume(self._data, self.dx, self.params.epsilon)
+                                               ^^^^^^^^^^^
+AttributeError: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:19:22.153 - TwoPhaseFlow.monitor - ERROR - [logger.py:77] - Simulation terminated with error: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:19:22.153 - TwoPhaseFlow.monitor - [31mERROR[0m - [logger.py:77] - Simulation terminated with error: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:19:22.154 - TwoPhaseFlow - ERROR - [logger.py:108] - Error occurred: {'message': 'Error during simulation', 'error_type': 'AttributeError', 'error_msg': "'LevelSetField' object has no attribute 'params'", 'context': {'traceback': 'Traceback (most recent call last):\n  File "/root/Fluid/v9/main.py", line 79, in main\n    state = initializer.create_initial_state()\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state\n    levelset = self._create_levelset_field()\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field\n    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__\n    super().__init__(shape, dx)\n  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__\n    self._initial_integral = self.integrate()\n                             ^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate\n    return self.compute_volume()\n           ^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume\n    return compute_volume(self._data, self.dx, self.params.epsilon)\n                                               ^^^^^^^^^^^\nAttributeError: \'LevelSetField\' object has no attribute \'params\'\n'}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/main.py", line 79, in main
+    state = initializer.create_initial_state()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state
+    levelset = self._create_levelset_field()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field
+    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__
+    super().__init__(shape, dx)
+  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__
+    self._initial_integral = self.integrate()
+                             ^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate
+    return self.compute_volume()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume
+    return compute_volume(self._data, self.dx, self.params.epsilon)
+                                               ^^^^^^^^^^^
+AttributeError: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:19:46.992 - TwoPhaseFlow - INFO - [logger.py:69] - ロギングシステムを初期化: TwoPhaseFlow
+2025-02-07 20:19:46.992 - TwoPhaseFlow - INFO - [logger.py:69] - Starting new simulation
+2025-02-07 20:19:46.992 - TwoPhaseFlow.init - INFO - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:19:46.992 - TwoPhaseFlow.init - [32mINFO[0m - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:19:46.993 - TwoPhaseFlow.init - ERROR - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'AttributeError', 'error_msg': "'LevelSetField' object has no attribute 'params'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state
+    levelset = self._create_levelset_field()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field
+    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__
+    super().__init__(shape, dx)
+  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__
+    self._initial_integral = self.integrate()
+                             ^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate
+    return self.compute_volume()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume
+    return compute_volume(self._data, self.dx, self.params.epsilon)
+                                               ^^^^^^^^^^^
+AttributeError: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:19:46.993 - TwoPhaseFlow.init - [31mERROR[0m - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'AttributeError', 'error_msg': "'LevelSetField' object has no attribute 'params'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state
+    levelset = self._create_levelset_field()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field
+    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__
+    super().__init__(shape, dx)
+  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__
+    self._initial_integral = self.integrate()
+                             ^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate
+    return self.compute_volume()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume
+    return compute_volume(self._data, self.dx, self.params.epsilon)
+                                               ^^^^^^^^^^^
+AttributeError: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:19:46.994 - TwoPhaseFlow.monitor - ERROR - [logger.py:77] - Simulation terminated with error: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:19:46.994 - TwoPhaseFlow.monitor - [31mERROR[0m - [logger.py:77] - Simulation terminated with error: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:19:46.994 - TwoPhaseFlow - ERROR - [logger.py:108] - Error occurred: {'message': 'Error during simulation', 'error_type': 'AttributeError', 'error_msg': "'LevelSetField' object has no attribute 'params'", 'context': {'traceback': 'Traceback (most recent call last):\n  File "/root/Fluid/v9/main.py", line 79, in main\n    state = initializer.create_initial_state()\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state\n    levelset = self._create_levelset_field()\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field\n    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__\n    super().__init__(shape, dx)\n  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__\n    self._initial_integral = self.integrate()\n                             ^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate\n    return self.compute_volume()\n           ^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume\n    return compute_volume(self._data, self.dx, self.params.epsilon)\n                                               ^^^^^^^^^^^\nAttributeError: \'LevelSetField\' object has no attribute \'params\'\n'}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/main.py", line 79, in main
+    state = initializer.create_initial_state()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 56, in create_initial_state
+    levelset = self._create_levelset_field()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 103, in _create_levelset_field
+    levelset = LevelSetField(self.dimensions, self.dx, self.ls_params)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 56, in __init__
+    super().__init__(shape, dx)
+  File "/root/Fluid/v9/core/field/conserved.py", line 29, in __init__
+    self._initial_integral = self.integrate()
+                             ^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 113, in integrate
+    return self.compute_volume()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/physics/levelset/field.py", line 75, in compute_volume
+    return compute_volume(self._data, self.dx, self.params.epsilon)
+                                               ^^^^^^^^^^^
+AttributeError: 'LevelSetField' object has no attribute 'params'
+2025-02-07 20:21:38.306 - TwoPhaseFlow - INFO - [logger.py:69] - ロギングシステムを初期化: TwoPhaseFlow
+2025-02-07 20:21:38.306 - TwoPhaseFlow - INFO - [logger.py:69] - Starting new simulation
+2025-02-07 20:21:38.306 - TwoPhaseFlow.init - INFO - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:21:38.306 - TwoPhaseFlow.init - [32mINFO[0m - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:21:38.478 - TwoPhaseFlow.init - ERROR - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'TypeError', 'error_msg': "bad operand type for abs(): 'ScalarField'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 68, in create_initial_state
+    state.update_statistics()
+  File "/root/Fluid/v9/simulations/state.py", line 132, in update_statistics
+    self.statistics["max_divergence"] = np.max(np.abs(div))
+                                               ^^^^^^^^^^^
+TypeError: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:38.478 - TwoPhaseFlow.init - [31mERROR[0m - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'TypeError', 'error_msg': "bad operand type for abs(): 'ScalarField'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 68, in create_initial_state
+    state.update_statistics()
+  File "/root/Fluid/v9/simulations/state.py", line 132, in update_statistics
+    self.statistics["max_divergence"] = np.max(np.abs(div))
+                                               ^^^^^^^^^^^
+TypeError: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:38.479 - TwoPhaseFlow.monitor - ERROR - [logger.py:77] - Simulation terminated with error: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:38.479 - TwoPhaseFlow.monitor - [31mERROR[0m - [logger.py:77] - Simulation terminated with error: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:38.479 - TwoPhaseFlow - ERROR - [logger.py:108] - Error occurred: {'message': 'Error during simulation', 'error_type': 'TypeError', 'error_msg': "bad operand type for abs(): 'ScalarField'", 'context': {'traceback': 'Traceback (most recent call last):\n  File "/root/Fluid/v9/main.py", line 79, in main\n    state = initializer.create_initial_state()\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/initializer.py", line 68, in create_initial_state\n    state.update_statistics()\n  File "/root/Fluid/v9/simulations/state.py", line 132, in update_statistics\n    self.statistics["max_divergence"] = np.max(np.abs(div))\n                                               ^^^^^^^^^^^\nTypeError: bad operand type for abs(): \'ScalarField\'\n'}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/main.py", line 79, in main
+    state = initializer.create_initial_state()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 68, in create_initial_state
+    state.update_statistics()
+  File "/root/Fluid/v9/simulations/state.py", line 132, in update_statistics
+    self.statistics["max_divergence"] = np.max(np.abs(div))
+                                               ^^^^^^^^^^^
+TypeError: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:46.255 - TwoPhaseFlow - INFO - [logger.py:69] - ロギングシステムを初期化: TwoPhaseFlow
+2025-02-07 20:21:46.255 - TwoPhaseFlow - INFO - [logger.py:69] - Starting new simulation
+2025-02-07 20:21:46.255 - TwoPhaseFlow.init - INFO - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:21:46.255 - TwoPhaseFlow.init - [32mINFO[0m - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:21:46.410 - TwoPhaseFlow.init - ERROR - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'TypeError', 'error_msg': "bad operand type for abs(): 'ScalarField'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 68, in create_initial_state
+    state.update_statistics()
+  File "/root/Fluid/v9/simulations/state.py", line 132, in update_statistics
+    self.statistics["max_divergence"] = np.max(np.abs(div))
+                                               ^^^^^^^^^^^
+TypeError: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:46.410 - TwoPhaseFlow.init - [31mERROR[0m - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'TypeError', 'error_msg': "bad operand type for abs(): 'ScalarField'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 68, in create_initial_state
+    state.update_statistics()
+  File "/root/Fluid/v9/simulations/state.py", line 132, in update_statistics
+    self.statistics["max_divergence"] = np.max(np.abs(div))
+                                               ^^^^^^^^^^^
+TypeError: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:46.411 - TwoPhaseFlow.monitor - ERROR - [logger.py:77] - Simulation terminated with error: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:46.411 - TwoPhaseFlow.monitor - [31mERROR[0m - [logger.py:77] - Simulation terminated with error: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:46.411 - TwoPhaseFlow - ERROR - [logger.py:108] - Error occurred: {'message': 'Error during simulation', 'error_type': 'TypeError', 'error_msg': "bad operand type for abs(): 'ScalarField'", 'context': {'traceback': 'Traceback (most recent call last):\n  File "/root/Fluid/v9/main.py", line 79, in main\n    state = initializer.create_initial_state()\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/initializer.py", line 68, in create_initial_state\n    state.update_statistics()\n  File "/root/Fluid/v9/simulations/state.py", line 132, in update_statistics\n    self.statistics["max_divergence"] = np.max(np.abs(div))\n                                               ^^^^^^^^^^^\nTypeError: bad operand type for abs(): \'ScalarField\'\n'}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/main.py", line 79, in main
+    state = initializer.create_initial_state()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 68, in create_initial_state
+    state.update_statistics()
+  File "/root/Fluid/v9/simulations/state.py", line 132, in update_statistics
+    self.statistics["max_divergence"] = np.max(np.abs(div))
+                                               ^^^^^^^^^^^
+TypeError: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:59.330 - TwoPhaseFlow - INFO - [logger.py:69] - ロギングシステムを初期化: TwoPhaseFlow
+2025-02-07 20:21:59.330 - TwoPhaseFlow - INFO - [logger.py:69] - Starting new simulation
+2025-02-07 20:21:59.330 - TwoPhaseFlow.init - INFO - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:21:59.330 - TwoPhaseFlow.init - [32mINFO[0m - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:21:59.492 - TwoPhaseFlow.init - ERROR - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'TypeError', 'error_msg': "bad operand type for abs(): 'ScalarField'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 68, in create_initial_state
+    state.update_statistics()
+  File "/root/Fluid/v9/simulations/state.py", line 132, in update_statistics
+    self.statistics["max_divergence"] = np.max(np.abs(div))
+                                               ^^^^^^^^^^^
+TypeError: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:59.492 - TwoPhaseFlow.init - [31mERROR[0m - [logger.py:108] - Error occurred: {'message': '初期状態の生成中にエラーが発生', 'error_type': 'TypeError', 'error_msg': "bad operand type for abs(): 'ScalarField'", 'context': {'dimensions': [128, 128, 128], 'dx': 0.0078125}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/simulations/initializer.py", line 68, in create_initial_state
+    state.update_statistics()
+  File "/root/Fluid/v9/simulations/state.py", line 132, in update_statistics
+    self.statistics["max_divergence"] = np.max(np.abs(div))
+                                               ^^^^^^^^^^^
+TypeError: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:59.493 - TwoPhaseFlow.monitor - ERROR - [logger.py:77] - Simulation terminated with error: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:59.493 - TwoPhaseFlow.monitor - [31mERROR[0m - [logger.py:77] - Simulation terminated with error: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:21:59.493 - TwoPhaseFlow - ERROR - [logger.py:108] - Error occurred: {'message': 'Error during simulation', 'error_type': 'TypeError', 'error_msg': "bad operand type for abs(): 'ScalarField'", 'context': {'traceback': 'Traceback (most recent call last):\n  File "/root/Fluid/v9/main.py", line 79, in main\n    state = initializer.create_initial_state()\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/initializer.py", line 68, in create_initial_state\n    state.update_statistics()\n  File "/root/Fluid/v9/simulations/state.py", line 132, in update_statistics\n    self.statistics["max_divergence"] = np.max(np.abs(div))\n                                               ^^^^^^^^^^^\nTypeError: bad operand type for abs(): \'ScalarField\'\n'}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/main.py", line 79, in main
+    state = initializer.create_initial_state()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/initializer.py", line 68, in create_initial_state
+    state.update_statistics()
+  File "/root/Fluid/v9/simulations/state.py", line 132, in update_statistics
+    self.statistics["max_divergence"] = np.max(np.abs(div))
+                                               ^^^^^^^^^^^
+TypeError: bad operand type for abs(): 'ScalarField'
+2025-02-07 20:23:30.633 - TwoPhaseFlow - INFO - [logger.py:69] - ロギングシステムを初期化: TwoPhaseFlow
+2025-02-07 20:23:30.634 - TwoPhaseFlow - INFO - [logger.py:69] - Starting new simulation
+2025-02-07 20:23:30.634 - TwoPhaseFlow.init - INFO - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:23:30.634 - TwoPhaseFlow.init - [32mINFO[0m - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:23:30.794 - TwoPhaseFlow.init - INFO - [logger.py:69] - 初期状態の生成完了
+2025-02-07 20:23:30.794 - TwoPhaseFlow.init - [32mINFO[0m - [logger.py:69] - 初期状態の生成完了
+2025-02-07 20:23:30.795 - TwoPhaseFlow.monitor - ERROR - [logger.py:77] - Simulation terminated with error: NavierStokesSolver.__init__() got an unexpected keyword argument 'poisson_solver_params'
+2025-02-07 20:23:30.795 - TwoPhaseFlow.monitor - [31mERROR[0m - [logger.py:77] - Simulation terminated with error: NavierStokesSolver.__init__() got an unexpected keyword argument 'poisson_solver_params'
+2025-02-07 20:23:30.795 - TwoPhaseFlow - ERROR - [logger.py:108] - Error occurred: {'message': 'Error during simulation', 'error_type': 'TypeError', 'error_msg': "NavierStokesSolver.__init__() got an unexpected keyword argument 'poisson_solver_params'", 'context': {'traceback': 'Traceback (most recent call last):\n  File "/root/Fluid/v9/main.py", line 80, in main\n    runner = SimulationRunner(config, logger, monitor)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/runner.py", line 41, in __init__\n    self.ns_solver = NavierStokesSolver(\n                     ^^^^^^^^^^^^^^^^^^^\nTypeError: NavierStokesSolver.__init__() got an unexpected keyword argument \'poisson_solver_params\'\n'}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/main.py", line 80, in main
+    runner = SimulationRunner(config, logger, monitor)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/runner.py", line 41, in __init__
+    self.ns_solver = NavierStokesSolver(
+                     ^^^^^^^^^^^^^^^^^^^
+TypeError: NavierStokesSolver.__init__() got an unexpected keyword argument 'poisson_solver_params'
+2025-02-07 20:37:19.334 - TwoPhaseFlow - INFO - [logger.py:69] - ロギングシステムを初期化: TwoPhaseFlow
+2025-02-07 20:37:19.334 - TwoPhaseFlow - INFO - [logger.py:69] - Starting new simulation
+2025-02-07 20:37:19.334 - TwoPhaseFlow.init - INFO - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:37:19.334 - TwoPhaseFlow.init - [32mINFO[0m - [logger.py:69] - 初期状態を生成中...
+2025-02-07 20:37:19.494 - TwoPhaseFlow.init - INFO - [logger.py:69] - 初期状態の生成完了
+2025-02-07 20:37:19.494 - TwoPhaseFlow.init - [32mINFO[0m - [logger.py:69] - 初期状態の生成完了
+2025-02-07 20:37:19.494 - TwoPhaseFlow.monitor - ERROR - [logger.py:77] - Simulation terminated with error: Can't instantiate abstract class SORSolver without an implementation for abstract method 'initialize'
+2025-02-07 20:37:19.494 - TwoPhaseFlow.monitor - [31mERROR[0m - [logger.py:77] - Simulation terminated with error: Can't instantiate abstract class SORSolver without an implementation for abstract method 'initialize'
+2025-02-07 20:37:19.495 - TwoPhaseFlow - ERROR - [logger.py:108] - Error occurred: {'message': 'Error during simulation', 'error_type': 'TypeError', 'error_msg': "Can't instantiate abstract class SORSolver without an implementation for abstract method 'initialize'", 'context': {'traceback': 'Traceback (most recent call last):\n  File "/root/Fluid/v9/main.py", line 80, in main\n    runner = SimulationRunner(config, logger, monitor)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File "/root/Fluid/v9/simulations/runner.py", line 39, in __init__\n    poisson_solver = SORSolver(\n                     ^^^^^^^^^^\nTypeError: Can\'t instantiate abstract class SORSolver without an implementation for abstract method \'initialize\'\n'}}
+Traceback (most recent call last):
+  File "/root/Fluid/v9/main.py", line 80, in main
+    runner = SimulationRunner(config, logger, monitor)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/Fluid/v9/simulations/runner.py", line 39, in __init__
+    poisson_solver = SORSolver(
+                     ^^^^^^^^^^
+TypeError: Can't instantiate abstract class SORSolver without an implementation for abstract method 'initialize'
