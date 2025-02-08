@@ -11,8 +11,7 @@ import yaml
 import traceback
 
 from logger import SimulationLogger, LogConfig
-from simulations import SimulationInitializer, SimulationRunner, SimulationMonitor
-from visualization import StateVisualizer
+from simulations import SimulationManager
 
 
 def parse_args():
@@ -58,10 +57,10 @@ def setup_logging(config: dict, debug: bool = False) -> SimulationLogger:
         設定されたロガー
     """
     # ログレベルの設定
-    log_level = "debug" if debug else config.get("logging", {}).get("level", "info")
+    log_level = "debug" if debug else config.get("debug", {}).get("level", "info")
 
     # 出力ディレクトリの設定
-    log_dir = Path(config.get("visualization", {}).get("output_dir", "results/logs"))
+    log_dir = Path(config.get("visualization", {}).get("output_dir", "results"))
     log_dir.mkdir(parents=True, exist_ok=True)
 
     # ログ設定の作成
@@ -84,68 +83,21 @@ def main():
 
         # ロギングの設定
         logger = setup_logging(config, args.debug)
-        logger.start_section("main")
 
-        try:
-            # 出力ディレクトリの準備
-            output_dir = Path(
-                config.get("visualization", {}).get(
-                    "output_dir", "results/visualization"
-                )
-            )
-            output_dir.mkdir(parents=True, exist_ok=True)
+        # シミュレーション管理クラスの初期化
+        manager = SimulationManager(config, logger)
 
-            # シミュレーション監視の初期化
-            with SimulationMonitor(config, logger) as monitor:
-                # チェックポイントからの再開または新規シミュレーション
-                if args.checkpoint:
-                    # チェックポイントから再開
-                    logger.info(f"チェックポイントから再開: {args.checkpoint}")
-                    runner, state = SimulationRunner.from_checkpoint(
-                        Path(args.checkpoint), config, logger
-                    )
-                else:
-                    # 新規シミュレーション
-                    logger.info("新規シミュレーションを開始")
+        # シミュレーションの実行
+        checkpoint = Path(args.checkpoint) if args.checkpoint else None
+        exit_code = manager.run_simulation(checkpoint)
 
-                    # 初期状態の生成
-                    initializer = SimulationInitializer(config, logger)
-                    state = initializer.create_initial_state()
+        # シミュレーション終了時の処理
+        manager.cleanup()
 
-                    # シミュレーションランナーの初期化
-                    runner = SimulationRunner(config, logger, monitor)
-
-                # 初期状態の可視化
-                visualizer = StateVisualizer(config, logger)
-                visualizer.visualize(state)
-
-                # シミュレーション実行
-                final_state = runner.run(state, output_dir)
-
-                # 最終状態の可視化
-                visualizer.visualize(final_state)
-
-                # 結果の解析とレポート生成
-                monitor.plot_history(output_dir)
-                monitor.generate_report(output_dir)
-
-                # シミュレーションの概要を取得
-                summary = monitor.get_summary()
-                logger.info("シミュレーションが正常に完了しました")
-                logger.info(f"概要: {summary}")
-
-                return 0
-
-        except Exception as e:
-            logger.log_error_with_context(
-                "シミュレーション中にエラーが発生",
-                e,
-                {"traceback": traceback.format_exc()},
-            )
-            return 1
+        return exit_code
 
     except Exception as e:
-        print(f"シミュレーションの初期化に失敗: {e}", file=sys.stderr)
+        print(f"シミュレーションの実行中にエラーが発生: {e}", file=sys.stderr)
         traceback.print_exc()
         return 1
 
