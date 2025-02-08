@@ -31,6 +31,9 @@ class SimulationState:
         # Level Set場の初期化
         self.levelset = LevelSetField(shape, dx)
 
+        # 物性値マネージャーは後で設定される
+        self.properties = None
+
         self._time = 0.0
 
     @property

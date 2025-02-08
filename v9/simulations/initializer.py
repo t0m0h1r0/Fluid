@@ -1,127 +1,111 @@
-"""シミュレーションの初期化を管理するモジュール
+"""シミュレーションの初期状態を生成するモジュール"""
 
-このモジュールは、流体シミュレーションの初期状態を設定するためのクラスを提供します。
-"""
-
-from typing import Dict, Any, Tuple
 import numpy as np
+from typing import Dict, Any
+import logging
 
-from .state import SimulationState
-from physics.properties import FluidProperties
+from core.field import VectorField, ScalarField
+from physics.levelset import LevelSetField, LevelSetParameters
+from physics.properties import PropertiesManager, FluidProperties
+from simulations.state import SimulationState
 
 
 class SimulationInitializer:
-    """シミュレーション初期化クラス"""
+    """シミュレーション初期状態の生成クラス"""
 
     def __init__(self, config: Dict[str, Any], logger=None):
-        """初期化クラスを初期化
+        """初期化
 
         Args:
-            config: 設定辞書
-            logger: ロガーオブジェクト
+            config: シミュレーション設定
+            logger: ロガー
         """
         self.config = config
-        self.logger = logger
+        self.logger = logger or logging.getLogger(__name__)
 
-        # 領域の設定を取得
-        self.domain_config = config.get("domain", {})
-        self.nx = self.domain_config.get("dimensions", [64, 64, 64])[0]
-        self.ny = self.domain_config.get("dimensions", [64, 64, 64])[1]
-        self.nz = self.domain_config.get("dimensions", [64, 64, 64])[2]
-        self.shape = (self.nx, self.ny, self.nz)
+        # 相の物性値を設定
+        self._setup_phases()
 
-        # 物理領域のサイズを取得
-        self.lx = self.domain_config.get("size", [1.0, 1.0, 1.0])[0]
-        self.ly = self.domain_config.get("size", [1.0, 1.0, 1.0])[1]
-        self.lz = self.domain_config.get("size", [1.0, 1.0, 1.0])[2]
+    def _setup_phases(self):
+        """相の物性値を設定"""
+        phases_config = self.config.get("physics", {}).get("phases", {})
 
-        # グリッド間隔を計算
-        self.dx = self.lx / self.nx
+        # デフォルトの物性値を設定
+        if not phases_config:
+            phases_config = {
+                "water": {
+                    "density": 1000.0,
+                    "viscosity": 1.0e-3,
+                    "surface_tension": 0.07,
+                },
+                "nitrogen": {
+                    "density": 1.25,
+                    "viscosity": 1.81e-5,
+                    "surface_tension": 0.0,
+                },
+            }
 
-        # 初期条件の設定を取得
-        self.initial_config = config.get("initial_conditions", {})
+        # FluidPropertiesインスタンスを作成
+        self.fluid_properties = {}
+        for phase_name, props in phases_config.items():
+            self.fluid_properties[phase_name] = FluidProperties(
+                density=props["density"],
+                viscosity=props["viscosity"],
+                surface_tension=props.get("surface_tension", 0.0),
+            )
 
-        # 物性値の設定を取得
-        self.physics_config = config.get("physics", {})
+    def _setup_levelset(
+        self, dimensions: list, domain_size: list, initial_conditions: Dict
+    ) -> np.ndarray:
+        """初期界面を設定
 
-    def _create_phase_properties(self) -> Tuple[FluidProperties, FluidProperties]:
-        """相の物性値を作成
-
-        Returns:
-            phase1, phase2の物性値オブジェクト
-        """
-        phases_config = self.physics_config.get("phases", {})
-
-        # デフォルト値
-        water_config = phases_config.get("water", {})
-        water = FluidProperties(
-            density=water_config.get("density", 1000.0),
-            viscosity=water_config.get("viscosity", 1.0e-3),
-            surface_tension=water_config.get("surface_tension", 0.07),
-        )
-
-        nitrogen_config = phases_config.get("nitrogen", {})
-        nitrogen = FluidProperties(
-            density=nitrogen_config.get("density", 1.25),
-            viscosity=nitrogen_config.get("viscosity", 1.81e-5),
-            surface_tension=nitrogen_config.get("surface_tension", 0.0),
-        )
-
-        return water, nitrogen
-
-    def _initialize_levelset(self) -> np.ndarray:
-        """Level Set関数を初期化
+        Args:
+            dimensions: グリッドの次元
+            domain_size: 領域のサイズ
+            initial_conditions: 初期条件の設定
 
         Returns:
-            初期化されたLevel Set関数の値
+            レベルセット関数の値
         """
-        background = self.initial_config.get("background", {})
+        # 背景相（水層）の設定
+        background = initial_conditions.get("background", {})
         height_fraction = background.get("height_fraction", 0.8)
-        height = height_fraction * self.lz
+        water_height = height_fraction * domain_size[2]
 
-        # 格子点の座標を生成
-        x = np.linspace(0, self.lx, self.nx)
-        y = np.linspace(0, self.ly, self.ny)
-        z = np.linspace(0, self.lz, self.nz)
+        # z座標の生成
+        z = np.linspace(0, domain_size[2], dimensions[2])
+        Z = z.reshape(1, 1, -1)  # ブロードキャスト用に形状を変更
 
-        # meshgridを使用して3D配列を作成
-        X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
-        phi = height - Z  # 高さに基づいて初期化
+        # レベルセット関数の初期化
+        # Z < water_heightの領域が水（正）、それ以外が窒素（負）
+        levelset_data = water_height - Z  # 水層の上面からの符号付き距離
+        levelset_data = np.broadcast_to(levelset_data, tuple(dimensions)).copy()
 
-        # 物体の追加
-        objects = self.initial_config.get("objects", [])
+        # オブジェクト（窒素球）の追加
+        objects = initial_conditions.get("objects", [])
         for obj in objects:
             if obj["type"] == "sphere":
-                center = obj["center"]
-                radius = obj["radius"]
-                x = np.linspace(0, self.lx, self.nx)
-                y = np.linspace(0, self.ly, self.ny)
-                z = np.linspace(0, self.lz, self.nz)
-                X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
-                distance = np.sqrt(
-                    (X - center[0]) ** 2 + (Y - center[1]) ** 2 + (Z - center[2]) ** 2
-                )
-                phi = np.minimum(phi, radius - distance)
+                center = obj.get("center", [0.5, 0.5, 0.4])
+                radius = obj.get("radius", 0.2)
 
-        return phi
+                # メッシュグリッドを生成
+                x = np.linspace(0, domain_size[0], dimensions[0])
+                y = np.linspace(0, domain_size[1], dimensions[1])
+                z = np.linspace(0, domain_size[2], dimensions[2])
+                X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
 
-    def _initialize_velocity(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """速度場を初期化
+                # 球の距離関数を計算（球の内部が負、外部が正）
+                sphere_dist = np.sqrt(
+                    (X - center[0] * domain_size[0]) ** 2 +
+                    (Y - center[1] * domain_size[1]) ** 2 +
+                    (Z - center[2] * domain_size[2]) ** 2
+                ) - radius * domain_size[0]
 
-        Returns:
-            x, y, z方向の速度成分
-        """
-        velocity_config = self.initial_config.get("velocity", {})
-        velocity_type = velocity_config.get("type", "zero")
+                # レベルセット関数を更新
+                # minを取ることで、窒素相（負の値）が水相（正の値）を上書き
+                levelset_data = np.minimum(levelset_data, -sphere_dist)
 
-        if velocity_type == "zero":
-            return (
-                np.zeros(self.shape),
-                np.zeros(self.shape),
-                np.zeros(self.shape),
-            )
-        else:
-            raise ValueError(f"未対応の初期速度タイプ: {velocity_type}")
+        return levelset_data
 
     def create_initial_state(self) -> SimulationState:
         """初期状態を生成
@@ -132,27 +116,57 @@ class SimulationInitializer:
         if self.logger:
             self.logger.info("初期状態を生成中...")
 
-        # シミュレーション状態の作成
-        state = SimulationState(shape=self.shape, dx=self.dx)
+        # 計算領域の設定
+        domain_config = self.config.get("domain", {})
+        dimensions = domain_config.get("dimensions", [64, 64, 64])
+        domain_size = domain_config.get("size", [1.0, 1.0, 1.0])
 
-        try:
-            # Level Set場の初期化
-            state.levelset.data = self._initialize_levelset()
+        # グリッド間隔の計算
+        dx = domain_size[0] / dimensions[0]
 
-            # 速度場の初期化
-            vx, vy, vz = self._initialize_velocity()
-            state.velocity.components[0].data = vx
-            state.velocity.components[1].data = vy
-            state.velocity.components[2].data = vz
+        # Level Set パラメータの設定
+        level_set_params = LevelSetParameters(
+            **self.config.get("numerical", {}).get("level_set", {})
+        )
 
-            # 圧力場の初期化（デフォルトでゼロ）
+        # レベルセット場の初期化
+        levelset = LevelSetField(
+            shape=tuple(dimensions), dx=dx, params=level_set_params
+        )
 
-            if self.logger:
-                self.logger.info("初期状態の生成が完了しました")
+        # 初期条件の取得
+        initial_conditions = self.config.get("initial_conditions", {})
 
-        except Exception as e:
-            if self.logger:
-                self.logger.error(f"初期状態の生成中にエラーが発生: {e}")
-            raise
+        # レベルセット関数の設定
+        levelset.data = self._setup_levelset(
+            dimensions, domain_size, initial_conditions
+        )
+
+        # 速度場の初期化
+        velocity_config = initial_conditions.get("velocity", {})
+        velocity_type = velocity_config.get("type", "zero")
+
+        velocity = VectorField(tuple(dimensions), dx)
+        if velocity_type == "zero":
+            for comp in velocity.components:
+                comp.data.fill(0.0)
+
+        # 圧力場の初期化
+        pressure = ScalarField(tuple(dimensions), dx)
+        pressure.data.fill(0.0)
+
+        # 物性値マネージャーの初期化
+        properties_manager = PropertiesManager(
+            phase1=self.fluid_properties.get("water", FluidProperties(1000.0, 1.0e-3)),
+            phase2=self.fluid_properties.get(
+                "nitrogen", FluidProperties(1.25, 1.81e-5)
+            ),
+        )
+
+        # シミュレーション状態を作成
+        state = SimulationState(shape=tuple(dimensions), dx=dx)
+
+        if self.logger:
+            self.logger.info("初期状態の生成完了")
 
         return state
