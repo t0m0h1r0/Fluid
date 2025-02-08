@@ -17,7 +17,7 @@ physics:
 # 計算領域の設定
 domain:
   dimensions: [128, 128, 128]  # X, Y, Z方向のグリッドポイント数
-  size: [1.0, 1.0, 1.0]  # X, Y, Z方向の物理的サイズ [m]
+  size: [0.1, 0.1, 0.1]  # X, Y, Z方向の物理的サイズ [m]
 
 # 境界条件
 boundary_conditions:
@@ -41,8 +41,8 @@ initial_conditions:
   objects:
     - type: sphere  # 窒素球
       phase: nitrogen
-      center: [0.5, 0.5, 0.4]  # 中心座標 [x, y, z]
-      radius: 0.2  # 半径
+      center: [0.5, 0.5, 0.2]  # 中心座標 [x, y, z]
+      radius: 0.1  # 半径
 
   # 初期速度場
   velocity:
@@ -92,7 +92,7 @@ visualization:
 
   # 3D可視化の設定（VTKやParaViewでの可視化）
   3d:
-    enabled: true
+    enabled: false
     #method: ["vtk"]  # 複数の出力方法を指定可能
     method: ["vtk", "pyvista", "plotly"]  # 複数の出力方法を指定可能
     fields: 

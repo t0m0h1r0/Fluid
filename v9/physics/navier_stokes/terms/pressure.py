@@ -54,7 +54,7 @@ class PressureTerm(NavierStokesTerm):
         velocity: VectorField,
         pressure: ScalarField,
         density: Optional[ScalarField] = None,
-        **kwargs,
+        **kwargs
     ) -> List[np.ndarray]:
         """圧力項の寄与を計算
 
@@ -93,8 +93,7 @@ class PressureTerm(NavierStokesTerm):
                 grad_p = np.gradient(p, dx, axis=i)
 
                 # 密度の補間（スタガード点へ）
-                rho_stag = np.roll(rho, -1, axis=i) + rho
-                rho_stag *= 0.5
+                rho_stag = (np.roll(rho, -1, axis=i) + rho) * 0.5
 
                 # 圧力項の計算
                 result.append(-grad_p / rho_stag)
@@ -110,11 +109,12 @@ class PressureTerm(NavierStokesTerm):
         return result
 
     def compute_correction(
-        self,
-        velocity: VectorField,
-        pressure: ScalarField,
+        self, 
+        velocity: VectorField, 
+        pressure: ScalarField, 
         dt: float,
         density: Optional[ScalarField] = None,
+        **kwargs  # プロパティを許容するための可変キーワード引数
     ) -> VectorField:
         """速度場の圧力補正を計算
 
@@ -122,12 +122,13 @@ class PressureTerm(NavierStokesTerm):
             velocity: 補正する速度場
             pressure: 圧力場
             dt: 時間刻み幅
-            density: 密度場
+            density: 密度場（オプション）
+            **kwargs: 追加のパラメータ（properties等）
 
         Returns:
             補正された速度場
         """
-        # 圧力項の寄与を計算
+        # 各項の寄与を計算
         pressure_terms = self.compute(velocity, pressure, density)
 
         # 補正された速度場を作成
@@ -184,13 +185,18 @@ class PressureTerm(NavierStokesTerm):
         )
         grad_p_mag = np.sqrt(np.sum(grad_p**2, axis=0))
 
+        # 有効な値のみを使用
+        valid_indices = np.isfinite(grad_p_mag)
+        max_grad_p = np.max(grad_p_mag[valid_indices]) if np.any(valid_indices) else 0.0
+        
+        # 平面ではなく3D空間全体の最大値を取得
         diag.update(
             {
                 "grid_type": "staggered" if self.staggered else "collocated",
-                "max_pressure": np.max(np.abs(pressure.data)),
-                "max_pressure_gradient": np.max(grad_p_mag),
+                "max_pressure": np.nanmax(pressure.data),
+                "max_pressure_gradient": max_grad_p,
                 "pressure_l2norm": np.sqrt(
-                    np.sum(pressure.data**2) * velocity.dx**velocity.ndim
+                    np.nansum(pressure.data**2) * velocity.dx**velocity.ndim
                 ),
             }
         )

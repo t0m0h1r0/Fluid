@@ -31,10 +31,8 @@ class CombinedVisualizer(BaseVisualizer):
                 - 'pressure': スカラー場（圧力）
                 - 'velocity_x', 'velocity_y': ベクトル場の成分
                 - 'levelset': Level Set関数
-            timestamp: 時刻
+            timestamp: 現在の時刻
             **kwargs: 追加の設定
-                - slice_axis: スライスする軸（3Dデータ用）
-                - slice_index: スライスのインデックス
 
         Returns:
             保存された画像のファイルパス
@@ -42,14 +40,30 @@ class CombinedVisualizer(BaseVisualizer):
         # スライス設定
         slice_axis = kwargs.get("slice_axis", 2)
         slice_index = kwargs.get("slice_index", None)
+        name = kwargs.get("name", "combined")
 
         # 図とAxesを作成（やや大きめのサイズ）
         fig, ax = self.create_figure(size=(10, 8))
 
+        # 安全な値の範囲を計算するヘルパー関数
+        def get_safe_range(data):
+            """NaNやInfを除外した値の範囲を取得"""
+            finite_data = data[np.isfinite(data)]
+            if len(finite_data) == 0:
+                return 0, 1
+            return np.min(finite_data), np.max(finite_data)
+
         # 圧力場の表示
         if "pressure" in fields:
             pressure_2d = prepare_2d_slice(fields["pressure"], slice_axis, slice_index)
-            vmin, vmax = np.min(pressure_2d), np.max(pressure_2d)
+            
+            # 安全な値の範囲を計算
+            vmin, vmax = get_safe_range(pressure_2d)
+            
+            # 値の範囲が0の場合、デフォルト値を使用
+            if vmin == vmax:
+                vmin, vmax = 0, 1
+            
             im = ax.imshow(
                 pressure_2d.T,
                 origin="lower",
@@ -84,6 +98,9 @@ class CombinedVisualizer(BaseVisualizer):
                 vy_2d[::skip, ::skip],
                 color="k",
                 alpha=0.7,
+                scale=1.0,
+                scale_units="xy",
+                angles="xy"
             )
 
             # スケールバーの追加
@@ -92,10 +109,24 @@ class CombinedVisualizer(BaseVisualizer):
         # 界面の表示
         if "levelset" in fields:
             levelset_2d = prepare_2d_slice(fields["levelset"], slice_axis, slice_index)
-            ax.contour(levelset_2d.T, levels=[0], colors="k", linewidths=2)
+            
+            # 安全な値の範囲を計算
+            vmin, vmax = get_safe_range(levelset_2d)
+            
+            # 値の範囲が0の場合、デフォルト値を使用
+            if vmin == vmax:
+                vmin, vmax = -1, 1
+            
+            # 界面を黒の等高線で表示
+            ax.contour(
+                levelset_2d.T, 
+                levels=[0],  # 0の等高線を表示 
+                colors="k", 
+                linewidths=2
+            )
 
         # タイトルの設定
         ax.set_title(f"Combined Fields (t = {timestamp:.3f}s)")
 
         # 図を保存
-        return self.save_figure(fig, "combined", timestamp)
+        return self.save_figure(fig, name, timestamp)
