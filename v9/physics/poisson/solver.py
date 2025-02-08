@@ -58,7 +58,6 @@ class PoissonSolver(IterativeSolver):
                 if bc is not None:
                     residual = bc.apply_all(residual, i)
 
-        print(np.sqrt(np.mean(residual**2)))
         return np.sqrt(np.mean(residual**2))
 
     def apply_boundary_conditions(self, field: np.ndarray) -> np.ndarray:
