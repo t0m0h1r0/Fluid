@@ -57,38 +57,34 @@ class InterfaceVisualizer(BaseVisualizer):
             "colors", self.config.interface_plot.get("colors", ["lightblue", "white"])
         )
 
-        # データの範囲を確認
+        # データに有効な範囲があるか確認
         if not np.isfinite(levelset_2d).any():
             # データが全て非有効な場合は単色の画像を生成
-            ax.imshow(np.zeros_like(levelset_2d), cmap="gray")
+            ax.imshow(np.zeros_like(levelset_2d), cmap="gray", origin="lower")
             ax.set_title(f"Interface (t = {timestamp:.3f}s) - No Valid Data")
         else:
             # 領域の塗りつぶし
             if filled:
-                # 有効な等高線レベルを見つける
-                unique_levels = np.unique(levelset_2d)
-                valid_levels = unique_levels[np.isfinite(unique_levels)]
+                try:
+                    x = np.arange(levelset_2d.shape[0])
+                    y = np.arange(levelset_2d.shape[1])
+                    X, Y = np.meshgrid(x, y, indexing='ij')
+                    
+                    cs_filled = ax.contourf(
+                        X, Y,
+                        levelset_2d,
+                        levels=[-np.inf, 0, np.inf],
+                        colors=colors,
+                        alpha=0.5,
+                    )
 
-                if len(valid_levels) > 1:
-                    # 有効な等高線レベルが2つ以上ある場合
-                    try:
-                        # 等高線で塗りつぶし
-                        cs_filled = ax.contourf(
-                            levelset_2d.T,
-                            levels=[-np.inf, 0, np.inf],
-                            colors=colors,
-                            alpha=0.5,
-                        )
+                    # カラーバーの追加
+                    if self.config.show_colorbar:
+                        plt.colorbar(cs_filled, ax=ax, label="Phase")
 
-                        # カラーバーの追加を試みる
-                        if self.config.show_colorbar:
-                            # カラーバーのマッピングを手動で作成
-                            plt.colorbar(cs_filled, ax=ax, label="Phase")
-
-                    except Exception as e:
-                        # 等高線描画に失敗した場合の代替表示
-                        print(f"等高線描画エラー: {e}")
-                        ax.imshow(levelset_2d.T, cmap="coolwarm", alpha=0.5)
+                except Exception as e:
+                    print(f"等高線描画エラー: {e}")
+                    ax.imshow(levelset_2d, cmap="coolwarm", alpha=0.5, origin="lower")
 
             # 追加の等高線（オプション）
             extra_contours = kwargs.get("extra_contours", False)
@@ -102,7 +98,8 @@ class InterfaceVisualizer(BaseVisualizer):
 
                     if len(levels) > 1:
                         cs_extra = ax.contour(
-                            levelset_2d.T,
+                            X, Y,
+                            levelset_2d,
                             levels=levels,
                             colors="gray",
                             alpha=0.3,
@@ -111,6 +108,10 @@ class InterfaceVisualizer(BaseVisualizer):
                         ax.clabel(cs_extra, inline=True, fontsize=8)
                 except Exception as e:
                     print(f"追加等高線描画エラー: {e}")
+
+            # グリッドの範囲を設定
+            ax.set_xlim(0, levelset_2d.shape[0])
+            ax.set_ylim(0, levelset_2d.shape[1])
 
             # タイトルの設定
             ax.set_title(f"Interface (t = {timestamp:.3f}s)")

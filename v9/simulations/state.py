@@ -94,6 +94,20 @@ class SimulationState:
             raise ValueError("時刻は非負である必要があります")
         self._time = value
 
+    def copy(self) -> 'SimulationState':
+        """状態の深いコピーを作成
+
+        Returns:
+            コピーされた状態
+        """
+        new_state = SimulationState(self.velocity.shape, self.velocity.dx)
+        new_state.velocity = self.velocity.copy()
+        new_state.pressure = self.pressure.copy()
+        new_state.levelset = self.levelset.copy()
+        new_state.properties = self.properties  # PropertiesManagerは共有して問題ない
+        new_state.time = self.time
+        return new_state
+
     def save_state(self) -> Dict[str, Any]:
         """状態を保存
 
