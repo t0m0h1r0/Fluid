@@ -23,85 +23,155 @@ class SimulationInitializer:
         self.logger = logger or logging.getLogger(__name__)
 
         # 相の物性値を設定
-        self._setup_phases()
+        self.fluid_properties = self._setup_fluid_properties()
 
-    def _setup_phases(self):
-        """相の物性値を設定"""
-        phases_config = self.config.get("physics", {}).get("phases", {})
+    def _setup_fluid_properties(self) -> Dict[str, FluidProperties]:
+        """流体の物性値を設定
 
-        # デフォルトの物性値を設定
-        if not phases_config:
-            phases_config = {
-                "water": {
-                    "density": 1000.0,
-                    "viscosity": 1.0e-3,
-                    "surface_tension": 0.07,
-                },
-                "nitrogen": {
-                    "density": 1.25,
-                    "viscosity": 1.81e-5,
-                    "surface_tension": 0.0,
-                },
+        Returns:
+            物性値のディクショナリ
+        """
+        phases_config = self.config.get("physics", {}).get("phases", {
+            "water": {
+                "density": 1000.0,
+                "viscosity": 1.0e-3,
+                "surface_tension": 0.07,
+            },
+            "nitrogen": {
+                "density": 1.25,
+                "viscosity": 1.81e-5,
+                "surface_tension": 0.0,
             }
+        })
 
-        # FluidPropertiesインスタンスを作成
-        self.fluid_properties = {}
-        for phase_name, props in phases_config.items():
-            self.fluid_properties[phase_name] = FluidProperties(
+        return {
+            phase_name: FluidProperties(
                 density=props["density"],
                 viscosity=props["viscosity"],
-                surface_tension=props.get("surface_tension", 0.0),
+                surface_tension=props.get("surface_tension", 0.0)
             )
+            for phase_name, props in phases_config.items()
+        }
+
+    def _compute_signed_distance(
+        self, 
+        X: np.ndarray, 
+        Y: np.ndarray, 
+        Z: np.ndarray, 
+        center: List[float], 
+        radius: float
+    ) -> np.ndarray:
+        """符号付き距離関数を計算
+
+        Args:
+            X, Y, Z: 物理空間の座標グリッド
+            center: 球の中心座標
+            radius: 球の半径
+
+        Returns:
+            符号付き距離関数（水：正、窒素：負）
+        """
+        # 中心からの距離を計算
+        distance = np.sqrt(
+            (X - center[0]) ** 2 +
+            (Y - center[1]) ** 2 +
+            (Z - center[2]) ** 2
+        )
+        
+        # 距離関数を計算（球の内部は負、外部は正）
+        return radius - distance
 
     def _setup_initial_fields(
-        self, dimensions: list, domain_size: list, initial_conditions: Dict
+        self, 
+        dimensions: List[int], 
+        domain_size: List[float], 
+        initial_conditions: Dict
     ) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray]]:
-        """初期フィールドを設定"""
-        # 物理パラメータ取得
-        rho_w = self.fluid_properties["water"].density
-        rho_a = self.fluid_properties["nitrogen"].density
-        sigma = self.fluid_properties["water"].surface_tension
+        """初期フィールドを設定
+
+        Args:
+            dimensions: グリッドの次元
+            domain_size: 領域のサイズ
+            initial_conditions: 初期条件の設定
+
+        Returns:
+            levelset, pressure, velocityのタプル
+        """
+        # 物理パラメータの取得
+        water_props = self.fluid_properties["water"]
+        nitrogen_props = self.fluid_properties["nitrogen"]
+        rho_w = water_props.density
+        rho_n = nitrogen_props.density
+        sigma = water_props.surface_tension
         g = self.config.get("physics", {}).get("gravity", 9.81)
-        
-        # グリッド生成
+
+        # 座標グリッドの生成
         x = np.linspace(0, domain_size[0], dimensions[0])
         y = np.linspace(0, domain_size[1], dimensions[1])
         z = np.linspace(0, domain_size[2], dimensions[2])
         X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
 
-        # 初期化
+        # 初期フィールドの作成
         levelset = np.zeros_like(X)
         pressure = np.zeros_like(X)
         velocity = [np.zeros_like(X) for _ in range(3)]
-        
-        # 水層の設定
-        water_height = initial_conditions.get("background", {}).get("height_fraction", 0.8) * domain_size[2]
-        levelset = Z - water_height  # 界面からの距離
-        water_region = (levelset < 0)
-        pressure[water_region] = rho_w * g * (water_height - Z[water_region])
-        
-        # 物体の追加（気泡や水球）
-        for obj in initial_conditions.get("objects", []):
-            if obj["type"] == "sphere":
-                center = [c * d for c, d in zip(obj["center"], domain_size)]
-                radius = obj["radius"] * domain_size[0]
-                
-                # 距離関数の計算
-                sphere_dist = np.sqrt((X - center[0])**2 + (Y - center[1])**2 + (Z - center[2])**2) - radius
-                
-                # 界面の更新
-                levelset = np.where(sphere_dist < levelset, sphere_dist, levelset)
-                
-                # 圧力設定
-                if center[2] < water_height:  # 水中の気泡
-                    p_interface = rho_w * g * (water_height - center[2])
-                    pressure[sphere_dist < 0] = p_interface + 2 * sigma / radius
-                else:  # 空気中の水球
-                    p_interface = rho_a * g * (domain_size[2] - center[2])
-                    pressure[sphere_dist < 0] = p_interface - 2 * sigma / radius
-        
-        return levelset, pressure, velocity
 
+        # 背景相の設定
+        background = initial_conditions.get("background", {})
+        height_fraction = background.get("height_fraction", 0.8)
+        water_height = height_fraction * domain_size[2]
+
+        # 背景相のLevel Set関数を設定（水：正、窒素：負）
+        levelset = Z - water_height
+
+        # オブジェクト（窒素球）の追加
+        objects = initial_conditions.get("objects", [])
+        for obj in objects:
+            if obj["type"] == "sphere":
+                center = obj.get("center", [0.5, 0.5, 0.4])
+                radius = obj.get("radius", 0.2)
+
+                # 中心座標と半径を物理的な寸法に変換
+                center_phys = [c * d for c, d in zip(center, domain_size)]
+                radius_phys = radius * domain_size[0]
+
+                # Level Set関数の計算（球の内部は負の値）
+                sphere_dist = self._compute_signed_distance(X, Y, Z, center_phys, radius_phys)
+
+                # 球の内部と外部を更新
+                bubble_region = (sphere_dist > 0)
+                
+                # Level Set関数の更新
+                levelset_update = -sphere_dist.copy()
+                levelset[bubble_region] = levelset_update[bubble_region]
+
+                # 圧力場の設定
+                # 1. 空気層の圧力: Pa(z) = ρn * g * (zmax - z)
+                p_air = rho_n * g * (domain_size[2] - Z)
+
+                # 2. 水層の圧力 
+                # P界面 = ρn * g * (zmax - z界面)
+                p_interface = rho_n * g * (domain_size[2] - water_height)
+                
+                # Pw(z) = P界面 + ρw * g * (z界面 - z)
+                p_water = p_interface + rho_w * g * (water_height - Z)
+
+                # 3. 窒素球内の圧力: Pn = Pw(z球) + 2σ/R
+                # 球の中心に最も近いZ座標のインデックスを取得
+                center_z_index = np.unravel_index(
+                    np.argmin(np.abs(Z - center_phys[2])), 
+                    Z.shape
+                )
+                p_sphere_location = p_water[center_z_index]
+                dp_laplace = 2 * sigma / radius_phys  # 曲率による圧力ジャンプ
+                p_bubble = p_sphere_location + dp_laplace
+
+                # 圧力場の設定
+                pressure[Z < water_height] = p_water[Z < water_height]  # 水層
+                pressure[Z >= water_height] = p_air[Z >= water_height]  # 空気層
+                pressure[bubble_region] = p_bubble  # 球の内部
+
+        return levelset, pressure, velocity
 
     def create_initial_state(self) -> SimulationState:
         """初期状態を生成
@@ -142,10 +212,8 @@ class SimulationInitializer:
 
         # 物性値マネージャーの設定
         state.properties = PropertiesManager(
-            phase1=self.fluid_properties.get("water", FluidProperties(1000.0, 1.0e-3)),
-            phase2=self.fluid_properties.get(
-                "nitrogen", FluidProperties(1.25, 1.81e-5)
-            ),
+            phase1=self.fluid_properties["water"],
+            phase2=self.fluid_properties["nitrogen"],
         )
 
         if self.logger:
