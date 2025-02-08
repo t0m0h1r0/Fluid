@@ -1,7 +1,7 @@
 """シミュレーションの初期状態を生成するモジュール"""
 
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, Tuple, List
 import logging
 
 from physics.levelset import LevelSetParameters
@@ -53,10 +53,10 @@ class SimulationInitializer:
                 surface_tension=props.get("surface_tension", 0.0),
             )
 
-    def _setup_levelset(
+    def _setup_initial_fields(
         self, dimensions: list, domain_size: list, initial_conditions: Dict
-    ) -> np.ndarray:
-        """初期界面を設定
+    ) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray]]:
+        """初期フィールドを設定
 
         Args:
             dimensions: グリッドの次元
@@ -64,21 +64,35 @@ class SimulationInitializer:
             initial_conditions: 初期条件の設定
 
         Returns:
-            レベルセット関数の値
+            levelset, pressure, velocityのタプル
         """
+        # 物理パラメータの取得
+        water_props = self.fluid_properties.get("water")
+        rho_w = water_props.density
+        sigma = water_props.surface_tension
+        g = self.config.get("physics", {}).get("gravity", 9.81)
+        p_atm = self.config.get("physics", {}).get("atmospheric_pressure", 101325.0)
+
+        # グリッドの生成
+        x = np.linspace(0, domain_size[0], dimensions[0])
+        y = np.linspace(0, domain_size[1], dimensions[1])
+        z = np.linspace(0, domain_size[2], dimensions[2])
+        X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+
+        # 初期フィールドの作成
+        levelset = np.zeros_like(X)
+        pressure = np.full_like(X, p_atm)  # 大気圧で初期化
+        velocity = [np.zeros_like(X) for _ in range(3)]  # 速度場はゼロで初期化
+
         # 背景相（水層）の設定
         background = initial_conditions.get("background", {})
         height_fraction = background.get("height_fraction", 0.8)
         water_height = height_fraction * domain_size[2]
 
-        # z座標の生成
-        z = np.linspace(0, domain_size[2], dimensions[2])
-        Z = z.reshape(1, 1, -1)  # ブロードキャスト用に形状を変更
-
-        # レベルセット関数の初期化
-        # Z < water_heightの領域が水（正）、それ以外が窒素（負）
-        levelset_data = water_height - Z  # 水層の上面からの符号付き距離
-        levelset_data = np.broadcast_to(levelset_data, tuple(dimensions)).copy()
+        # 水層のLevel Setと圧力を設定
+        levelset = water_height - Z  # 水面からの符号付き距離
+        water_region = (levelset > 0)
+        pressure[water_region] = p_atm + rho_w * g * (water_height - Z[water_region])
 
         # オブジェクト（窒素球）の追加
         objects = initial_conditions.get("objects", [])
@@ -87,27 +101,33 @@ class SimulationInitializer:
                 center = obj.get("center", [0.5, 0.5, 0.4])
                 radius = obj.get("radius", 0.2)
 
-                # メッシュグリッドを生成
-                x = np.linspace(0, domain_size[0], dimensions[0])
-                y = np.linspace(0, domain_size[1], dimensions[1])
-                z = np.linspace(0, domain_size[2], dimensions[2])
-                X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
+                # 中心座標と半径を物理単位に変換
+                center_phys = [c * d for c, d in zip(center, domain_size)]
+                radius_phys = radius * domain_size[0]
 
-                # 球の距離関数を計算（球の内部が負、外部が正）
-                sphere_dist = (
-                    np.sqrt(
-                        (X - center[0] * domain_size[0]) ** 2
-                        + (Y - center[1] * domain_size[1]) ** 2
-                        + (Z - center[2] * domain_size[2]) ** 2
-                    )
-                    - radius * domain_size[0]
-                )
+                # 球の距離関数を計算
+                sphere_dist = np.sqrt(
+                    (X - center_phys[0]) ** 2 +
+                    (Y - center_phys[1]) ** 2 +
+                    (Z - center_phys[2]) ** 2
+                ) - radius_phys
 
-                # レベルセット関数を更新
-                # minを取ることで、窒素相（負の値）が水相（正の値）を上書き
-                levelset_data = np.minimum(levelset_data, -sphere_dist)
+                # 球の内部を特定
+                bubble_region = (sphere_dist < 0)
+                if np.any(bubble_region):
+                    # Level Set関数を更新
+                    levelset[bubble_region] = sphere_dist[bubble_region]
 
-        return levelset_data
+                    # 気泡内の圧力を設定
+                    # 界面での静水圧
+                    p_interface = p_atm + rho_w * g * (water_height - center_phys[2])
+                    # 表面張力による圧力ジャンプ（球なので曲率は2/R）
+                    dp_laplace = 2 * sigma / radius_phys
+                    # 気泡内圧力
+                    p_bubble = p_interface + dp_laplace
+                    pressure[bubble_region] = p_bubble
+
+        return levelset, pressure, velocity
 
     def create_initial_state(self) -> SimulationState:
         """初期状態を生成
@@ -126,29 +146,25 @@ class SimulationInitializer:
         # グリッド間隔の計算
         dx = domain_size[0] / dimensions[0]
 
-        # シミュレーション状態を作成
-        state = SimulationState(shape=tuple(dimensions), dx=dx)
-
-        # Level Set関数の初期化
+        # Level Set パラメータの設定
         level_set_params = LevelSetParameters(
             **self.config.get("numerical", {}).get("level_set", {})
         )
-        state.levelset.params = level_set_params
-        state.levelset.data = self._setup_levelset(
+
+        # 初期フィールドの設定
+        levelset_data, pressure_data, velocity_data = self._setup_initial_fields(
             dimensions, domain_size, self.config.get("initial_conditions", {})
         )
 
-        # 速度場の初期化
-        velocity_config = self.config.get("initial_conditions", {}).get("velocity", {})
-        velocity_type = velocity_config.get("type", "zero")
+        # シミュレーション状態を作成
+        state = SimulationState(shape=tuple(dimensions), dx=dx)
 
-        if velocity_type == "zero":
-            for comp in state.velocity.components:
-                comp.data.fill(0.0)
-        # TODO: 他の初期速度場のタイプを追加
-
-        # 圧力場の初期化
-        state.pressure.data.fill(0.0)
+        # 各フィールドの設定
+        state.levelset.params = level_set_params
+        state.levelset.data = levelset_data
+        state.pressure.data = pressure_data
+        for i, comp in enumerate(state.velocity.components):
+            comp.data = velocity_data[i]
 
         # 物性値マネージャーの設定
         state.properties = PropertiesManager(
