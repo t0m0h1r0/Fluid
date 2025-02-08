@@ -3,7 +3,7 @@
 import traceback
 from pathlib import Path
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 from simulations.state import SimulationState
 from simulations.monitor import SimulationMonitor
@@ -47,6 +47,11 @@ class SimulationRunner:
             .get("advection", {})
             .get("use_weno", True)
         )
+
+        # ステップ管理用の変数
+        self._current_time = 0.0
+        self._current_step = 0
+        self._dt = None
 
     @classmethod
     def from_checkpoint(cls, checkpoint_path, config, logger=None):
@@ -94,90 +99,116 @@ class SimulationRunner:
         # 最大時間刻み幅を超えないようにする
         return min(recommended_dt, max_dt)
 
-    def run(self, initial_state: SimulationState, output_dir: Path) -> SimulationState:
-        """シミュレーションを実行
+    def initialize(self, initial_state: SimulationState):
+        """シミュレーションを初期化
 
         Args:
             initial_state: 初期状態
-            output_dir: 出力ディレクトリ
+        """
+        # 初期状態の設定
+        self._current_state = initial_state.copy()
+        self._current_time = 0.0
+        self._current_step = 0
+
+        # 各フィールドの時間を初期化
+        self._current_state.velocity.time = 0.0
+        self._current_state.pressure.time = 0.0
+        self._current_state.levelset.time = 0.0
+
+        # モニターを初期化
+        self.monitor.update(self._current_state)
+
+    def step_forward(self) -> Tuple[SimulationState, Dict[str, Any]]:
+        """1時間ステップを進める
 
         Returns:
-            最終状態
+            (更新された状態, ステップ情報の辞書)のタプル
         """
-        # 出力ディレクトリの準備
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # シミュレーション設定の取得
-        numerical_config = self.config.get("numerical", {})
-        max_time = numerical_config.get("max_time", 1.0)
-        save_interval = numerical_config.get("save_interval", 0.1)
-
         try:
-            # 初期状態の設定
-            current_state = initial_state.copy()
+            # 時間刻み幅の計算
+            self._dt = self._compute_timestep(self._current_state)
 
-            # 時間設定の初期化
-            current_time = 0.0
-            next_save_time = save_interval
+            # Navier-Stokesソルバーで速度場と圧力場を更新
+            velocity = self._current_state.velocity
+            pressure = self._current_state.pressure
+            levelset = self._current_state.levelset
+            properties = self._current_state.properties
 
-            # 各フィールドの時間を初期化
-            current_state.velocity.time = 0.0
-            current_state.pressure.time = 0.0
-            current_state.levelset.time = 0.0
+            # レベルセットの移流
+            ls_result = self.ls_solver.advance(
+                dt=self._dt, phi=levelset, velocity=velocity
+            )
 
-            # シミュレーションループ
-            while current_time < max_time:
-                # 時間刻み幅の計算
-                dt = self._compute_timestep(current_state)
+            # Navier-Stokesソルバーで状態を更新
+            ns_result = self.ns_solver.advance(
+                state=self._current_state,
+                dt=self._dt,
+                properties=properties,
+            )
 
-                # Navier-Stokesソルバーで速度場と圧力場を更新
-                velocity = current_state.velocity
-                pressure = current_state.pressure
-                levelset = current_state.levelset
-                properties = current_state.properties
+            # 時間を更新
+            self._current_time += self._dt
+            velocity.time = self._current_time
+            pressure.time = self._current_time
+            levelset.time = self._current_time
+            self._current_step += 1
 
-                # レベルセットの移流
-                ls_result = self.ls_solver.advance(dt, phi=levelset, velocity=velocity)
+            # モニターを更新
+            self.monitor.update(self._current_state)
 
-                # Navier-Stokesソルバーで状態を更新
-                ns_result = self.ns_solver.advance(
-                    state=current_state, dt=dt, properties=properties
-                )
+            # ステップ情報を収集
+            step_info = {
+                "time": self._current_time,
+                "dt": self._dt,
+                "step": self._current_step,
+                "ls_result": ls_result,
+                "ns_result": ns_result,
+            }
 
-                # 時間を更新
-                current_time += dt
-                velocity.time = current_time
-                pressure.time = current_time
-                levelset.time = current_time
-
-                # モニターを更新
-                self.monitor.update(current_state)
-
-                # 結果を保存（必要に応じて）
-                if current_time >= next_save_time:
-                    # TODO: 結果の保存処理を実装
-                    next_save_time += save_interval
-
-            # 最終的な結果を生成
-            self.monitor.plot_history(output_dir)
-            self.monitor.generate_report(output_dir)
-
-            return current_state
+            return self._current_state, step_info
 
         except Exception as e:
             # エラーログの出力
-            self.logger.error(f"シミュレーション実行中にエラーが発生: {e}")
+            self.logger.error(f"シミュレーション実行中にエラー: {e}")
             self.logger.error(traceback.format_exc())
-
-            # エラー時の後処理
-            try:
-                # モニターに現在の状態を記録
-                self.monitor.update(current_state)
-                self.monitor.plot_history(output_dir)
-                self.monitor.generate_report(output_dir)
-            except Exception as log_error:
-                self.logger.error(f"エラー後の後処理中に例外が発生: {log_error}")
-
-            # 例外を再送出
             raise
+
+    def get_status(self) -> Dict[str, Any]:
+        """シミュレーションの現在の状態を取得
+
+        Returns:
+            状態情報を含む辞書
+        """
+        return {
+            "current_time": self._current_time,
+            "current_step": self._current_step,
+            "dt": self._dt,
+        }
+
+    def save_checkpoint(self, filepath: Path):
+        """チェックポイントを保存
+
+        Args:
+            filepath: 保存先のパス
+        """
+        # チェックポイントデータの作成
+        checkpoint_data = {
+            "time": self._current_time,
+            "step": self._current_step,
+            "dt": self._dt,
+            "state": self._current_state.save_state(),
+        }
+
+        # データの保存
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        self._current_state.save_to_file(str(filepath))
+
+    def finalize(self, output_dir: Path):
+        """シミュレーションの終了処理
+
+        Args:
+            output_dir: 出力ディレクトリ
+        """
+        # モニターのレポート生成
+        self.monitor.plot_history(output_dir)
+        self.monitor.generate_report(output_dir)
