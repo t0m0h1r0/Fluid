@@ -6,59 +6,124 @@
 ├── core
 │   ├── boundary
 │   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-312.pyc
+│   │   │   ├── base.cpython-312.pyc
+│   │   │   ├── dirichlet.cpython-312.pyc
+│   │   │   ├── neumann.cpython-312.pyc
+│   │   │   └── periodic.cpython-312.pyc
 │   │   ├── base.py
 │   │   ├── dirichlet.py
 │   │   ├── neumann.py
 │   │   └── periodic.py
 │   ├── field
 │   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-312.pyc
+│   │   │   ├── conserved.cpython-312.pyc
+│   │   │   ├── field.cpython-312.pyc
+│   │   │   ├── scalar.cpython-312.pyc
+│   │   │   └── vector.cpython-312.pyc
 │   │   ├── conserved.py
 │   │   ├── field.py
 │   │   ├── scalar.py
 │   │   └── vector.py
 │   └── solver
 │       ├── __init__.py
+│       ├── __pycache__
+│       │   ├── __init__.cpython-312.pyc
+│       │   ├── base.cpython-312.pyc
+│       │   ├── iterative.cpython-312.pyc
+│       │   └── temporal.cpython-312.pyc
 │       ├── base.py
 │       ├── iterative.py
 │       └── temporal.py
 ├── logger
 │   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-312.pyc
+│   │   ├── config.cpython-312.pyc
+│   │   ├── formatters.cpython-312.pyc
+│   │   ├── handlers.cpython-312.pyc
+│   │   └── logger.cpython-312.pyc
 │   ├── config.py
 │   ├── formatters.py
 │   ├── handlers.py
 │   └── logger.py
 ├── main.py
 ├── physics
+│   ├── __pycache__
+│   │   └── properties.cpython-312.pyc
 │   ├── levelset
 │   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-312.pyc
+│   │   │   ├── field.cpython-312.pyc
+│   │   │   ├── solver.cpython-312.pyc
+│   │   │   └── utils.cpython-312.pyc
 │   │   ├── field.py
 │   │   ├── solver.py
 │   │   └── utils.py
 │   ├── navier_stokes
 │   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-312.pyc
+│   │   │   ├── base_term.cpython-312.pyc
+│   │   │   └── solver.cpython-312.pyc
 │   │   ├── base_term.py
 │   │   ├── solver.py
 │   │   └── terms
 │   │       ├── __init__.py
+│   │       ├── __pycache__
+│   │       │   ├── __init__.cpython-312.pyc
+│   │       │   ├── advection.cpython-312.pyc
+│   │       │   ├── diffusion.cpython-312.pyc
+│   │       │   ├── force.cpython-312.pyc
+│   │       │   └── pressure.cpython-312.pyc
 │   │       ├── advection.py
 │   │       ├── diffusion.py
 │   │       ├── force.py
 │   │       └── pressure.py
 │   ├── poisson
 │   │   ├── __init__.py
+│   │   ├── __pycache__
+│   │   │   ├── __init__.cpython-312.pyc
+│   │   │   ├── solver.cpython-312.pyc
+│   │   │   └── sor.cpython-312.pyc
 │   │   ├── solver.py
 │   │   └── sor.py
 │   └── properties.py
 ├── results
-│   ├── logs
-│   │   └── simulation.log
-│   ├── statistics.json
 │   └── visualization
-│       ├── logs
-│       │   └── simulation.log
-│       └── statistics.json
+│       ├── combined_0.000000.png
+│       ├── interface_0.000000.png
+│       ├── levelset_contour_XY_0.000000.png
+│       ├── levelset_contour_XZ_0.000000.png
+│       ├── levelset_contour_YZ_0.000000.png
+│       ├── pressure_XY_0.000000.png
+│       ├── pressure_XZ_0.000000.png
+│       ├── pressure_YZ_0.000000.png
+│       ├── pressure_contour_XY_0.000000.png
+│       ├── pressure_contour_XZ_0.000000.png
+│       ├── pressure_contour_YZ_0.000000.png
+│       ├── simulation.log
+│       ├── states
+│       │   └── state_t0.000000.vti.vtr
+│       ├── velocity_magnitude_XY_0.000000.png
+│       ├── velocity_magnitude_XZ_0.000000.png
+│       ├── velocity_magnitude_YZ_0.000000.png
+│       ├── velocity_vector_XY_0.000000.png
+│       ├── velocity_vector_XZ_0.000000.png
+│       └── velocity_vector_YZ_0.000000.png
 ├── simulations
 │   ├── __init__.py
+│   ├── __pycache__
+│   │   ├── __init__.cpython-312.pyc
+│   │   ├── initializer.cpython-312.pyc
+│   │   ├── manager.cpython-312.pyc
+│   │   ├── monitor.cpython-312.pyc
+│   │   ├── runner.cpython-312.pyc
+│   │   └── state.cpython-312.pyc
 │   ├── initializer.py
 │   ├── manager.py
 │   ├── monitor.py
@@ -67,11 +132,23 @@
 ├── tree.txt
 └── visualization
     ├── __init__.py
+    ├── __pycache__
+    │   ├── __init__.cpython-312.pyc
+    │   ├── base.cpython-312.pyc
+    │   ├── combined.cpython-312.pyc
+    │   ├── config.cpython-312.pyc
+    │   ├── interface.cpython-312.pyc
+    │   ├── scalar.cpython-312.pyc
+    │   ├── state.cpython-312.pyc
+    │   ├── utils.cpython-312.pyc
+    │   └── vector.cpython-312.pyc
     ├── base.py
     ├── combined.py
+    ├── config.py
     ├── interface.py
     ├── scalar.py
+    ├── state.py
     ├── utils.py
     └── vector.py
 
-18 directories, 57 files
+28 directories, 124 files
