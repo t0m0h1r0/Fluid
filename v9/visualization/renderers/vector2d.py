@@ -104,49 +104,37 @@ class Vector2DRenderer(Renderer2D):
         if kwargs.get("magnitude_colors", True):
             # 大きさに応じた色付け
             colors = plt.cm.viridis(norm(magnitude[::skip, ::skip]))
-            q = ax.quiver(
-                X[::skip, ::skip],
-                Y[::skip, ::skip],
-                u[::skip, ::skip],
-                v[::skip, ::skip],
-                color=colors,
-                scale=scale,
-                width=kwargs.get("width", 0.005),
-                headwidth=kwargs.get("headwidth", 3),
-                headlength=kwargs.get("headlength", 5),
-                headaxislength=kwargs.get("headaxislength", 4.5),
-                minshaft=kwargs.get("minshaft", 1),
-                minlength=kwargs.get("minlength", 0.1),
-                alpha=kwargs.get("alpha", 1.0),
-            )
+            colors = np.asarray(colors)  # ndarrayに変換
+            if colors.ndim == 3:  # (n, m, 4)の場合
+                colors = colors.reshape(-1, 4)  # (n*m, 4)に変換
         else:
             # 単色表示
             color = kwargs.get("color", "k")
-            # カラーが文字列の場合、RGBAに変換
             if isinstance(color, str):
-                color = plt.cm.colors.to_rgba(color)
+                colors = plt.cm.colors.to_rgba(color)
             elif isinstance(color, (list, np.ndarray)):
-                # すでにRGBA形式であることを確認
                 if len(color) not in [3, 4]:
-                    raise ValueError(f"Invalid color format: {color}")
+                    colors = plt.cm.colors.to_rgba("k")  # デフォルト黒
+                else:
+                    colors = color
             else:
-                raise ValueError(f"Unsupported color type: {type(color)}")
+                colors = plt.cm.colors.to_rgba("k")  # デフォルト黒
 
-            q = ax.quiver(
-                X[::skip, ::skip],
-                Y[::skip, ::skip],
-                u[::skip, ::skip],
-                v[::skip, ::skip],
-                color=color,
-                scale=scale,
-                width=kwargs.get("width", 0.005),
-                headwidth=kwargs.get("headwidth", 3),
-                headlength=kwargs.get("headlength", 5),
-                headaxislength=kwargs.get("headaxislength", 4.5),
-                minshaft=kwargs.get("minshaft", 1),
-                minlength=kwargs.get("minlength", 0.1),
-                alpha=kwargs.get("alpha", 1.0),
-            )
+        q = ax.quiver(
+            X[::skip, ::skip],
+            Y[::skip, ::skip],
+            u[::skip, ::skip],
+            v[::skip, ::skip],
+            colors=colors,
+            scale=scale,
+            width=kwargs.get("width", 0.005),
+            headwidth=kwargs.get("headwidth", 3),
+            headlength=kwargs.get("headlength", 5),
+            headaxislength=kwargs.get("headaxislength", 4.5),
+            minshaft=kwargs.get("minshaft", 1),
+            minlength=kwargs.get("minlength", 0.1),
+            alpha=kwargs.get("alpha", 1.0),
+        )
 
         # 流線の描画
         streamlines = None
@@ -181,7 +169,10 @@ class Vector2DRenderer(Renderer2D):
         if kwargs.get("magnitude_colors", True) and self.config.show_colorbar:
             label = kwargs.get("colorbar_label", "Velocity magnitude")
             self.setup_colorbar(
-                plt.cm.ScalarMappable(norm=norm, cmap=plt.cm.viridis), ax, label=label
+                plt.cm.ScalarMappable(norm=norm, cmap=plt.cm.viridis),
+                ax,
+                label=label,
+                orientation=kwargs.get("colorbar_orientation", "vertical"),
             )
 
         # スケールバーの追加
@@ -297,86 +288,32 @@ class Vector2DRenderer(Renderer2D):
 
         # 各スライスの表示を作成
         for axis_name, pos in zip(view.slice_axes, view.slice_positions):
-            axis = axis_map[axis_name.lower()]
-            comp_indices, comp_names = component_map[axis_name.lower()]
+            try:
+                # 断面の設定を取得
+                axis = axis_map[axis_name.lower()]
+                comp_indices, comp_names = component_map[axis_name.lower()]
 
-            # 該当する成分のスライスを取得
-            slice_components = [
-                self.create_slice(vector_components[i], axis, pos) for i in comp_indices
-            ]
+                # スライスの取得
+                slice_components = [
+                    self.create_slice(vector_components[i], axis, pos)
+                    for i in comp_indices
+                ]
 
-            # スライス固有の設定を適用
-            slice_kwargs = kwargs.copy()
-            if "title" in slice_kwargs:
-                slice_kwargs["title"] = f"{slice_kwargs['title']} ({axis_name})"
+                # スライス固有の設定を適用
+                slice_kwargs = kwargs.copy()
+                if "title" in slice_kwargs:
+                    slice_kwargs["title"] = f"{slice_kwargs['title']} ({axis_name})"
 
-            # 軸ラベルを更新
-            slice_kwargs["xlabel"] = comp_names[0]
-            slice_kwargs["ylabel"] = comp_names[1]
+                # 軸ラベルを更新
+                slice_kwargs["xlabel"] = comp_names[0]
+                slice_kwargs["ylabel"] = comp_names[1]
 
-            # スライスを描画
-            fig, metadata = self.render(slice_components, view=None, **slice_kwargs)
-            result[axis_name] = (fig, metadata)
+                # スライスを描画
+                fig, metadata = self.render(slice_components, view=None, **slice_kwargs)
+                result[axis_name] = (fig, metadata)
+
+            except Exception as e:
+                if self.logger:
+                    self.logger.warning(f"スライスビューの生成エラー ({axis_name}): {e}")
 
         return result
-
-    def compute_derivatives(
-        self,
-        u: np.ndarray,
-        v: np.ndarray,
-    ) -> Dict[str, np.ndarray]:
-        """ベクトル場の微分量を計算
-
-        Args:
-            u: x方向の速度成分
-            v: y方向の速度成分
-
-        Returns:
-            微分量の辞書:
-            - divergence: 発散
-            - vorticity: 渦度
-            - shear: せん断歪み
-            - strain: 伸縮歪み
-        """
-        # 勾配の計算
-        dudx = np.gradient(u, axis=0)
-        dudy = np.gradient(u, axis=1)
-        dvdx = np.gradient(v, axis=0)
-        dvdy = np.gradient(v, axis=1)
-
-        return {
-            "divergence": dudx + dvdy,  # ∇・v
-            "vorticity": dvdx - dudy,  # ∇×v
-            "shear": dudy + dvdx,  # せん断歪み
-            "strain": dudx - dvdy,  # 伸縮歪み
-        }
-
-    def compute_derived_quantities(
-        self,
-        u: np.ndarray,
-        v: np.ndarray,
-    ) -> Dict[str, float]:
-        """ベクトル場の導出量を計算
-
-        Args:
-            u: x方向の速度成分
-            v: y方向の速度成分
-
-        Returns:
-            導出量の辞書:
-            - kinetic_energy: 運動エネルギー
-            - enstrophy: エンストロフィー
-            - palinstrophy: パリンストロフィー
-        """
-        # 渦度の計算
-        vorticity = np.gradient(v, axis=0) - np.gradient(u, axis=1)
-
-        # 渦度勾配の計算
-        vort_grad_x = np.gradient(vorticity, axis=0)
-        vort_grad_y = np.gradient(vorticity, axis=1)
-
-        return {
-            "kinetic_energy": float(0.5 * np.mean(u**2 + v**2)),
-            "enstrophy": float(0.5 * np.mean(vorticity**2)),
-            "palinstrophy": float(0.5 * np.mean(vort_grad_x**2 + vort_grad_y**2)),
-        }

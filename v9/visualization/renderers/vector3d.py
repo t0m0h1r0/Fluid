@@ -204,18 +204,20 @@ class Vector3DRenderer(Renderer3D):
         # ベクトル矢印の描画
         if kwargs.get("magnitude_colors", True):
             colors = plt.cm.viridis(norm(magnitude[::skip, ::skip, ::skip]))
+            colors = np.asarray(colors)  # ndarrayに変換
+            if colors.ndim == 3:  # (n, m, 4)の場合
+                colors = colors.reshape(-1, 4)  # (n*m, 4)に変換
         else:
-            # カラーが文字列の場合、RGBAに変換
             color = kwargs.get("color", "k")
             if isinstance(color, str):
                 colors = plt.cm.colors.to_rgba(color)
             elif isinstance(color, (list, np.ndarray)):
-                # すでにRGBA形式であることを確認
                 if len(color) not in [3, 4]:
-                    raise ValueError(f"Invalid color format: {color}")
-                colors = color
+                    colors = plt.cm.colors.to_rgba(color[0])  # 最初の色を使用
+                else:
+                    colors = color
             else:
-                raise ValueError(f"Unsupported color type: {type(color)}")
+                colors = plt.cm.colors.to_rgba("k")  # デフォルト黒
 
         # サンプリングしたデータでquiver
         ax.quiver(
@@ -368,7 +370,16 @@ class Vector3DRenderer(Renderer3D):
                     mag_slice = np.sqrt(sum(c**2 for c in components))
                     colors = plt.cm.viridis(norm(mag_slice[::skip, ::skip]))
                 else:
-                    colors = kwargs.get("color", "k")
+                    color = kwargs.get("color", "k")
+                    if isinstance(color, str):
+                        colors = plt.cm.colors.to_rgba(color)
+                    elif isinstance(color, (list, np.ndarray)):
+                        if len(color) not in [3, 4]:
+                            colors = plt.cm.colors.to_rgba("k")  # デフォルト黒
+                        else:
+                            colors = color
+                    else:
+                        colors = plt.cm.colors.to_rgba("k")  # デフォルト黒
 
                 ax.quiver(
                     X[::skip, ::skip],
@@ -524,58 +535,3 @@ class Vector3DRenderer(Renderer3D):
                     self.logger.warning(f"断面ビューの生成エラー ({axis_name}): {e}")
 
         return result
-
-    def compute_derived_quantities(
-        self, u: np.ndarray, v: np.ndarray, w: np.ndarray, dx: float = 1.0
-    ) -> Dict[str, np.ndarray]:
-        """ベクトル場の導出量を計算
-
-        Args:
-            u, v, w: ベクトル場の各成分
-            dx: グリッド間隔
-
-        Returns:
-            導出量の辞書:
-            - vorticity_x, vorticity_y, vorticity_z: 渦度の各成分
-            - helicity: ヘリシティ
-            - q_criterion: Qクライテリオン
-            - divergence: 発散
-        """
-        # 勾配の計算
-        dudy, dudz = np.gradient(u, dx, axis=(1, 2))
-        dvdx, dvdz = np.gradient(v, dx, axis=(0, 2))
-        dwdx, dwdy = np.gradient(w, dx, axis=(0, 1))
-
-        # 渦度の計算 (ω = ∇ × v)
-        vorticity_x = dwdy - dvdz
-        vorticity_y = dudz - dwdx
-        vorticity_z = dvdx - dudy
-
-        # ヘリシティの計算 (H = v・ω)
-        helicity = u * vorticity_x + v * vorticity_y + w * vorticity_z
-
-        # Qクライテリオンの計算
-        q_criterion = -0.5 * (
-            dudy * dvdx
-            + dudz * dwdx
-            + dvdx * dudy
-            + dvdz * dwdy
-            + dwdx * dudz
-            + dwdy * dvdz
-        )
-
-        # 発散の計算 (∇・v)
-        divergence = (
-            np.gradient(u, dx, axis=0)
-            + np.gradient(v, dx, axis=1)
-            + np.gradient(w, dx, axis=2)
-        )
-
-        return {
-            "vorticity_x": vorticity_x,
-            "vorticity_y": vorticity_y,
-            "vorticity_z": vorticity_z,
-            "helicity": helicity,
-            "q_criterion": q_criterion,
-            "divergence": divergence,
-        }
