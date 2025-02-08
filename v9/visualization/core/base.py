@@ -1,81 +1,52 @@
-from abc import ABC, abstractmethod
+"""可視化システムの基本クラスとインターフェースを提供するモジュール
+
+このモジュールは可視化システムの設定とインターフェースを定義します。すべての
+可視化コンポーネントの基盤となります。
+"""
+
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Protocol, Dict, Any, Optional, Tuple, List, Union
+from typing import Dict, Any, List, Optional, Union, Tuple
 import numpy as np
-import numpy.typing as npt
+from pathlib import Path
 
 
 @dataclass
 class ViewConfig:
     """可視化の表示設定
+    
+    3D表示やスライス表示の視点・断面を制御します。
 
     Attributes:
         elevation: 仰角（度）
-        azimuth: 方位角（度）
+        azimuth: 方位角（度） 
         distance: 視点距離
-        focal_point: 注視点座標
-        slice_position: スライス位置（0から1の間の値）
+        focal_point: 注視点座標 (x, y, z)
+        slice_positions: 各軸でのスライス位置 [0-1]
+        slice_axes: 表示する断面の軸 (例: ["xy", "yz", "xz"])
     """
-
     elevation: float = 30.0
     azimuth: float = 45.0
     distance: float = 10.0
     focal_point: Tuple[float, float, float] = (0.5, 0.5, 0.5)
-    slice_position: Union[float, npt.NDArray[np.float64]] = 0.5
-
-    def __getitem__(self, key):
-        """スライス用の互換性のためのメソッド"""
-        if key == "slice_position":
-            return self.slice_position
-        raise KeyError(f"Invalid key: {key}")
-
-
-@dataclass
-class VectorPlotConfig:
-    """ベクトル場の表示設定"""
-
-    density: int = 20
-    scale: float = 1.0
-    width: float = 0.005
-    show_magnitude: bool = True
-    streamlines: bool = False
-    n_streamlines: int = 50
-
-
-@dataclass
-class ScalarPlotConfig:
-    """スカラー場の表示設定"""
-
-    interpolation: str = "nearest"
-    contour: bool = False
-    n_contours: int = 10
-    symmetric: bool = False
-
-
-@dataclass
-class VolumePlotConfig:
-    """3D表示の設定"""
-
-    opacity: float = 0.7
     slice_positions: List[float] = field(default_factory=lambda: [0.5, 0.5, 0.5])
-    show_isosurfaces: bool = True
-    n_isosurfaces: int = 5
-
-
-@dataclass
-class InterfacePlotConfig:
-    """Level Set場の表示設定"""
-
-    color: str = "black"
-    width: float = 2.0
-    filled: bool = True
-    phase_colors: List[str] = field(default_factory=lambda: ["lightblue", "white"])
+    slice_axes: List[str] = field(default_factory=lambda: ["xy", "yz", "xz"])
+    
+    def validate(self):
+        """設定値の検証"""
+        if len(self.slice_positions) != 3:
+            raise ValueError("slice_positions must have 3 elements")
+        if any(not 0 <= pos <= 1 for pos in self.slice_positions):
+            raise ValueError("slice_positions must be between 0 and 1")
+        valid_axes = {"xy", "yz", "xz", "yx", "zy", "zx"}
+        if any(axis not in valid_axes for axis in self.slice_axes):
+            raise ValueError(f"Invalid slice_axes. Must be one of {valid_axes}")
 
 
 @dataclass
 class VisualizationConfig:
     """可視化の基本設定
+    
+    出力形式や表示オプションを制御します。
 
     Attributes:
         output_dir: 出力ディレクトリ
@@ -85,8 +56,8 @@ class VisualizationConfig:
         show_colorbar: カラーバーの表示
         show_axes: 軸の表示
         show_grid: グリッドの表示
+        fields: フィールドごとの可視化設定
     """
-
     output_dir: Union[str, Path] = "results/visualization"
     format: str = "png"
     dpi: int = 300
@@ -94,38 +65,43 @@ class VisualizationConfig:
     show_colorbar: bool = True
     show_axes: bool = True
     show_grid: bool = False
-
-    # 各種プロット設定
-    vector_plot: VectorPlotConfig = field(default_factory=VectorPlotConfig)
-    scalar_plot: ScalarPlotConfig = field(default_factory=ScalarPlotConfig)
-    volume_plot: VolumePlotConfig = field(default_factory=VolumePlotConfig)
-    interface_plot: InterfacePlotConfig = field(default_factory=InterfacePlotConfig)
-
+    
     # フィールドごとの可視化設定
     fields: Dict[str, Dict[str, Any]] = field(
         default_factory=lambda: {
-            "velocity": {"enabled": True, "plot_types": ["vector", "magnitude"]},
-            "pressure": {"enabled": True, "plot_types": ["scalar", "contour"]},
-            "levelset": {"enabled": True, "plot_types": ["interface", "contour"]},
+            "velocity": {
+                "enabled": True,
+                "plot_types": ["vector", "magnitude"],
+                "scale": 1.0,
+                "density": 20,
+                "color": "black",
+                "alpha": 0.7
+            },
+            "pressure": {
+                "enabled": True,
+                "plot_types": ["scalar", "contour"],
+                "levels": 20,
+                "alpha": 0.5
+            },
+            "levelset": {
+                "enabled": True,
+                "plot_types": ["interface", "contour"],
+                "levels": [0],
+                "colors": ["black"],
+                "linewidth": 2.0
+            }
         }
     )
 
     def __post_init__(self):
-        """設定の後処理"""
+        """設定の後処理と検証"""
         if isinstance(self.output_dir, str):
             self.output_dir = Path(self.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # デフォルト値の追加
-        for field_name, field_config in self.fields.items():
-            if "enabled" not in field_config:
-                field_config["enabled"] = True
-            if "plot_types" not in field_config:
-                field_config["plot_types"] = []
-
     def get_output_path(self, name: str, timestamp: Optional[float] = None) -> Path:
         """出力ファイルパスを生成
-
+        
         Args:
             name: ベース名
             timestamp: タイムスタンプ（オプション）
@@ -139,79 +115,98 @@ class VisualizationConfig:
             filename = f"{name}.{self.format}"
         return self.output_dir / filename
 
+    def get_field_config(self, field_name: str) -> Dict[str, Any]:
+        """フィールドの可視化設定を取得
+        
+        Args:
+            field_name: フィールド名
+
+        Returns:
+            設定辞書（存在しない場合はデフォルト設定）
+        """
+        return self.fields.get(field_name, {
+            "enabled": True,
+            "plot_types": ["scalar"],
+            "alpha": 0.7
+        })
+
     @classmethod
     def from_dict(cls, config: Dict[str, Any]) -> "VisualizationConfig":
         """辞書から設定を作成
-
+        
         Args:
             config: 設定辞書
 
         Returns:
             設定インスタンス
         """
-        # 各プロット設定のデフォルト値を保持
-        vector_config = VectorPlotConfig(**config.get("vector_plot", {}))
-        scalar_config = ScalarPlotConfig(**config.get("scalar_plot", {}))
-        volume_config = VolumePlotConfig(**config.get("volume_plot", {}))
-        interface_config = InterfacePlotConfig(**config.get("interface_plot", {}))
+        # 基本設定の取得
+        base_config = {
+            "output_dir": config.get("output_dir", "results/visualization"),
+            "format": config.get("format", "png"),
+            "dpi": config.get("dpi", 300),
+            "colormap": config.get("colormap", "viridis"),
+            "show_colorbar": config.get("show_colorbar", True),
+            "show_axes": config.get("show_axes", True),
+            "show_grid": config.get("show_grid", False),
+        }
 
-        return cls(
-            output_dir=config.get("output_dir", "results/visualization"),
-            format=config.get("format", "png"),
-            dpi=config.get("dpi", 300),
-            colormap=config.get("colormap", "viridis"),
-            show_colorbar=config.get("show_colorbar", True),
-            show_axes=config.get("show_axes", True),
-            show_grid=config.get("show_grid", False),
-            vector_plot=vector_config,
-            scalar_plot=scalar_config,
-            volume_plot=volume_config,
-            interface_plot=interface_config,
-            fields=config.get("fields", {}),
-        )
+        # フィールド設定の取得とマージ
+        fields = {}
+        for field_name, field_config in config.get("fields", {}).items():
+            fields[field_name] = {
+                "enabled": field_config.get("enabled", True),
+                "plot_types": field_config.get("plot_types", ["scalar"]),
+                **field_config
+            }
+
+        return cls(**base_config, fields=fields)
 
 
-class DataSource(Protocol):
-    """データソースのプロトコル
-
+class DataSource:
+    """データソースの基底クラス
+    
     可視化対象のデータを提供するインターフェースを定義します。
     """
-
+    
     @property
     def data(self) -> np.ndarray:
         """データ配列を取得"""
-        ...
-
+        raise NotImplementedError
+    
     @property
     def shape(self) -> Tuple[int, ...]:
         """データの形状を取得"""
-        ...
+        raise NotImplementedError
 
     @property
     def ndim(self) -> int:
         """次元数を取得"""
-        ...
+        raise NotImplementedError
 
 
-class Renderer(ABC):
+class Renderer:
     """レンダラーの基底クラス
-
-    可視化の実際の描画処理を担当する抽象基底クラスです。
+    
+    可視化の描画処理を担当する抽象基底クラスです。
     """
-
+    
     def __init__(self, config: VisualizationConfig):
-        """レンダラーを初期化"""
+        """レンダラーを初期化
+        
+        Args:
+            config: 可視化設定
+        """
         self.config = config
 
-    @abstractmethod
     def render(
         self,
         data: Union[DataSource, np.ndarray],
         view: Optional[ViewConfig] = None,
-        **kwargs,
+        **kwargs
     ) -> Tuple[Any, Dict[str, Any]]:
         """データを描画
-
+        
         Args:
             data: 描画するデータ
             view: 視点設定
@@ -220,28 +215,34 @@ class Renderer(ABC):
         Returns:
             (描画結果, メタデータの辞書)
         """
-        pass
+        raise NotImplementedError
 
 
-class Exporter(ABC):
+class Exporter:
     """エクスポーターの基底クラス
-
+    
     描画結果をファイルとして出力する抽象基底クラスです。
     """
-
+    
     def __init__(self, config: VisualizationConfig):
-        """エクスポーターを初期化"""
+        """エクスポーターを初期化
+        
+        Args:
+            config: 可視化設定
+        """
         self.config = config
 
-    @abstractmethod
     def export(
-        self, figure: Any, filepath: Path, metadata: Optional[Dict[str, Any]] = None
+        self,
+        figure: Any,
+        filepath: Path,
+        metadata: Optional[Dict[str, Any]] = None
     ) -> None:
         """描画結果を出力
-
+        
         Args:
             figure: 描画結果
             filepath: 出力パス
             metadata: メタデータ
         """
-        pass
+        raise NotImplementedError

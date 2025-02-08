@@ -1,19 +1,17 @@
 """可視化システムのコアモジュール
 
-このパッケージは、可視化システムの中核となる
-基底クラスとインターフェースを提供します。
+このパッケージは、可視化システムの中核となる基底クラスとインターフェースを提供します。
 """
 
-from .base import VisualizationConfig, ViewConfig, DataSource, Renderer, Exporter
+# 基本的な設定とインターフェースを先にインポート
+from .base import VisualizationConfig, ViewConfig
+# その後でレンダラーをインポート
 from .renderer import BaseRenderer, Renderer2D, Renderer3D
 from .exporter import ImageExporter
 
 __all__ = [
     "VisualizationConfig",
     "ViewConfig",
-    "DataSource",
-    "Renderer",
-    "Exporter",
     "BaseRenderer",
     "Renderer2D",
     "Renderer3D",
