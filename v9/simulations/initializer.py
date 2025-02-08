@@ -122,7 +122,7 @@ class SimulationInitializer:
         water_height = height_fraction * domain_size[2]
 
         # 背景相のLevel Set関数を設定（水：正、窒素：負）
-        levelset = Z - water_height
+        levelset = water_height - Z
 
         # オブジェクト（窒素球）の追加
         objects = initial_conditions.get("objects", [])
