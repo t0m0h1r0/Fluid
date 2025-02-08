@@ -23,18 +23,64 @@ class SimulationState:
             dx: グリッド間隔
         """
         # 速度場の初期化
-        self.velocity = VectorField(shape, dx)
+        self._velocity = VectorField(shape, dx)
 
         # 圧力場の初期化
-        self.pressure = ScalarField(shape, dx)
+        self._pressure = ScalarField(shape, dx)
 
         # Level Set場の初期化
-        self.levelset = LevelSetField(shape, dx)
+        self._levelset = LevelSetField(shape, dx)
 
         # 物性値マネージャーは後で設定される
-        self.properties = None
+        self._properties = None
 
         self._time = 0.0
+
+    @property
+    def velocity(self) -> VectorField:
+        """速度場を取得"""
+        return self._velocity
+
+    @velocity.setter
+    def velocity(self, value: VectorField):
+        """速度場を設定"""
+        if value.shape != self._velocity.shape:
+            raise ValueError("速度場の形状が一致しません")
+        self._velocity = value
+
+    @property
+    def pressure(self) -> ScalarField:
+        """圧力場を取得"""
+        return self._pressure
+
+    @pressure.setter
+    def pressure(self, value: ScalarField):
+        """圧力場を設定"""
+        if value.shape != self._pressure.shape:
+            raise ValueError("圧力場の形状が一致しません")
+        self._pressure = value
+
+    @property
+    def levelset(self) -> LevelSetField:
+        """Level Set場を取得"""
+        return self._levelset
+
+    @levelset.setter
+    def levelset(self, value: LevelSetField):
+        """Level Set場を設定"""
+        if value.shape != self._levelset.shape:
+            raise ValueError("Level Set場の形状が一致しません")
+        self._levelset = value
+
+    @property
+    def properties(self):
+        """物性値マネージャーを取得"""
+        return self._properties
+
+    @properties.setter
+    def properties(self, value):
+        """物性値マネージャーを設定"""
+        self._properties = value
 
     @property
     def time(self) -> float:

@@ -4,8 +4,7 @@ import numpy as np
 from typing import Dict, Any
 import logging
 
-from core.field import VectorField, ScalarField
-from physics.levelset import LevelSetField, LevelSetParameters
+from physics.levelset import LevelSetParameters
 from physics.properties import PropertiesManager, FluidProperties
 from simulations.state import SimulationState
 
@@ -92,14 +91,17 @@ class SimulationInitializer:
                 x = np.linspace(0, domain_size[0], dimensions[0])
                 y = np.linspace(0, domain_size[1], dimensions[1])
                 z = np.linspace(0, domain_size[2], dimensions[2])
-                X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+                X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
 
                 # 球の距離関数を計算（球の内部が負、外部が正）
-                sphere_dist = np.sqrt(
-                    (X - center[0] * domain_size[0]) ** 2 +
-                    (Y - center[1] * domain_size[1]) ** 2 +
-                    (Z - center[2] * domain_size[2]) ** 2
-                ) - radius * domain_size[0]
+                sphere_dist = (
+                    np.sqrt(
+                        (X - center[0] * domain_size[0]) ** 2
+                        + (Y - center[1] * domain_size[1]) ** 2
+                        + (Z - center[2] * domain_size[2]) ** 2
+                    )
+                    - radius * domain_size[0]
+                )
 
                 # レベルセット関数を更新
                 # minを取ることで、窒素相（負の値）が水相（正の値）を上書き
@@ -124,49 +126,40 @@ class SimulationInitializer:
         # グリッド間隔の計算
         dx = domain_size[0] / dimensions[0]
 
-        # Level Set パラメータの設定
+        # シミュレーション状態を作成
+        state = SimulationState(shape=tuple(dimensions), dx=dx)
+
+        # Level Set関数の初期化
         level_set_params = LevelSetParameters(
             **self.config.get("numerical", {}).get("level_set", {})
         )
-
-        # レベルセット場の初期化
-        levelset = LevelSetField(
-            shape=tuple(dimensions), dx=dx, params=level_set_params
-        )
-
-        # 初期条件の取得
-        initial_conditions = self.config.get("initial_conditions", {})
-
-        # レベルセット関数の設定
-        levelset.data = self._setup_levelset(
-            dimensions, domain_size, initial_conditions
+        state.levelset.params = level_set_params
+        state.levelset.data = self._setup_levelset(
+            dimensions, domain_size, self.config.get("initial_conditions", {})
         )
 
         # 速度場の初期化
-        velocity_config = initial_conditions.get("velocity", {})
+        velocity_config = self.config.get("initial_conditions", {}).get("velocity", {})
         velocity_type = velocity_config.get("type", "zero")
 
-        velocity = VectorField(tuple(dimensions), dx)
         if velocity_type == "zero":
-            for comp in velocity.components:
+            for comp in state.velocity.components:
                 comp.data.fill(0.0)
+        # TODO: 他の初期速度場のタイプを追加
 
         # 圧力場の初期化
-        pressure = ScalarField(tuple(dimensions), dx)
-        pressure.data.fill(0.0)
+        state.pressure.data.fill(0.0)
 
-        # 物性値マネージャーの初期化
-        properties_manager = PropertiesManager(
+        # 物性値マネージャーの設定
+        state.properties = PropertiesManager(
             phase1=self.fluid_properties.get("water", FluidProperties(1000.0, 1.0e-3)),
             phase2=self.fluid_properties.get(
                 "nitrogen", FluidProperties(1.25, 1.81e-5)
             ),
         )
 
-        # シミュレーション状態を作成
-        state = SimulationState(shape=tuple(dimensions), dx=dx)
-
         if self.logger:
             self.logger.info("初期状態の生成完了")
+            self.logger.info(f"State summary: {state}")
 
         return state
