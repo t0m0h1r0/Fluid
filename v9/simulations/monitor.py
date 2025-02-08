@@ -61,7 +61,7 @@ class SimulationMonitor:
         """
         try:
             # 時間を取得（速度場から取得できない場合は、状態の時間を使用）
-            current_time = state.time if hasattr(state, 'time') else 0.0
+            current_time = state.time if hasattr(state, "time") else 0.0
 
             # 速度の大きさを計算
             velocity_magnitude = state.velocity.magnitude().mean()
@@ -94,8 +94,7 @@ class SimulationMonitor:
             # 速度の大きさをプロット
             plt.figure(figsize=(10, 5))
             plt.plot(
-                self.statistics["time_history"], 
-                self.statistics["velocity_magnitude"]
+                self.statistics["time_history"], self.statistics["velocity_magnitude"]
             )
             plt.title("Velocity Magnitude")
             plt.xlabel("Time")
@@ -106,10 +105,7 @@ class SimulationMonitor:
 
             # 圧力の最大値をプロット
             plt.figure(figsize=(10, 5))
-            plt.plot(
-                self.statistics["time_history"], 
-                self.statistics["pressure_max"]
-            )
+            plt.plot(self.statistics["time_history"], self.statistics["pressure_max"])
             plt.title("Maximum Pressure")
             plt.xlabel("Time")
             plt.ylabel("Max Pressure")
@@ -120,8 +116,7 @@ class SimulationMonitor:
             # レベルセットの体積をプロット
             plt.figure(figsize=(10, 5))
             plt.plot(
-                self.statistics["time_history"], 
-                self.statistics["levelset_volume"]
+                self.statistics["time_history"], self.statistics["levelset_volume"]
             )
             plt.title("Level Set Volume")
             plt.xlabel("Time")

@@ -114,7 +114,8 @@ visualization:
       plot_types: ["scalar", "contour"]
     levelset:
       enabled: true
-      plot_types: ["interface", "contour"]
+      plot_types: ["contour"]
+      #plot_types: ["interface", "contour"]
 
 # デバッグ設定
 debug:

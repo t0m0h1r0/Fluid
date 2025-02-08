@@ -5,7 +5,7 @@
 """
 
 import numpy as np
-from typing import Dict, Any, Optional, List
+from typing import Optional, List
 from core.solver import IterativeSolver
 from core.boundary import BoundaryCondition
 
@@ -30,11 +30,11 @@ class PoissonSolver(IterativeSolver):
         self.boundary_conditions = boundary_conditions
 
     def solve(
-        self, 
-        initial_solution: Optional[np.ndarray] = None, 
-        rhs: Optional[np.ndarray] = None, 
+        self,
+        initial_solution: Optional[np.ndarray] = None,
+        rhs: Optional[np.ndarray] = None,
         dx: float = 1.0,
-        **kwargs
+        **kwargs,
     ) -> np.ndarray:
         """Poissonソルバーを実行
 
@@ -51,7 +51,7 @@ class PoissonSolver(IterativeSolver):
             # 初期解のセットアップ
             if initial_solution is None:
                 initial_solution = np.zeros_like(rhs)
-            
+
             # 右辺のセットアップ
             if rhs is None:
                 raise ValueError("右辺ベクトルが指定されていません")

@@ -71,6 +71,9 @@ class Vector2DRenderer(Renderer2D):
         scale = kwargs.get("scale", 1.0)
         skip = max(1, min(nx, ny) // density)
 
+        # デフォルトの色を黒に設定
+        color = kwargs.get("color", "k")
+
         # ベクトル場の表示
         if kwargs.get("magnitude_colors", True):
             # 大きさに応じた色付け
@@ -92,7 +95,7 @@ class Vector2DRenderer(Renderer2D):
                 Y[::skip, ::skip],
                 u[::skip, ::skip],
                 v[::skip, ::skip],
-                color=kwargs.get("color", "k"),
+                color=color,
                 scale=scale,
                 width=kwargs.get("width", 0.005),
                 alpha=kwargs.get("alpha", 1.0),
@@ -151,27 +154,3 @@ class Vector2DRenderer(Renderer2D):
             metadata["display_type"].append("magnitude_colors")
 
         return fig, metadata
-
-    def _compute_derived_quantities(
-        self, u: np.ndarray, v: np.ndarray
-    ) -> Dict[str, np.ndarray]:
-        """派生量を計算
-
-        Args:
-            u: x方向の速度成分
-            v: y方向の速度成分
-
-        Returns:
-            派生量の辞書
-        """
-        # 渦度の計算
-        dudy = np.gradient(u, axis=0)
-        dvdx = np.gradient(v, axis=1)
-        vorticity = dvdx - dudy
-
-        # 発散の計算
-        dudx = np.gradient(u, axis=1)
-        dvdy = np.gradient(v, axis=0)
-        divergence = dudx + dvdy
-
-        return {"vorticity": vorticity, "divergence": divergence}

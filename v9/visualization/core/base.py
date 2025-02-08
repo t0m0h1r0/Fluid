@@ -1,13 +1,9 @@
-"""可視化システムの基底クラスとインターフェースを提供するモジュール
-
-このモジュールは、可視化システムの核となる抽象クラスとインターフェースを定義します。
-"""
-
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, Dict, Any, Optional, Tuple, List, Union
 import numpy as np
+import numpy.typing as npt
 
 
 @dataclass
@@ -19,12 +15,20 @@ class ViewConfig:
         azimuth: 方位角（度）
         distance: 視点距離
         focal_point: 注視点座標
+        slice_position: スライス位置（0から1の間の値）
     """
 
     elevation: float = 30.0
     azimuth: float = 45.0
     distance: float = 10.0
     focal_point: Tuple[float, float, float] = (0.5, 0.5, 0.5)
+    slice_position: Union[float, npt.NDArray[np.float64]] = 0.5
+
+    def __getitem__(self, key):
+        """スライス用の互換性のためのメソッド"""
+        if key == "slice_position":
+            return self.slice_position
+        raise KeyError(f"Invalid key: {key}")
 
 
 @dataclass
@@ -98,20 +102,13 @@ class VisualizationConfig:
     interface_plot: InterfacePlotConfig = field(default_factory=InterfacePlotConfig)
 
     # フィールドごとの可視化設定
-    fields: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
-        "velocity": {
-            "enabled": True,
-            "plot_types": ["vector", "magnitude"]
-        },
-        "pressure": {
-            "enabled": True,
-            "plot_types": ["scalar", "contour"]
-        },
-        "levelset": {
-            "enabled": True,
-            "plot_types": ["interface", "contour"]
+    fields: Dict[str, Dict[str, Any]] = field(
+        default_factory=lambda: {
+            "velocity": {"enabled": True, "plot_types": ["vector", "magnitude"]},
+            "pressure": {"enabled": True, "plot_types": ["scalar", "contour"]},
+            "levelset": {"enabled": True, "plot_types": ["interface", "contour"]},
         }
-    })
+    )
 
     def __post_init__(self):
         """設定の後処理"""
@@ -170,7 +167,7 @@ class VisualizationConfig:
             scalar_plot=scalar_config,
             volume_plot=volume_config,
             interface_plot=interface_config,
-            fields=config.get("fields", {})
+            fields=config.get("fields", {}),
         )
 
 
