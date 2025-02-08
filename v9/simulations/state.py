@@ -1,59 +1,145 @@
-"""シミュレーション状態を管理するモジュール"""
+"""シミュレーション状態を管理するモジュール
 
-from dataclasses import dataclass
-from typing import Optional
+このモジュールは、流体シミュレーションの状態（速度場、圧力場、Level Set場など）を
+管理するためのクラスを提供します。
+"""
+
+from typing import Dict, Any
+from pathlib import Path
+import numpy as np
 
 from core.field import VectorField, ScalarField
 from physics.levelset import LevelSetField
-from physics.properties import PropertiesManager
 
 
-@dataclass
 class SimulationState:
-    """シミュレーションの状態を表すクラス"""
+    """シミュレーション状態クラス"""
 
-    velocity: VectorField
-    pressure: ScalarField
-    levelset: LevelSetField
-    properties: Optional[PropertiesManager] = None
-
-    def __post_init__(self):
-        """初期化後の処理"""
-        # components属性を追加
-        self.components = self.velocity.components
-
-        # dx属性を追加（velocityのdxを使用）
-        self.dx = self.velocity.dx
-
-    def update(self, **kwargs):
-        """状態を更新
+    def __init__(self, shape: tuple, dx: float = 1.0):
+        """シミュレーション状態を初期化
 
         Args:
-            **kwargs: 更新する属性
+            shape: グリッドの形状
+            dx: グリッド間隔
         """
-        for key, value in kwargs.items():
-            setattr(self, key, value)
+        # 速度場の初期化
+        self.velocity = VectorField(shape, dx)
 
-        # components属性を再設定
-        self.components = self.velocity.components
+        # 圧力場の初期化
+        self.pressure = ScalarField(shape, dx)
 
-        # dx属性を更新
-        self.dx = self.velocity.dx
+        # Level Set場の初期化
+        self.levelset = LevelSetField(shape, dx)
 
-    def copy(self):
-        """状態の深いコピーを作成
+        self._time = 0.0
+
+    @property
+    def time(self) -> float:
+        """現在の時刻を取得"""
+        return self._time
+
+    @time.setter
+    def time(self, value: float):
+        """時刻を設定"""
+        if value < 0:
+            raise ValueError("時刻は非負である必要があります")
+        self._time = value
+
+    def save_state(self) -> Dict[str, Any]:
+        """状態を保存
 
         Returns:
-            コピーされた状態
+            現在の状態を表す辞書
         """
-        new_state = SimulationState(
-            velocity=self.velocity.copy(),
-            pressure=self.pressure.copy(),
-            levelset=self.levelset.copy(),
-            properties=self.properties,
+        return {
+            "velocity": self.velocity.save_state(),
+            "pressure": self.pressure.save_state(),
+            "levelset": self.levelset.save_state(),
+            "time": self._time,
+        }
+
+    def load_state(self, state: Dict[str, Any]):
+        """状態を読み込み
+
+        Args:
+            state: 読み込む状態の辞書
+        """
+        self.velocity.load_state(state["velocity"])
+        self.pressure.load_state(state["pressure"])
+        self.levelset.load_state(state["levelset"])
+        self._time = state["time"]
+
+    def save_to_file(self, filename: str):
+        """状態をファイルに保存
+
+        Args:
+            filename: 保存するファイル名
+        """
+        Path(filename).parent.mkdir(parents=True, exist_ok=True)
+        np.savez(
+            filename,
+            velocity_x=self.velocity.components[0].data,
+            velocity_y=self.velocity.components[1].data,
+            velocity_z=self.velocity.components[2].data,
+            pressure=self.pressure.data,
+            levelset=self.levelset.data,
+            time=self._time,
         )
 
-        # コピーした際にdx属性も正しく設定
-        new_state.dx = self.dx
+    @classmethod
+    def load_from_file(cls, filename: str, shape: tuple = None, dx: float = 1.0):
+        """ファイルから状態を読み込み
 
-        return new_state
+        Args:
+            filename: 読み込むファイル名
+            shape: グリッドの形状（指定がない場合はファイルから読み取り）
+            dx: グリッド間隔
+
+        Returns:
+            読み込まれた状態
+        """
+        data = np.load(filename)
+
+        if shape is None:
+            shape = data["velocity_x"].shape
+
+        state = cls(shape, dx)
+        state.velocity.components[0].data = data["velocity_x"]
+        state.velocity.components[1].data = data["velocity_y"]
+        state.velocity.components[2].data = data["velocity_z"]
+        state.pressure.data = data["pressure"]
+        state.levelset.data = data["levelset"]
+        state._time = float(data["time"])
+
+        return state
+
+    def get_extrema(self) -> Dict[str, Dict[str, float]]:
+        """各フィールドの最大値・最小値を取得
+
+        Returns:
+            各フィールドの最大値・最小値を含む辞書
+        """
+        return {
+            "velocity": {
+                "min": min(np.min(c.data) for c in self.velocity.components),
+                "max": max(np.max(c.data) for c in self.velocity.components),
+            },
+            "pressure": {
+                "min": np.min(self.pressure.data),
+                "max": np.max(self.pressure.data),
+            },
+            "levelset": {
+                "min": np.min(self.levelset.data),
+                "max": np.max(self.levelset.data),
+            },
+        }
+
+    def __str__(self) -> str:
+        """文字列表現"""
+        extrema = self.get_extrema()
+        return (
+            f"SimulationState (t = {self._time:.3f}):\n"
+            f"  Velocity: [{extrema['velocity']['min']:.3f}, {extrema['velocity']['max']:.3f}]\n"
+            f"  Pressure: [{extrema['pressure']['min']:.3f}, {extrema['pressure']['max']:.3f}]\n"
+            f"  Level Set: [{extrema['levelset']['min']:.3f}, {extrema['levelset']['max']:.3f}]"
+        )

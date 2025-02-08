@@ -283,9 +283,7 @@ class StateVisualizer:
                 for plane in planes:
                     # 個別のフィールドを可視化
                     for field_name in ["velocity", "pressure", "levelset"]:
-                        self._visualize_field(
-                            state, plane, field_name, timestamp
-                        )
+                        self._visualize_field(state, plane, field_name, timestamp)
 
                     # 複合フィールドの可視化
                     if (
