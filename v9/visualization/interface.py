@@ -60,7 +60,7 @@ class InterfaceVisualizer(BaseVisualizer):
         # 座標グリッドの設定
         x = np.arange(levelset_2d.shape[0])
         y = np.arange(levelset_2d.shape[1])
-        X, Y = np.meshgrid(x, y, indexing='ij')
+        X, Y = np.meshgrid(x, y, indexing="ij")
 
         # データの値の範囲をチェック
         vmin, vmax = np.min(levelset_2d), np.max(levelset_2d)
@@ -74,7 +74,8 @@ class InterfaceVisualizer(BaseVisualizer):
             # 領域の塗りつぶし
             if filled:
                 cs_filled = ax.contourf(
-                    X, Y,
+                    X,
+                    Y,
                     levelset_2d,
                     levels=[-np.inf, 0, np.inf],
                     colors=colors,
@@ -89,7 +90,8 @@ class InterfaceVisualizer(BaseVisualizer):
             if kwargs.get("extra_contours", False) and abs(vmax - vmin) > 1e-6:
                 levels = np.linspace(vmin, vmax, 10)
                 cs_extra = ax.contour(
-                    X, Y,
+                    X,
+                    Y,
                     levelset_2d,
                     levels=levels,
                     colors="gray",

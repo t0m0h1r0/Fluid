@@ -31,35 +31,38 @@ class SimulationInitializer:
         Returns:
             物性値のディクショナリ
         """
-        phases_config = self.config.get("physics", {}).get("phases", {
-            "water": {
-                "density": 1000.0,
-                "viscosity": 1.0e-3,
-                "surface_tension": 0.07,
+        phases_config = self.config.get("physics", {}).get(
+            "phases",
+            {
+                "water": {
+                    "density": 1000.0,
+                    "viscosity": 1.0e-3,
+                    "surface_tension": 0.07,
+                },
+                "nitrogen": {
+                    "density": 1.25,
+                    "viscosity": 1.81e-5,
+                    "surface_tension": 0.0,
+                },
             },
-            "nitrogen": {
-                "density": 1.25,
-                "viscosity": 1.81e-5,
-                "surface_tension": 0.0,
-            }
-        })
+        )
 
         return {
             phase_name: FluidProperties(
                 density=props["density"],
                 viscosity=props["viscosity"],
-                surface_tension=props.get("surface_tension", 0.0)
+                surface_tension=props.get("surface_tension", 0.0),
             )
             for phase_name, props in phases_config.items()
         }
 
     def _compute_signed_distance(
-        self, 
-        X: np.ndarray, 
-        Y: np.ndarray, 
-        Z: np.ndarray, 
-        center: List[float], 
-        radius: float
+        self,
+        X: np.ndarray,
+        Y: np.ndarray,
+        Z: np.ndarray,
+        center: List[float],
+        radius: float,
     ) -> np.ndarray:
         """符号付き距離関数を計算
 
@@ -73,19 +76,14 @@ class SimulationInitializer:
         """
         # 中心からの距離を計算
         distance = np.sqrt(
-            (X - center[0]) ** 2 +
-            (Y - center[1]) ** 2 +
-            (Z - center[2]) ** 2
+            (X - center[0]) ** 2 + (Y - center[1]) ** 2 + (Z - center[2]) ** 2
         )
-        
+
         # 距離関数を計算（球の内部は負、外部は正）
         return radius - distance
 
     def _setup_initial_fields(
-        self, 
-        dimensions: List[int], 
-        domain_size: List[float], 
-        initial_conditions: Dict
+        self, dimensions: List[int], domain_size: List[float], initial_conditions: Dict
     ) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray]]:
         """初期フィールドを設定
 
@@ -109,7 +107,7 @@ class SimulationInitializer:
         x = np.linspace(0, domain_size[0], dimensions[0])
         y = np.linspace(0, domain_size[1], dimensions[1])
         z = np.linspace(0, domain_size[2], dimensions[2])
-        X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+        X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
 
         # 初期フィールドの作成
         levelset = np.zeros_like(X)
@@ -136,11 +134,13 @@ class SimulationInitializer:
                 radius_phys = radius * domain_size[0]
 
                 # Level Set関数の計算（球の内部は負の値）
-                sphere_dist = self._compute_signed_distance(X, Y, Z, center_phys, radius_phys)
+                sphere_dist = self._compute_signed_distance(
+                    X, Y, Z, center_phys, radius_phys
+                )
 
                 # 球の内部と外部を更新
-                bubble_region = (sphere_dist > 0)
-                
+                bubble_region = sphere_dist > 0
+
                 # Level Set関数の更新
                 levelset_update = -sphere_dist.copy()
                 levelset[bubble_region] = levelset_update[bubble_region]
@@ -149,18 +149,17 @@ class SimulationInitializer:
                 # 1. 空気層の圧力: Pa(z) = ρn * g * (zmax - z)
                 p_air = rho_n * g * (domain_size[2] - Z)
 
-                # 2. 水層の圧力 
+                # 2. 水層の圧力
                 # P界面 = ρn * g * (zmax - z界面)
                 p_interface = rho_n * g * (domain_size[2] - water_height)
-                
+
                 # Pw(z) = P界面 + ρw * g * (z界面 - z)
                 p_water = p_interface + rho_w * g * (water_height - Z)
 
                 # 3. 窒素球内の圧力: Pn = Pw(z球) + 2σ/R
                 # 球の中心に最も近いZ座標のインデックスを取得
                 center_z_index = np.unravel_index(
-                    np.argmin(np.abs(Z - center_phys[2])), 
-                    Z.shape
+                    np.argmin(np.abs(Z - center_phys[2])), Z.shape
                 )
                 p_sphere_location = p_water[center_z_index]
                 dp_laplace = 2 * sigma / radius_phys  # 曲率による圧力ジャンプ

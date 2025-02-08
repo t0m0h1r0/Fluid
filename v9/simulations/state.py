@@ -94,7 +94,7 @@ class SimulationState:
             raise ValueError("時刻は非負である必要があります")
         self._time = value
 
-    def copy(self) -> 'SimulationState':
+    def copy(self) -> "SimulationState":
         """状態の深いコピーを作成
 
         Returns:

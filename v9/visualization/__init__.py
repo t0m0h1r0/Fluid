@@ -8,7 +8,8 @@ from .scalar import ScalarVisualizer
 from .vector import VectorVisualizer
 from .interface import InterfaceVisualizer
 from .combined import CombinedVisualizer
-from .state import StateVisualizer  # 追加
+from .state import StateVisualizer  # 循環インポートに注意
+from typing import Optional
 
 
 class Visualizer2D:
@@ -17,7 +18,7 @@ class Visualizer2D:
     様々な物理量の可視化を統合的に提供します。
     """
 
-    def __init__(self, config=None):
+    def __init__(self, config: Optional[VisualizationConfig] = None):
         """可視化システムを初期化
 
         Args:
@@ -81,5 +82,5 @@ __all__ = [
     "Visualizer2D",
     "VisualizationConfig",
     "create_visualizer",
-    "StateVisualizer",  # 追加
+    "StateVisualizer",
 ]
