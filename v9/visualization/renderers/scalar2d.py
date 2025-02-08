@@ -108,10 +108,21 @@ class Scalar2DRenderer(Renderer2D):
                 n_contours = kwargs.get("n_contours", 10)
                 levels = np.linspace(norm.vmin, norm.vmax, n_contours)
 
+            # カラーが文字列の場合、RGBAに変換
+            contour_colors = kwargs.get("contour_colors", "k")
+            if isinstance(contour_colors, str):
+                contour_colors = plt.cm.colors.to_rgba(contour_colors)
+            elif isinstance(contour_colors, (list, np.ndarray)):
+                # すでにRGBA形式であることを確認
+                if len(contour_colors) not in [3, 4]:
+                    raise ValueError(f"Invalid color format: {contour_colors}")
+            else:
+                raise ValueError(f"Unsupported color type: {type(contour_colors)}")
+
             contours = ax.contour(
                 data.T,
                 levels=levels,
-                colors=kwargs.get("contour_colors", "k"),
+                colors=contour_colors,
                 alpha=kwargs.get("contour_alpha", 0.7),
                 extent=extent,
                 linewidths=kwargs.get("contour_linewidth", 1.0),

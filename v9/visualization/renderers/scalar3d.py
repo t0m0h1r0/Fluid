@@ -114,6 +114,7 @@ class Scalar3DRenderer(Renderer3D):
                 norm=norm,
                 opacity=kwargs.get("opacity", 0.7),
                 metadata=metadata,
+                **kwargs,
             )
 
         # ボリュームレンダリング
@@ -196,9 +197,19 @@ class Scalar3DRenderer(Renderer3D):
 
                 # 色の設定
                 if colors is not None and i < len(colors):
+                    # カラーが文字列の場合、RGBAに変換
                     color = colors[i]
+                    if isinstance(color, str):
+                        color = plt.cm.colors.to_rgba(color)
+                    elif isinstance(color, (list, np.ndarray)):
+                        # すでにRGBA形式であることを確認
+                        if len(color) not in [3, 4]:
+                            raise ValueError(f"Invalid color format: {color}")
+                    else:
+                        raise ValueError(f"Unsupported color type: {type(color)}")
                 else:
                     color = cmap(norm(isovalue))
+
                 mesh.set_facecolor(color)
                 mesh.set_alpha(opacity)
 
@@ -215,7 +226,7 @@ class Scalar3DRenderer(Renderer3D):
                 )
 
             except Exception as e:
-                if self.logger:
+                if hasattr(self, "logger"):
                     self.logger.warning(f"等値面の生成エラー ({isovalue}): {e}")
 
     def _render_slices(
@@ -227,6 +238,7 @@ class Scalar3DRenderer(Renderer3D):
         norm: plt.Normalize,
         opacity: float,
         metadata: Dict[str, Any],
+        **kwargs,
     ) -> None:
         """断面を描画
 
@@ -238,6 +250,7 @@ class Scalar3DRenderer(Renderer3D):
             norm: 正規化オブジェクト
             opacity: 不透明度
             metadata: 更新するメタデータ
+            **kwargs: 追加の描画オプション
         """
         if "slices" not in metadata["display_type"]:
             metadata["display_type"].append("slices")
@@ -265,28 +278,62 @@ class Scalar3DRenderer(Renderer3D):
                     X, Y, Z = x[:, :, idx], y[:, :, idx], z[:, :, idx]
                     slice_data = data[:, :, idx]
 
+                # カラーマップの適用
+                colors = cmap(norm(slice_data))
+
                 # 断面の描画
                 surf = ax.plot_surface(
                     X,
                     Y,
                     Z,
-                    facecolors=cmap(norm(slice_data)),
+                    facecolors=colors,
                     alpha=opacity,
                     shade=False,
                 )
+
+                # 等高線の追加
+                if kwargs.get("contour", False):
+                    levels = kwargs.get("levels")
+                    if levels is None:
+                        levels = np.linspace(
+                            np.nanmin(slice_data),
+                            np.nanmax(slice_data),
+                            kwargs.get("n_contours", 10),
+                        )
+
+                    # カラーが文字列の場合、RGBAに変換
+                    colors = kwargs.get("contour_colors", "k")
+                    if isinstance(colors, str):
+                        colors = plt.cm.colors.to_rgba(colors)
+                    elif isinstance(colors, (list, np.ndarray)):
+                        # すでにRGBA形式であることを確認
+                        if len(colors) not in [3, 4]:
+                            raise ValueError(f"Invalid color format: {colors}")
+                    else:
+                        raise ValueError(f"Unsupported color type: {type(colors)}")
+
+                    ax.contour(
+                        X,
+                        Y,
+                        slice_data,
+                        levels=levels,
+                        colors=colors,
+                        alpha=kwargs.get("contour_alpha", 0.5),
+                        linewidths=kwargs.get("contour_linewidth", 1.0),
+                    )
 
                 # メタデータの更新
                 metadata["slices"].append(
                     {
                         "axis": axis_name,
                         "position": float(pos),
-                        "min": float(np.min(slice_data)),
-                        "max": float(np.max(slice_data)),
+                        "min": float(np.nanmin(slice_data)),
+                        "max": float(np.nanmax(slice_data)),
                     }
                 )
 
             except Exception as e:
-                if self.logger:
+                if hasattr(self, "logger"):
                     self.logger.warning(f"断面の生成エラー ({axis_name}): {e}")
 
     def _render_volume(
@@ -344,38 +391,5 @@ class Scalar3DRenderer(Renderer3D):
             }
 
         except Exception as e:
-            if self.logger:
+            if hasattr(self, "logger"):
                 self.logger.warning(f"ボリュームレンダリングエラー: {e}")
-
-    def create_multiview(
-        self, data: np.ndarray, view: ViewConfig, **kwargs
-    ) -> Dict[str, Tuple[Figure, Dict[str, Any]]]:
-        """複数のビューを作成
-
-        Args:
-            data: スカラー場データ
-            view: 視点設定
-            **kwargs: 描画オプション
-
-        Returns:
-            ビュー名をキーとする (図, メタデータ) のタプルの辞書
-        """
-        result = {}
-
-        # 3Dビュー
-        fig_3d, meta_3d = self.render(data, view, **kwargs)
-        result["3D"] = (fig_3d, meta_3d)
-
-        # 2D断面ビュー
-        for axis_name, pos in zip(view.slice_axes, view.slice_positions):
-            # スライス固有の設定を適用
-            slice_kwargs = kwargs.copy()
-            if "title" in slice_kwargs:
-                slice_kwargs["title"] = f"{slice_kwargs['title']} ({axis_name})"
-
-            # 2Dレンダラーを使用してスライスを描画
-            slice_view = ViewConfig(slice_axes=[axis_name], slice_positions=[pos])
-            fig_slice, meta_slice = self.render(data, view=slice_view, **slice_kwargs)
-            result[axis_name] = (fig_slice, meta_slice)
-
-        return result

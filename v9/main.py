@@ -12,7 +12,7 @@ import traceback
 
 from logger import SimulationLogger, LogConfig
 from simulations import SimulationManager, SimulationInitializer, SimulationRunner
-from visualization import StateVisualizer
+from visualization import visualize_simulation_state
 import logging
 
 
@@ -131,7 +131,6 @@ def run_simulation(
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # 可視化の設定
-        visualizer = StateVisualizer(config, logger)
         viz_config = config.get("visualization", {})
         save_interval = config.get("numerical", {}).get("save_interval", 0.1)
         max_time = config.get("numerical", {}).get("max_time", 1.0)
@@ -153,7 +152,7 @@ def run_simulation(
             # 初期状態の可視化（設定で有効な場合）
             if viz_config.get("output_control", {}).get("initial_state", True):
                 logger.info("初期状態を可視化")
-                visualizer.visualize(state, timestamp=0.0)
+                visualize_simulation_state(state, config, timestamp=0.0)
 
         # 次の保存タイミング
         next_save_time = save_interval
@@ -190,7 +189,7 @@ def run_simulation(
                 last_output_step,
                 viz_config,
             ):
-                visualizer.visualize(state, timestamp=current_time)
+                visualize_simulation_state(state, config, timestamp=current_time)
                 last_output_time = current_time
                 last_output_step = current_step
 
@@ -202,7 +201,7 @@ def run_simulation(
                 )
 
         # シミュレーション終了時の可視化
-        visualizer.visualize(state, timestamp=current_time)
+        visualize_simulation_state(state, config, timestamp=current_time)
 
         # 終了処理
         runner.finalize(output_dir)

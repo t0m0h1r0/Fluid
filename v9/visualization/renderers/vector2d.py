@@ -122,6 +122,16 @@ class Vector2DRenderer(Renderer2D):
         else:
             # 単色表示
             color = kwargs.get("color", "k")
+            # カラーが文字列の場合、RGBAに変換
+            if isinstance(color, str):
+                color = plt.cm.colors.to_rgba(color)
+            elif isinstance(color, (list, np.ndarray)):
+                # すでにRGBA形式であることを確認
+                if len(color) not in [3, 4]:
+                    raise ValueError(f"Invalid color format: {color}")
+            else:
+                raise ValueError(f"Unsupported color type: {type(color)}")
+
             q = ax.quiver(
                 X[::skip, ::skip],
                 Y[::skip, ::skip],

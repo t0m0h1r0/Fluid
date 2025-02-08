@@ -205,7 +205,17 @@ class Vector3DRenderer(Renderer3D):
         if kwargs.get("magnitude_colors", True):
             colors = plt.cm.viridis(norm(magnitude[::skip, ::skip, ::skip]))
         else:
-            colors = kwargs.get("color", "k")
+            # カラーが文字列の場合、RGBAに変換
+            color = kwargs.get("color", "k")
+            if isinstance(color, str):
+                colors = plt.cm.colors.to_rgba(color)
+            elif isinstance(color, (list, np.ndarray)):
+                # すでにRGBA形式であることを確認
+                if len(color) not in [3, 4]:
+                    raise ValueError(f"Invalid color format: {color}")
+                colors = color
+            else:
+                raise ValueError(f"Unsupported color type: {type(color)}")
 
         # サンプリングしたデータでquiver
         ax.quiver(
