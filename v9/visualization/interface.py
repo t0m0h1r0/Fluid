@@ -57,64 +57,53 @@ class InterfaceVisualizer(BaseVisualizer):
             "colors", self.config.interface_plot.get("colors", ["lightblue", "white"])
         )
 
-        # データに有効な範囲があるか確認
-        if not np.isfinite(levelset_2d).any():
-            # データが全て非有効な場合は単色の画像を生成
-            ax.imshow(np.zeros_like(levelset_2d), cmap="gray", origin="lower")
-            ax.set_title(f"Interface (t = {timestamp:.3f}s) - No Valid Data")
+        # 座標グリッドの設定
+        x = np.arange(levelset_2d.shape[0])
+        y = np.arange(levelset_2d.shape[1])
+        X, Y = np.meshgrid(x, y, indexing='ij')
+
+        # データの値の範囲をチェック
+        vmin, vmax = np.min(levelset_2d), np.max(levelset_2d)
+        if abs(vmax - vmin) < 1e-10:  # データがほぼ同じ値の場合
+            # 単純な塗りつぶしで表示
+            if vmin > 0:
+                ax.fill_between(x, 0, levelset_2d.shape[1], color=colors[0], alpha=0.5)
+            else:
+                ax.fill_between(x, 0, levelset_2d.shape[1], color=colors[1], alpha=0.5)
         else:
             # 領域の塗りつぶし
             if filled:
-                try:
-                    x = np.arange(levelset_2d.shape[0])
-                    y = np.arange(levelset_2d.shape[1])
-                    X, Y = np.meshgrid(x, y, indexing='ij')
-                    
-                    cs_filled = ax.contourf(
-                        X, Y,
-                        levelset_2d,
-                        levels=[-np.inf, 0, np.inf],
-                        colors=colors,
-                        alpha=0.5,
-                    )
+                cs_filled = ax.contourf(
+                    X, Y,
+                    levelset_2d,
+                    levels=[-np.inf, 0, np.inf],
+                    colors=colors,
+                    alpha=0.5,
+                )
 
-                    # カラーバーの追加
-                    if self.config.show_colorbar:
-                        plt.colorbar(cs_filled, ax=ax, label="Phase")
-
-                except Exception as e:
-                    print(f"等高線描画エラー: {e}")
-                    ax.imshow(levelset_2d, cmap="coolwarm", alpha=0.5, origin="lower")
+                # カラーバーの追加（値の範囲が十分にある場合のみ）
+                if self.config.show_colorbar and abs(vmax - vmin) > 1e-6:
+                    plt.colorbar(cs_filled, ax=ax, label="Phase")
 
             # 追加の等高線（オプション）
-            extra_contours = kwargs.get("extra_contours", False)
-            if extra_contours:
-                try:
-                    # 有効な等高線レベルを計算
-                    levels = np.linspace(
-                        np.nanmin(levelset_2d), np.nanmax(levelset_2d), 10
-                    )
-                    levels = levels[np.isfinite(levels)]
+            if kwargs.get("extra_contours", False) and abs(vmax - vmin) > 1e-6:
+                levels = np.linspace(vmin, vmax, 10)
+                cs_extra = ax.contour(
+                    X, Y,
+                    levelset_2d,
+                    levels=levels,
+                    colors="gray",
+                    alpha=0.3,
+                    linestyles="--",
+                )
+                ax.clabel(cs_extra, inline=True, fontsize=8)
 
-                    if len(levels) > 1:
-                        cs_extra = ax.contour(
-                            X, Y,
-                            levelset_2d,
-                            levels=levels,
-                            colors="gray",
-                            alpha=0.3,
-                            linestyles="--",
-                        )
-                        ax.clabel(cs_extra, inline=True, fontsize=8)
-                except Exception as e:
-                    print(f"追加等高線描画エラー: {e}")
+        # グリッドの範囲を設定
+        ax.set_xlim(0, levelset_2d.shape[0])
+        ax.set_ylim(0, levelset_2d.shape[1])
 
-            # グリッドの範囲を設定
-            ax.set_xlim(0, levelset_2d.shape[0])
-            ax.set_ylim(0, levelset_2d.shape[1])
-
-            # タイトルの設定
-            ax.set_title(f"Interface (t = {timestamp:.3f}s)")
+        # タイトルの設定
+        ax.set_title(f"Interface (t = {timestamp:.3f}s)")
 
         # 図を保存
         return self.save_figure(fig, "interface", timestamp)
