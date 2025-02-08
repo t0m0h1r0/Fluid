@@ -59,18 +59,26 @@ class SimulationMonitor:
         Args:
             state: 現在のシミュレーション状態
         """
-        # 速度の大きさを計算
-        velocity_magnitude = state.velocity.magnitude().mean()
+        try:
+            # 時間を取得（速度場から取得できない場合は、状態の時間を使用）
+            current_time = state.time if hasattr(state, 'time') else 0.0
 
-        # レベルセットの診断情報を取得
-        levelset_diag = state.levelset.get_diagnostics()
+            # 速度の大きさを計算
+            velocity_magnitude = state.velocity.magnitude().mean()
 
-        # 統計情報を記録
-        self.statistics["time_history"].append(state.velocity.time)
-        self.statistics["velocity_magnitude"].append(velocity_magnitude)
-        self.statistics["pressure_max"].append(state.pressure.max())
-        self.statistics["levelset_volume"].append(levelset_diag["volume"])
-        self.statistics["levelset_area"].append(levelset_diag["area"])
+            # レベルセットの診断情報を取得
+            levelset_diag = state.levelset.get_diagnostics()
+
+            # 統計情報を記録
+            self.statistics["time_history"].append(current_time)
+            self.statistics["velocity_magnitude"].append(velocity_magnitude)
+            self.statistics["pressure_max"].append(state.pressure.max())
+            self.statistics["levelset_volume"].append(levelset_diag["volume"])
+            self.statistics["levelset_area"].append(levelset_diag["area"])
+
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(f"モニター更新中にエラー: {e}")
 
     def plot_history(self, output_dir: Path):
         """シミュレーション履歴をプロット
@@ -86,7 +94,8 @@ class SimulationMonitor:
             # 速度の大きさをプロット
             plt.figure(figsize=(10, 5))
             plt.plot(
-                self.statistics["time_history"], self.statistics["velocity_magnitude"]
+                self.statistics["time_history"], 
+                self.statistics["velocity_magnitude"]
             )
             plt.title("Velocity Magnitude")
             plt.xlabel("Time")
@@ -97,7 +106,10 @@ class SimulationMonitor:
 
             # 圧力の最大値をプロット
             plt.figure(figsize=(10, 5))
-            plt.plot(self.statistics["time_history"], self.statistics["pressure_max"])
+            plt.plot(
+                self.statistics["time_history"], 
+                self.statistics["pressure_max"]
+            )
             plt.title("Maximum Pressure")
             plt.xlabel("Time")
             plt.ylabel("Max Pressure")
@@ -108,7 +120,8 @@ class SimulationMonitor:
             # レベルセットの体積をプロット
             plt.figure(figsize=(10, 5))
             plt.plot(
-                self.statistics["time_history"], self.statistics["levelset_volume"]
+                self.statistics["time_history"], 
+                self.statistics["levelset_volume"]
             )
             plt.title("Level Set Volume")
             plt.xlabel("Time")

@@ -83,13 +83,21 @@ class IterativeSolver(Solver):
         Returns:
             収束したかどうか
         """
+        # 初回の残差を記録
         if self._initial_residual is None:
+            self._initial_residual = residual
             return False
 
+        # 初期残差が非常に小さい場合の特別な処理
+        if self._initial_residual < 1e-15:
+            return residual < 1e-10
+
+        # 相対残差による収束判定
         relative_residual = residual / self._initial_residual
         self._convergence_history.append(relative_residual)
 
-        return relative_residual < self.tolerance
+        # 相対残差と絶対残差の両方でチェック
+        return (relative_residual < self.tolerance) and (residual < 1e-10)
 
     def solve(self, initial_solution: np.ndarray, **kwargs) -> Dict[str, Any]:
         """反復法で方程式を解く

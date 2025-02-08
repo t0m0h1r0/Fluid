@@ -29,6 +29,65 @@ class PoissonSolver(IterativeSolver):
         super().__init__(name="Poisson", **kwargs)
         self.boundary_conditions = boundary_conditions
 
+    def solve(
+        self, 
+        initial_solution: Optional[np.ndarray] = None, 
+        rhs: Optional[np.ndarray] = None, 
+        dx: float = 1.0,
+        **kwargs
+    ) -> np.ndarray:
+        """Poissonソルバーを実行
+
+        Args:
+            initial_solution: 初期推定解
+            rhs: 右辺ベクトル
+            dx: グリッド間隔
+            **kwargs: 追加のパラメータ
+
+        Returns:
+            計算された解
+        """
+        try:
+            # 初期解のセットアップ
+            if initial_solution is None:
+                initial_solution = np.zeros_like(rhs)
+            
+            # 右辺のセットアップ
+            if rhs is None:
+                raise ValueError("右辺ベクトルが指定されていません")
+
+            # 初期化処理
+            self.initialize(**kwargs)
+
+            # 反復解法の実行
+            solution = initial_solution.copy()
+
+            while self._iteration_count < self.max_iterations:
+                # 1回の反復
+                new_solution = self.iterate(solution, rhs, dx)
+
+                # 残差の計算
+                residual = self.compute_residual(new_solution, rhs, dx)
+                self._residual_history.append(residual)
+
+                # 反復回数の更新
+                self._iteration_count += 1
+
+                # 収束判定
+                if self.check_convergence(residual):
+                    return new_solution
+
+                solution = new_solution
+
+            # 最大反復回数に到達
+            return solution
+
+        except Exception as e:
+            # エラーハンドリング
+            if self._logger:
+                self._logger.warning(f"Poissonソルバーでエラー: {e}")
+            raise
+
     def compute_residual(
         self, solution: np.ndarray, rhs: np.ndarray, dx: float
     ) -> float:
@@ -45,6 +104,7 @@ class PoissonSolver(IterativeSolver):
         # ラプラシアンの計算
         laplacian = np.zeros_like(solution)
         for axis in range(solution.ndim):
+            # 2次精度中心差分
             laplacian += (
                 np.roll(solution, 1, axis=axis)
                 + np.roll(solution, -1, axis=axis)
@@ -53,135 +113,21 @@ class PoissonSolver(IterativeSolver):
 
         # 残差の計算と境界条件の適用
         residual = laplacian - rhs
+
+        # 境界条件の適用
         if self.boundary_conditions:
             for i, bc in enumerate(self.boundary_conditions):
                 if bc is not None:
                     residual = bc.apply_all(residual, i)
 
-        return np.sqrt(np.mean(residual**2))
+        # L2ノルムを計算（ゼロ除算を防ぐ）
+        residual_norm = np.sqrt(np.mean(residual**2))
+        return max(residual_norm, 1e-15)  # 最小値を保証
 
-    def apply_boundary_conditions(self, field: np.ndarray) -> np.ndarray:
-        """境界条件を適用
-
-        Args:
-            field: 境界条件を適用する場
-
-        Returns:
-            境界条件が適用された場
-        """
-        result = field.copy()
-        if self.boundary_conditions:
-            for i, bc in enumerate(self.boundary_conditions):
-                if bc is not None:
-                    result = bc.apply_all(result, i)
-        return result
-
-
-class JacobiSolver(PoissonSolver):
-    """ヤコビ法によるPoissonソルバー"""
-
-    def iterate(
-        self, solution: np.ndarray, rhs: np.ndarray, dx: float, **kwargs
-    ) -> np.ndarray:
-        """1回のヤコビ反復を実行
+    def initialize(self, **kwargs) -> None:
+        """ソルバーの初期化
 
         Args:
-            solution: 現在の解
-            rhs: 右辺
-            dx: グリッド間隔
-            **kwargs: 未使用
-
-        Returns:
-            更新された解
+            **kwargs: 初期化パラメータ
         """
-        result = np.zeros_like(solution)
-
-        # ヤコビ反復
-        for axis in range(solution.ndim):
-            result += np.roll(solution, 1, axis=axis) + np.roll(solution, -1, axis=axis)
-
-        result = (dx**2 * rhs + result) / (2 * solution.ndim)
-
-        # 境界条件の適用
-        result = self.apply_boundary_conditions(result)
-
-        return result
-
-
-class GaussSeidelSolver(PoissonSolver):
-    """ガウス・ザイデル法によるPoissonソルバー
-
-    赤黒順序付けを使用して並列化可能な実装を提供します。
-    """
-
-    def __init__(self, use_redblack: bool = True, **kwargs):
-        """ガウス・ザイデルソルバーを初期化
-
-        Args:
-            use_redblack: 赤黒順序付けを使用するかどうか
-            **kwargs: 基底クラスに渡すパラメータ
-        """
-        super().__init__(**kwargs)
-        self.use_redblack = use_redblack
-
-    def iterate(
-        self, solution: np.ndarray, rhs: np.ndarray, dx: float, **kwargs
-    ) -> np.ndarray:
-        """1回のガウス・ザイデル反復を実行
-
-        Args:
-            solution: 現在の解
-            rhs: 右辺
-            dx: グリッド間隔
-            **kwargs: 未使用
-
-        Returns:
-            更新された解
-        """
-        result = solution.copy()
-
-        if self.use_redblack:
-            # 赤黒順序付けによる更新
-            for color in [0, 1]:  # 0: 赤, 1: 黒
-                mask = np.zeros_like(result, dtype=bool)
-                for i in range(result.ndim):
-                    mask ^= np.arange(result.shape[i])[:, None, None] % 2 == color
-
-                # 近傍点の和を計算
-                neighbors_sum = np.zeros_like(result)
-                for axis in range(result.ndim):
-                    neighbors_sum += np.roll(result, 1, axis=axis) + np.roll(
-                        result, -1, axis=axis
-                    )
-
-                # マスクされた点を更新
-                result[mask] = (dx**2 * rhs[mask] + neighbors_sum[mask]) / (
-                    2 * result.ndim
-                )
-
-        else:
-            # 通常のガウス・ザイデル反復
-            for axis in range(result.ndim):
-                neighbors_sum = np.roll(result, 1, axis=axis) + np.roll(
-                    result, -1, axis=axis
-                )
-                result = (dx**2 * rhs + neighbors_sum) / (2 * result.ndim)
-
-        # 境界条件の適用
-        result = self.apply_boundary_conditions(result)
-
-        return result
-
-    def get_status(self) -> Dict[str, Any]:
-        """ソルバーの状態を取得"""
-        status = super().get_status()
-        status.update(
-            {
-                "method": "redblack" if self.use_redblack else "standard",
-                "iteration_count": self.iteration_count,
-                "residual": self.residual_history[-1]
-                if self.residual_history
-                else None,
-            }
-        )
-        return status
+        super().initialize(**kwargs)
