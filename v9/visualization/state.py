@@ -1,11 +1,6 @@
-"""シミュレーション状態の可視化を管理するモジュール
-
-このモジュールは、シミュレーション状態の包括的な可視化を提供します。
-"""
-
 from typing import Dict, Any, Optional
-import numpy as np
 import logging
+import numpy as np
 
 from simulations.state import SimulationState
 from .core.base import VisualizationConfig, ViewConfig
@@ -44,8 +39,8 @@ class StateVisualizer:
             view: 3D表示用の視点設定
         """
         try:
-            # 各フィールドの可視化設定を取得
-            fields_config = self.visualizer.config.fields
+            # 可視化設定を取得（安全にアクセス）
+            fields_config = self.visualizer.config.fields or {}
 
             # 速度場の可視化
             if hasattr(state, "velocity") and fields_config.get("velocity", {}).get(
@@ -53,7 +48,9 @@ class StateVisualizer:
             ):
                 try:
                     components = [comp.data for comp in state.velocity.components]
-                    for plot_type in fields_config["velocity"].get("plot_types", []):
+                    for plot_type in fields_config.get("velocity", {}).get(
+                        "plot_types", []
+                    ):
                         if plot_type == "vector":
                             self.visualizer.visualize_vector(
                                 components,
@@ -78,7 +75,9 @@ class StateVisualizer:
                 "enabled", True
             ):
                 try:
-                    for plot_type in fields_config["pressure"].get("plot_types", []):
+                    for plot_type in fields_config.get("pressure", {}).get(
+                        "plot_types", []
+                    ):
                         if plot_type == "scalar":
                             self.visualizer.visualize_scalar(
                                 state.pressure.data,
@@ -103,7 +102,9 @@ class StateVisualizer:
                 "enabled", True
             ):
                 try:
-                    for plot_type in fields_config["levelset"].get("plot_types", []):
+                    for plot_type in fields_config.get("levelset", {}).get(
+                        "plot_types", []
+                    ):
                         if plot_type == "interface":
                             self.visualizer.visualize_scalar(
                                 state.levelset.data,
@@ -136,9 +137,9 @@ class StateVisualizer:
                     vector_components=[comp.data for comp in state.velocity.components]
                     if hasattr(state, "velocity")
                     else None,
+                    name="combined",
                     timestamp=timestamp,
                     view=view,
-                    slice_positions=self.visualizer.config.volume_plot.slice_positions,
                 )
             except Exception as e:
                 if self.logger:

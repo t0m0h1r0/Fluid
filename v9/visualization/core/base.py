@@ -97,18 +97,41 @@ class VisualizationConfig:
     volume_plot: VolumePlotConfig = field(default_factory=VolumePlotConfig)
     interface_plot: InterfacePlotConfig = field(default_factory=InterfacePlotConfig)
 
+    # フィールドごとの可視化設定
+    fields: Dict[str, Dict[str, Any]] = field(default_factory=lambda: {
+        "velocity": {
+            "enabled": True,
+            "plot_types": ["vector", "magnitude"]
+        },
+        "pressure": {
+            "enabled": True,
+            "plot_types": ["scalar", "contour"]
+        },
+        "levelset": {
+            "enabled": True,
+            "plot_types": ["interface", "contour"]
+        }
+    })
+
     def __post_init__(self):
         """設定の後処理"""
         if isinstance(self.output_dir, str):
             self.output_dir = Path(self.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        # デフォルト値の追加
+        for field_name, field_config in self.fields.items():
+            if "enabled" not in field_config:
+                field_config["enabled"] = True
+            if "plot_types" not in field_config:
+                field_config["plot_types"] = []
+
     def get_output_path(self, name: str, timestamp: Optional[float] = None) -> Path:
         """出力ファイルパスを生成
 
         Args:
             name: ベース名
-            timestamp: タイムスタンプ
+            timestamp: タイムスタンプ（オプション）
 
         Returns:
             生成されたパス
@@ -129,6 +152,7 @@ class VisualizationConfig:
         Returns:
             設定インスタンス
         """
+        # 各プロット設定のデフォルト値を保持
         vector_config = VectorPlotConfig(**config.get("vector_plot", {}))
         scalar_config = ScalarPlotConfig(**config.get("scalar_plot", {}))
         volume_config = VolumePlotConfig(**config.get("volume_plot", {}))
@@ -146,6 +170,7 @@ class VisualizationConfig:
             scalar_plot=scalar_config,
             volume_plot=volume_config,
             interface_plot=interface_config,
+            fields=config.get("fields", {})
         )
 
 
