@@ -33,42 +33,78 @@ boundary_conditions:
 
 # 初期条件
 initial_conditions:
-  # 初期界面の形状と配置
   background:
-    phase: water  # 背景相を水に
-    height_fraction: 0.80  # 領域の下80%を水で満たす
-  
-  objects:
-    - type: sphere  # 窒素球
-      phase: nitrogen
-      center: [0.5, 0.5, 0.2]  # 中心座標 [x, y, z]
-      radius: 0.1  # 半径
+    phase: water
+    height_fraction: 0.80
 
-  # 初期速度場
+  objects:
+    - type: sphere
+      phase: nitrogen
+      center: [0.5, 0.5, 0.2]
+      radius: 0.1
+
   velocity:
-    type: zero  # 速度をゼロに設定
+    type: zero
 
 # 数値スキーム
 numerical:
-  # シミュレーション制御
-  max_time: 2.0  # 最大シミュレーション時間 [s]
-  initial_dt: 0.001  # 初期時間刻み [s]
-  save_interval: 0.1  # 結果の保存間隔 [s]
+  max_time: 2.0
+  initial_dt: 0.001
+  save_interval: 0.1
 
-  # Level Set法のパラメータ
   level_set:
-    epsilon: 1.5  # 界面の厚さパラメータ
-    reinit_interval: 5  # 再初期化の間隔
-    reinit_steps: 2  # 再初期化のステップ数
+    epsilon: 1.5
+    reinit_interval: 5
+    reinit_steps: 2
 
 # 可視化設定
 visualization:
   output_dir: "results/visualization"
-  format: "png"
-  dpi: 300
-  dimensions: ["2D", "3D"]  # 可視化するディメンション
-  
-  # フィールド別の可視化設定
+  format: "png"  # 出力フォーマット
+  dpi: 300       # 解像度
+  colormap: "viridis"  # デフォルトのカラーマップ
+  show_colorbar: true  # カラーバーの表示
+  show_axes: true      # 軸の表示
+  show_grid: false     # グリッドの表示
+
+  # カメラ設定（3D可視化用）
+  camera:
+    elevation: 30.0    # 仰角（度）
+    azimuth: 45.0     # 方位角（度）
+    distance: 10.0     # 視点距離
+    focal_point: [0.5, 0.5, 0.5]  # 注視点
+
+  # ベクトル場の設定
+  vector_plot:
+    density: 20        # ベクトル矢印の密度
+    scale: 1.0         # ベクトル矢印のスケール
+    width: 0.005       # 矢印の幅
+    show_magnitude: true  # 大きさの表示
+    streamlines: false    # 流線の表示
+    n_streamlines: 50     # 流線の数
+
+  # スカラー場の設定
+  scalar_plot:
+    interpolation: "nearest"  # 補間方法
+    contour: false           # 等高線の表示
+    n_contours: 10           # 等高線の数
+    symmetric: false         # 対称なカラースケール
+
+  # 3D表示の設定
+  volume_plot:
+    opacity: 0.7            # 不透明度
+    slice_positions: [0.5, 0.5, 0.5]  # 各軸のデフォルト断面位置
+    show_isosurfaces: true  # 等値面の表示
+    n_isosurfaces: 5        # 等値面の数
+
+  # Level Set場の設定
+  interface_plot:
+    color: "black"          # 界面の色
+    width: 2.0              # 界面線の幅
+    filled: true            # 領域の塗りつぶし
+    phase_colors: ["lightblue", "white"]  # 各相の色
+
+  # フィールドごとの可視化設定
   fields:
     velocity:
       enabled: true
@@ -79,31 +115,11 @@ visualization:
     levelset:
       enabled: true
       plot_types: ["interface", "contour"]
-  
-  # スライス設定
-  slice:
-    custom_planes:
-      - axis: 2  # XY面
-        name: "XY"
-      - axis: 1  # XZ面
-        name: "XZ"
-      - axis: 0  # YZ面
-        name: "YZ"
-
-  # 3D可視化の設定（VTKやParaViewでの可視化）
-  3d:
-    enabled: false
-    #method: ["vtk"]  # 複数の出力方法を指定可能
-    method: ["vtk", "pyvista", "plotly"]  # 複数の出力方法を指定可能
-    fields: 
-      - velocity
-      - pressure
-      - levelset
 
 # デバッグ設定
 debug:
-  level: "info"  # debug, info, warning, error
-  save_fields: true  # デバッグ用のフィールドデータを保存
-  check_divergence: true  # 速度発散のチェック
-  plot_residuals: true  # 残差プロット
-  profiling: false  # パフォーマンスプロファイリングを有効化
+  level: "info"
+  save_fields: true
+  check_divergence: true
+  plot_residuals: true
+  profiling: false

@@ -54,7 +54,7 @@ class PressureTerm(NavierStokesTerm):
         velocity: VectorField,
         pressure: ScalarField,
         density: Optional[ScalarField] = None,
-        **kwargs
+        **kwargs,
     ) -> List[np.ndarray]:
         """圧力項の寄与を計算
 
@@ -109,12 +109,12 @@ class PressureTerm(NavierStokesTerm):
         return result
 
     def compute_correction(
-        self, 
-        velocity: VectorField, 
-        pressure: ScalarField, 
+        self,
+        velocity: VectorField,
+        pressure: ScalarField,
         dt: float,
         density: Optional[ScalarField] = None,
-        **kwargs  # プロパティを許容するための可変キーワード引数
+        **kwargs,  # プロパティを許容するための可変キーワード引数
     ) -> VectorField:
         """速度場の圧力補正を計算
 
@@ -188,7 +188,7 @@ class PressureTerm(NavierStokesTerm):
         # 有効な値のみを使用
         valid_indices = np.isfinite(grad_p_mag)
         max_grad_p = np.max(grad_p_mag[valid_indices]) if np.any(valid_indices) else 0.0
-        
+
         # 平面ではなく3D空間全体の最大値を取得
         diag.update(
             {
