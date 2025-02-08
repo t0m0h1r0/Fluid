@@ -31,7 +31,7 @@ class StateVisualizer:
         self.visualizer = Visualizer(vis_config)
         self.logger = logger
 
-    def visualize(
+def visualize(
         self,
         state: SimulationState,
         timestamp: float = 0.0,
@@ -50,45 +50,41 @@ class StateVisualizer:
 
             # 3Dデータのスライス位置を定義
             slice_positions = [0.5, 0.5, 0.5]  # デフォルトは中央スライス
-            slice_names = ["XY", "XZ", "YZ"]
+            slice_names = ['XY', 'XZ', 'YZ']
             slice_axes = [2, 1, 0]  # それぞれのスライス面に対応する軸
 
             # 各スライス面での可視化
-            for axis, (slice_pos, slice_name) in enumerate(
-                zip(slice_positions, slice_names)
-            ):
+            for axis, (slice_pos, slice_name) in enumerate(zip(slice_positions, slice_names)):
                 slice_view = copy.deepcopy(view) if view is not None else ViewConfig()
                 slice_view.slice_position = slice_pos
 
                 # 速度場の可視化
-                if hasattr(state, "velocity") and fields_config.get("velocity", {}).get(
-                    "enabled", True
-                ):
+                if hasattr(state, "velocity") and fields_config.get("velocity", {}).get("enabled", True):
                     try:
                         components = [comp.data for comp in state.velocity.components]
-
+                        
                         # 3Dデータから2Dスライスを取得
                         slice_components = [
-                            np.take(comp, int(slice_pos * comp.shape[axis]), axis=axis)
-                            for comp in components[
-                                :2
-                            ]  # 2Dスライスのため最初の2成分のみを使用
+                            np.take(comp, int(slice_pos * comp.shape[axis]), axis=axis) 
+                            for comp in components[:2]  # 2Dスライスのため最初の2成分のみを使用
                         ]
-
-                        for plot_type in fields_config.get("velocity", {}).get(
-                            "plot_types", []
-                        ):
+                        
+                        for plot_type in fields_config.get("velocity", {}).get("plot_types", []):
                             if plot_type == "vector":
+                                # デフォルトの色は黒に設定
+                                vector_plot_params = {
+                                    "color": "k",
+                                    "magnitude_colors": False
+                                }
                                 self.visualizer.visualize_vector(
                                     slice_components,
                                     f"velocity_vector_{slice_name}",
                                     timestamp=timestamp,
                                     view=slice_view,
+                                    **vector_plot_params
                                 )
                             elif plot_type == "magnitude":
-                                magnitude = np.sqrt(
-                                    sum(comp**2 for comp in slice_components)
-                                )
+                                magnitude = np.sqrt(sum(comp**2 for comp in slice_components))
                                 self.visualizer.visualize_scalar(
                                     magnitude,
                                     f"velocity_magnitude_{slice_name}",
@@ -97,24 +93,14 @@ class StateVisualizer:
                                 )
                     except Exception as e:
                         if self.logger:
-                            self.logger.warning(
-                                f"速度場の{slice_name}スライス可視化中にエラー: {str(e)}"
-                            )
+                            self.logger.warning(f"速度場の{slice_name}スライス可視化中にエラー: {str(e)}")
 
                 # 圧力場の可視化
-                if hasattr(state, "pressure") and fields_config.get("pressure", {}).get(
-                    "enabled", True
-                ):
+                if hasattr(state, "pressure") and fields_config.get("pressure", {}).get("enabled", True):
                     try:
-                        pressure_slice = np.take(
-                            state.pressure.data,
-                            int(slice_pos * state.pressure.data.shape[axis]),
-                            axis=axis,
-                        )
-
-                        for plot_type in fields_config.get("pressure", {}).get(
-                            "plot_types", []
-                        ):
+                        pressure_slice = np.take(state.pressure.data, int(slice_pos * state.pressure.data.shape[axis]), axis=axis)
+                        
+                        for plot_type in fields_config.get("pressure", {}).get("plot_types", []):
                             if plot_type == "scalar":
                                 self.visualizer.visualize_scalar(
                                     pressure_slice,
@@ -132,24 +118,14 @@ class StateVisualizer:
                                 )
                     except Exception as e:
                         if self.logger:
-                            self.logger.warning(
-                                f"圧力場の{slice_name}スライス可視化中にエラー: {str(e)}"
-                            )
+                            self.logger.warning(f"圧力場の{slice_name}スライス可視化中にエラー: {str(e)}")
 
                 # Level Set場の可視化
-                if hasattr(state, "levelset") and fields_config.get("levelset", {}).get(
-                    "enabled", True
-                ):
+                if hasattr(state, "levelset") and fields_config.get("levelset", {}).get("enabled", True):
                     try:
-                        levelset_slice = np.take(
-                            state.levelset.data,
-                            int(slice_pos * state.levelset.data.shape[axis]),
-                            axis=axis,
-                        )
-
-                        for plot_type in fields_config.get("levelset", {}).get(
-                            "plot_types", []
-                        ):
+                        levelset_slice = np.take(state.levelset.data, int(slice_pos * state.levelset.data.shape[axis]), axis=axis)
+                        
+                        for plot_type in fields_config.get("levelset", {}).get("plot_types", []):
                             if plot_type == "interface":
                                 self.visualizer.visualize_scalar(
                                     levelset_slice,
@@ -171,9 +147,7 @@ class StateVisualizer:
                                 )
                     except Exception as e:
                         if self.logger:
-                            self.logger.warning(
-                                f"Level Set場の{slice_name}スライス可視化中にエラー: {str(e)}"
-                            )
+                            self.logger.warning(f"Level Set場の{slice_name}スライス可視化中にエラー: {str(e)}")
 
             # 必要に応じて、全体の組み合わせ可視化も維持
             try:
