@@ -3,7 +3,7 @@
 このモジュールは、シミュレーション状態の可視化を管理するクラスを提供します。
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 import logging
 import numpy as np
 
@@ -13,15 +13,11 @@ from visualization.visualizer import Visualizer
 
 class StateVisualizer:
     """シミュレーション状態の可視化クラス
-    
+
     シミュレーション状態の2D/3D可視化を統合的に管理します。
     """
 
-    def __init__(
-        self,
-        config: Dict[str, Any],
-        logger: Optional[logging.Logger] = None
-    ):
+    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
         """シミュレーション状態の可視化を初期化
 
         Args:
@@ -73,19 +69,20 @@ class StateVisualizer:
                             f"velocity_{slice_type}_{timestamp:.3f}",
                             timestamp=timestamp,
                             view=ViewConfig(
-                                slice_axes=[slice_type.lower()],
-                                slice_positions=[pos]
+                                slice_axes=[slice_type.lower()], slice_positions=[pos]
                             ),
                             color="k",  # 黒色を指定
                             alpha=0.7,
                             scale=1.0,
                             density=20,
-                            magnitude_colors=False  # 単色表示に設定
+                            magnitude_colors=False,  # 単色表示に設定
                         )
 
                 except Exception as e:
                     if self.logger:
-                        self.logger.warning(f"速度場の{slice_type}スライス可視化中にエラー: {str(e)}")
+                        self.logger.warning(
+                            f"速度場の{slice_type}スライス可視化中にエラー: {str(e)}"
+                        )
 
             # 圧力場の可視化
             if hasattr(state, "pressure"):
@@ -104,15 +101,16 @@ class StateVisualizer:
                             f"pressure_{slice_type}_{timestamp:.3f}",
                             timestamp=timestamp,
                             view=ViewConfig(
-                                slice_axes=[slice_type.lower()],
-                                slice_positions=[pos]
+                                slice_axes=[slice_type.lower()], slice_positions=[pos]
                             ),
-                            colorbar_label="Pressure"
+                            colorbar_label="Pressure",
                         )
 
                 except Exception as e:
                     if self.logger:
-                        self.logger.warning(f"圧力場の{slice_type}スライス可視化中にエラー: {str(e)}")
+                        self.logger.warning(
+                            f"圧力場の{slice_type}スライス可視化中にエラー: {str(e)}"
+                        )
 
             # Level Set場の可視化
             if hasattr(state, "levelset"):
@@ -131,18 +129,19 @@ class StateVisualizer:
                             f"levelset_{slice_type}_{timestamp:.3f}",
                             timestamp=timestamp,
                             view=ViewConfig(
-                                slice_axes=[slice_type.lower()],
-                                slice_positions=[pos]
+                                slice_axes=[slice_type.lower()], slice_positions=[pos]
                             ),
                             colorbar_label="Level Set",
                             contour=True,
                             levels=[0],
-                            colors=["black"]
+                            colors=["black"],
                         )
 
                 except Exception as e:
                     if self.logger:
-                        self.logger.warning(f"Level Set場の{slice_type}スライス可視化中にエラー: {str(e)}")
+                        self.logger.warning(
+                            f"Level Set場の{slice_type}スライス可視化中にエラー: {str(e)}"
+                        )
 
             # 組み合わせ可視化
             try:
@@ -169,8 +168,8 @@ class StateVisualizer:
                         "alpha": 0.7,
                         "scale": 1.0,
                         "density": 20,
-                        "magnitude_colors": False
-                    }
+                        "magnitude_colors": False,
+                    },
                 )
 
             except Exception as e:

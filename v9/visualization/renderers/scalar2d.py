@@ -17,10 +17,10 @@ from ..core.base import VisualizationConfig, ViewConfig
 
 class Scalar2DRenderer(Renderer2D):
     """2Dスカラー場のレンダラー
-    
+
     スカラー場をカラーマップや等高線として表示します。
     """
-    
+
     def __init__(self, config: VisualizationConfig):
         """2Dスカラーレンダラーを初期化"""
         super().__init__(config)
@@ -30,7 +30,7 @@ class Scalar2DRenderer(Renderer2D):
         data: np.ndarray,
         view: Optional[ViewConfig] = None,
         ax: Optional[Axes] = None,
-        **kwargs
+        **kwargs,
     ) -> Tuple[Figure, Dict[str, Any]]:
         """2Dスカラー場を描画
 
@@ -58,7 +58,9 @@ class Scalar2DRenderer(Renderer2D):
         if data.ndim == 3 and view is not None:
             axis_map = {"xy": 2, "yz": 0, "xz": 1}
             primary_axis = view.slice_axes[0].lower()
-            data = self.create_slice(data, axis_map[primary_axis], view.slice_positions[0])
+            data = self.create_slice(
+                data, axis_map[primary_axis], view.slice_positions[0]
+            )
 
         if data.ndim != 2:
             raise ValueError("2次元データが必要です")
@@ -77,16 +79,14 @@ class Scalar2DRenderer(Renderer2D):
 
         # カラーマップの設定
         cmap = self.create_colormap(
-            kwargs.get("cmap"),
-            kwargs.get("colors"),
-            kwargs.get("reverse", False)
+            kwargs.get("cmap"), kwargs.get("colors"), kwargs.get("reverse", False)
         )
 
         # データの正規化
         norm = self.create_normalizer(
             data,
             symmetric=kwargs.get("symmetric", False),
-            robust=kwargs.get("robust", True)
+            robust=kwargs.get("robust", True),
         )
 
         # スカラー場の表示
@@ -97,7 +97,7 @@ class Scalar2DRenderer(Renderer2D):
             norm=norm,
             cmap=cmap,
             alpha=kwargs.get("alpha", 1.0),
-            interpolation=kwargs.get("interpolation", "nearest")
+            interpolation=kwargs.get("interpolation", "nearest"),
         )
 
         # 等高線の描画
@@ -114,7 +114,7 @@ class Scalar2DRenderer(Renderer2D):
                 colors=kwargs.get("contour_colors", "k"),
                 alpha=kwargs.get("contour_alpha", 0.7),
                 extent=extent,
-                linewidths=kwargs.get("contour_linewidth", 1.0)
+                linewidths=kwargs.get("contour_linewidth", 1.0),
             )
 
             # 等高線ラベルの追加
@@ -124,15 +124,11 @@ class Scalar2DRenderer(Renderer2D):
                     contours,
                     inline=True,
                     fmt=label_fmt,
-                    fontsize=kwargs.get("contour_label_size", 8)
+                    fontsize=kwargs.get("contour_label_size", 8),
                 )
 
         # 軸の設定
-        self.setup_2d_axes(
-            ax,
-            extent=extent,
-            aspect=kwargs.get("aspect", "equal")
-        )
+        self.setup_2d_axes(ax, extent=extent, aspect=kwargs.get("aspect", "equal"))
 
         # カラーバーの追加
         if self.config.show_colorbar:
@@ -141,7 +137,7 @@ class Scalar2DRenderer(Renderer2D):
                 im,
                 ax,
                 label=label,
-                orientation=kwargs.get("colorbar_orientation", "vertical")
+                orientation=kwargs.get("colorbar_orientation", "vertical"),
             )
 
         # 軸ラベルの追加
@@ -156,11 +152,7 @@ class Scalar2DRenderer(Renderer2D):
 
         # メタデータの収集
         metadata = self._collect_metadata(
-            data=data,
-            extent=extent,
-            norm=norm,
-            contours=contours,
-            **kwargs
+            data=data, extent=extent, norm=norm, contours=contours, **kwargs
         )
 
         return fig, metadata
@@ -171,7 +163,7 @@ class Scalar2DRenderer(Renderer2D):
         extent: List[float],
         norm: plt.Normalize,
         contours: Optional[QuadContourSet],
-        **kwargs
+        **kwargs,
     ) -> Dict[str, Any]:
         """メタデータを収集
 
@@ -201,7 +193,7 @@ class Scalar2DRenderer(Renderer2D):
             metadata["statistics"] = {
                 "mean": float(np.mean(valid_data)),
                 "std": float(np.std(valid_data)),
-                "median": float(np.median(valid_data))
+                "median": float(np.median(valid_data)),
             }
 
         # 等高線情報の追加
@@ -212,10 +204,7 @@ class Scalar2DRenderer(Renderer2D):
         return metadata
 
     def create_slice_view(
-        self,
-        data: np.ndarray,
-        view: ViewConfig,
-        **kwargs
+        self, data: np.ndarray, view: ViewConfig, **kwargs
     ) -> Dict[str, Tuple[Figure, Dict[str, Any]]]:
         """複数のスライス表示を作成
 

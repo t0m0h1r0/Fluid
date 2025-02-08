@@ -20,25 +20,23 @@ if TYPE_CHECKING:
 
 class BaseRenderer(ABC):
     """レンダラーの基底クラス
-    
+
     全てのレンダラーに共通の機能を提供します。
     """
-    
+
     def __init__(self, config: "VisualizationConfig"):
         """レンダラーを初期化
-        
+
         Args:
             config: 可視化設定
         """
         self.config = config
 
     def create_figure(
-        self,
-        projection: Optional[str] = None,
-        figsize: Tuple[float, float] = (10, 8)
+        self, projection: Optional[str] = None, figsize: Tuple[float, float] = (10, 8)
     ) -> Tuple[Figure, Axes]:
         """図とAxesを作成
-        
+
         Args:
             projection: プロジェクションの種類
             figsize: 図のサイズ
@@ -64,7 +62,7 @@ class BaseRenderer(ABC):
         mappable: Union[QuadMesh, plt.cm.ScalarMappable],
         ax: Axes,
         label: str = "",
-        orientation: str = "vertical"
+        orientation: str = "vertical",
     ) -> Optional[Any]:
         """カラーバーを設定
 
@@ -78,12 +76,7 @@ class BaseRenderer(ABC):
             作成されたカラーバー
         """
         if self.config.show_colorbar:
-            return plt.colorbar(
-                mappable,
-                ax=ax,
-                label=label,
-                orientation=orientation
-            )
+            return plt.colorbar(mappable, ax=ax, label=label, orientation=orientation)
         return None
 
     def compute_data_range(
@@ -91,7 +84,7 @@ class BaseRenderer(ABC):
         data: np.ndarray,
         symmetric: bool = False,
         robust: bool = True,
-        percentile: float = 2.0
+        percentile: float = 2.0,
     ) -> Tuple[float, float]:
         """データの範囲を計算
 
@@ -122,10 +115,7 @@ class BaseRenderer(ABC):
         return vmin, vmax
 
     def create_normalizer(
-        self,
-        data: np.ndarray,
-        symmetric: bool = False,
-        robust: bool = True
+        self, data: np.ndarray, symmetric: bool = False, robust: bool = True
     ) -> Normalize:
         """データの正規化オブジェクトを作成
 
@@ -144,7 +134,7 @@ class BaseRenderer(ABC):
         self,
         name: Optional[str] = None,
         colors: Optional[List[str]] = None,
-        reverse: bool = False
+        reverse: bool = False,
     ) -> LinearSegmentedColormap:
         """カラーマップを作成
 
@@ -163,8 +153,7 @@ class BaseRenderer(ABC):
 
         if reverse:
             return LinearSegmentedColormap.from_list(
-                f"{cmap.name}_r",
-                cmap(np.linspace(1, 0, cmap.N))
+                f"{cmap.name}_r", cmap(np.linspace(1, 0, cmap.N))
             )
         return cmap
 
@@ -189,7 +178,7 @@ class Renderer2D(BaseRenderer):
         self,
         ax: Axes,
         extent: Optional[Tuple[float, float, float, float]] = None,
-        aspect: str = "equal"
+        aspect: str = "equal",
     ) -> None:
         """2D軸を設定
 
@@ -208,12 +197,7 @@ class Renderer2D(BaseRenderer):
             ax.set_xlabel("X")
             ax.set_ylabel("Y")
 
-    def create_slice(
-        self,
-        data: np.ndarray,
-        axis: int,
-        position: float
-    ) -> np.ndarray:
+    def create_slice(self, data: np.ndarray, axis: int, position: float) -> np.ndarray:
         """3Dデータから2Dスライスを抽出
 
         Args:
@@ -229,7 +213,7 @@ class Renderer2D(BaseRenderer):
 
         # スライスインデックスを計算
         idx = int(position * (data.shape[axis] - 1))
-        
+
         # データのスライスを取得
         slices = [slice(None)] * 3
         slices[axis] = slice(idx, idx + 1)
@@ -245,8 +229,8 @@ class Renderer3D(BaseRenderer):
     def setup_3d_axes(
         self,
         ax: Axes,
-        view: Optional['ViewConfig'] = None,
-        bounds: Optional[Tuple[np.ndarray, np.ndarray]] = None
+        view: Optional["ViewConfig"] = None,
+        bounds: Optional[Tuple[np.ndarray, np.ndarray]] = None,
     ) -> None:
         """3D軸を設定
 

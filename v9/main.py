@@ -112,7 +112,9 @@ def should_output_visualization(
     return should_output
 
 
-def run_simulation(config: dict, logger: SimulationLogger, checkpoint: Path = None) -> int:
+def run_simulation(
+    config: dict, logger: SimulationLogger, checkpoint: Path = None
+) -> int:
     """シミュレーションを実行
 
     Args:
@@ -138,9 +140,7 @@ def run_simulation(config: dict, logger: SimulationLogger, checkpoint: Path = No
         if checkpoint:
             # チェックポイントから再開
             logger.info(f"チェックポイントから再開: {checkpoint}")
-            runner, state = SimulationRunner.from_checkpoint(
-                checkpoint, config, logger
-            )
+            runner, state = SimulationRunner.from_checkpoint(checkpoint, config, logger)
         else:
             # 新規シミュレーション
             logger.info("新規シミュレーションを開始")

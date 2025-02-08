@@ -18,10 +18,10 @@ from ..core.base import VisualizationConfig, ViewConfig
 
 class Vector2DRenderer(Renderer2D):
     """2Dベクトル場のレンダラー
-    
+
     ベクトル場を矢印や流線として表示します。
     """
-    
+
     def __init__(self, config: VisualizationConfig):
         """2Dベクトルレンダラーを初期化"""
         super().__init__(config)
@@ -31,7 +31,7 @@ class Vector2DRenderer(Renderer2D):
         vector_components: List[np.ndarray],
         view: Optional[ViewConfig] = None,
         ax: Optional[Axes] = None,
-        **kwargs
+        **kwargs,
     ) -> Tuple[Figure, Dict[str, Any]]:
         """2Dベクトル場を描画
 
@@ -93,10 +93,7 @@ class Vector2DRenderer(Renderer2D):
 
         # ベクトルの大きさを計算
         magnitude = np.sqrt(u**2 + v**2)
-        norm = self.create_normalizer(
-            magnitude,
-            robust=kwargs.get("robust", True)
-        )
+        norm = self.create_normalizer(magnitude, robust=kwargs.get("robust", True))
 
         # 表示密度の設定
         density = kwargs.get("density", 20)
@@ -146,11 +143,11 @@ class Vector2DRenderer(Renderer2D):
         if kwargs.get("streamlines", False):
             streamline_density = kwargs.get("streamline_density", 2)
             streamline_color = kwargs.get("streamline_color")
-            
+
             if streamline_color is None:
                 # 大きさに応じた色付け
                 streamline_color = magnitude
-                
+
             streamlines = ax.streamplot(
                 x,
                 y,
@@ -174,22 +171,14 @@ class Vector2DRenderer(Renderer2D):
         if kwargs.get("magnitude_colors", True) and self.config.show_colorbar:
             label = kwargs.get("colorbar_label", "Velocity magnitude")
             self.setup_colorbar(
-                plt.cm.ScalarMappable(norm=norm, cmap=plt.cm.viridis),
-                ax,
-                label=label
+                plt.cm.ScalarMappable(norm=norm, cmap=plt.cm.viridis), ax, label=label
             )
 
         # スケールバーの追加
         if kwargs.get("show_scale", True):
             scale_label = kwargs.get("scale_label", "1 unit")
             ax.quiverkey(
-                q,
-                0.9,
-                0.9,
-                1.0,
-                scale_label,
-                labelpos="E",
-                coordinates="figure"
+                q, 0.9, 0.9, 1.0, scale_label, labelpos="E", coordinates="figure"
             )
 
         # 軸ラベルの追加
@@ -204,12 +193,7 @@ class Vector2DRenderer(Renderer2D):
 
         # メタデータの収集
         metadata = self._collect_metadata(
-            u=u,
-            v=v,
-            magnitude=magnitude,
-            quiver=q,
-            streamlines=streamlines,
-            **kwargs
+            u=u, v=v, magnitude=magnitude, quiver=q, streamlines=streamlines, **kwargs
         )
 
         return fig, metadata
@@ -221,7 +205,7 @@ class Vector2DRenderer(Renderer2D):
         magnitude: np.ndarray,
         quiver: Quiver,
         streamlines: Optional[StreamplotSet],
-        **kwargs
+        **kwargs,
     ) -> Dict[str, Any]:
         """メタデータを収集
 
@@ -254,10 +238,20 @@ class Vector2DRenderer(Renderer2D):
             u_valid = u[valid_mask]
             v_valid = v[valid_mask]
             metadata["statistics"] = {
-                "divergence": float(np.mean(np.gradient(u_valid, axis=0) + np.gradient(v_valid, axis=1))),
-                "curl": float(np.mean(np.gradient(v_valid, axis=0) - np.gradient(u_valid, axis=1))),
+                "divergence": float(
+                    np.mean(np.gradient(u_valid, axis=0) + np.gradient(v_valid, axis=1))
+                ),
+                "curl": float(
+                    np.mean(np.gradient(v_valid, axis=0) - np.gradient(u_valid, axis=1))
+                ),
                 "kinetic_energy": float(0.5 * np.mean(u_valid**2 + v_valid**2)),
-                "enstrophy": float(0.5 * np.mean((np.gradient(v_valid, axis=0) - np.gradient(u_valid, axis=1))**2))
+                "enstrophy": float(
+                    0.5
+                    * np.mean(
+                        (np.gradient(v_valid, axis=0) - np.gradient(u_valid, axis=1))
+                        ** 2
+                    )
+                ),
             }
 
         # 流線情報の追加
@@ -268,10 +262,7 @@ class Vector2DRenderer(Renderer2D):
         return metadata
 
     def create_slice_view(
-        self,
-        vector_components: List[np.ndarray],
-        view: ViewConfig,
-        **kwargs
+        self, vector_components: List[np.ndarray], view: ViewConfig, **kwargs
     ) -> Dict[str, Tuple[Figure, Dict[str, Any]]]:
         """複数のスライス表示を作成
 
@@ -291,7 +282,7 @@ class Vector2DRenderer(Renderer2D):
         component_map = {
             "xy": ([0, 1], ["u", "v"]),
             "yz": ([1, 2], ["v", "w"]),
-            "xz": ([0, 2], ["u", "w"])
+            "xz": ([0, 2], ["u", "w"]),
         }
 
         # 各スライスの表示を作成
@@ -301,15 +292,14 @@ class Vector2DRenderer(Renderer2D):
 
             # 該当する成分のスライスを取得
             slice_components = [
-                self.create_slice(vector_components[i], axis, pos)
-                for i in comp_indices
+                self.create_slice(vector_components[i], axis, pos) for i in comp_indices
             ]
 
             # スライス固有の設定を適用
             slice_kwargs = kwargs.copy()
             if "title" in slice_kwargs:
                 slice_kwargs["title"] = f"{slice_kwargs['title']} ({axis_name})"
-            
+
             # 軸ラベルを更新
             slice_kwargs["xlabel"] = comp_names[0]
             slice_kwargs["ylabel"] = comp_names[1]
@@ -346,9 +336,9 @@ class Vector2DRenderer(Renderer2D):
 
         return {
             "divergence": dudx + dvdy,  # ∇・v
-            "vorticity": dvdx - dudy,   # ∇×v
-            "shear": dudy + dvdx,       # せん断歪み
-            "strain": dudx - dvdy       # 伸縮歪み
+            "vorticity": dvdx - dudy,  # ∇×v
+            "shear": dudy + dvdx,  # せん断歪み
+            "strain": dudx - dvdy,  # 伸縮歪み
         }
 
     def compute_derived_quantities(
@@ -370,7 +360,7 @@ class Vector2DRenderer(Renderer2D):
         """
         # 渦度の計算
         vorticity = np.gradient(v, axis=0) - np.gradient(u, axis=1)
-        
+
         # 渦度勾配の計算
         vort_grad_x = np.gradient(vorticity, axis=0)
         vort_grad_y = np.gradient(vorticity, axis=1)
@@ -378,5 +368,5 @@ class Vector2DRenderer(Renderer2D):
         return {
             "kinetic_energy": float(0.5 * np.mean(u**2 + v**2)),
             "enstrophy": float(0.5 * np.mean(vorticity**2)),
-            "palinstrophy": float(0.5 * np.mean(vort_grad_x**2 + vort_grad_y**2))
+            "palinstrophy": float(0.5 * np.mean(vort_grad_x**2 + vort_grad_y**2)),
         }

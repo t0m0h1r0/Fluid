@@ -18,10 +18,10 @@ from ..core.base import VisualizationConfig, ViewConfig
 
 class Vector3DRenderer(Renderer3D):
     """3Dベクトル場のレンダラー
-    
+
     ベクトル場を3D矢印や流線として表示します。
     """
-    
+
     def __init__(self, config: VisualizationConfig):
         """3Dベクトルレンダラーを初期化"""
         super().__init__(config)
@@ -31,7 +31,7 @@ class Vector3DRenderer(Renderer3D):
         vector_components: List[np.ndarray],
         view: Optional[ViewConfig] = None,
         ax: Optional[Axes] = None,
-        **kwargs
+        **kwargs,
     ) -> Tuple[Figure, Dict[str, Any]]:
         """3Dベクトル場を描画
 
@@ -81,55 +81,62 @@ class Vector3DRenderer(Renderer3D):
         metadata = {
             "data_range": {
                 "min_magnitude": float(np.min(magnitude)),
-                "max_magnitude": float(np.max(magnitude))
+                "max_magnitude": float(np.max(magnitude)),
             },
             "dimensions": u.shape,
-            "display_type": []
+            "display_type": [],
         }
 
         # グリッドの生成
         nx, ny, nz = u.shape
         x, y, z = np.meshgrid(
-            np.arange(nx),
-            np.arange(ny),
-            np.arange(nz),
-            indexing="ij"
+            np.arange(nx), np.arange(ny), np.arange(nz), indexing="ij"
         )
 
         # ベクトル場の表示
         if not kwargs.get("streamlines_only", False):
             self._render_vectors(
                 ax=ax,
-                x=x, y=y, z=z,
-                u=u, v=v, w=w,
+                x=x,
+                y=y,
+                z=z,
+                u=u,
+                v=v,
+                w=w,
                 magnitude=magnitude,
                 norm=norm,
                 metadata=metadata,
-                **kwargs
+                **kwargs,
             )
 
         # 流線の描画
         if kwargs.get("streamlines", False):
             self._render_streamlines(
                 ax=ax,
-                u=u, v=v, w=w,
+                u=u,
+                v=v,
+                w=w,
                 magnitude=magnitude,
                 norm=norm,
                 metadata=metadata,
-                **kwargs
+                **kwargs,
             )
 
         # 断面の描画
         if view is not None and view.slice_axes:
             self._render_slices(
                 ax=ax,
-                x=x, y=y, z=z,
-                u=u, v=v, w=w,
+                x=x,
+                y=y,
+                z=z,
+                u=u,
+                v=v,
+                w=w,
                 magnitude=magnitude,
                 norm=norm,
                 view=view,
                 metadata=metadata,
-                **kwargs
+                **kwargs,
             )
 
         # 視点の設定
@@ -153,9 +160,7 @@ class Vector3DRenderer(Renderer3D):
         if kwargs.get("magnitude_colors", True) and self.config.show_colorbar:
             label = kwargs.get("colorbar_label", "Velocity magnitude")
             self.setup_colorbar(
-                plt.cm.ScalarMappable(norm=norm, cmap=plt.cm.viridis),
-                ax,
-                label=label
+                plt.cm.ScalarMappable(norm=norm, cmap=plt.cm.viridis), ax, label=label
             )
 
         # タイトルの追加
@@ -176,7 +181,7 @@ class Vector3DRenderer(Renderer3D):
         magnitude: np.ndarray,
         norm: plt.Normalize,
         metadata: Dict[str, Any],
-        **kwargs
+        **kwargs,
     ) -> None:
         """ベクトル矢印を描画
 
@@ -213,15 +218,11 @@ class Vector3DRenderer(Renderer3D):
             length=scale,
             normalize=True,
             colors=colors,
-            alpha=kwargs.get("alpha", 1.0)
+            alpha=kwargs.get("alpha", 1.0),
         )
 
         # メタデータの更新
-        metadata["vectors"] = {
-            "density": density,
-            "scale": scale,
-            "skip": skip
-        }
+        metadata["vectors"] = {"density": density, "scale": scale, "skip": skip}
 
     def _render_streamlines(
         self,
@@ -232,7 +233,7 @@ class Vector3DRenderer(Renderer3D):
         magnitude: np.ndarray,
         norm: plt.Normalize,
         metadata: Dict[str, Any],
-        **kwargs
+        **kwargs,
     ) -> None:
         """流線を描画
 
@@ -259,18 +260,20 @@ class Vector3DRenderer(Renderer3D):
         for start_point in start_points:
             points = self._compute_streamline(
                 start_point=start_point,
-                u=u, v=v, w=w,
+                u=u,
+                v=v,
+                w=w,
                 max_length=max_length,
-                step_size=step_size
+                step_size=step_size,
             )
 
             if len(points) > 1:
                 points = np.array(points)
                 # 流線の色を速度の大きさに基づいて設定
                 speeds = np.sqrt(
-                    np.gradient(points[:, 0])**2 +
-                    np.gradient(points[:, 1])**2 +
-                    np.gradient(points[:, 2])**2
+                    np.gradient(points[:, 0]) ** 2
+                    + np.gradient(points[:, 1]) ** 2
+                    + np.gradient(points[:, 2]) ** 2
                 )
                 colors = plt.cm.viridis(norm(speeds))
 
@@ -280,7 +283,7 @@ class Vector3DRenderer(Renderer3D):
                     segments,
                     colors=colors[:-1],
                     alpha=kwargs.get("streamline_alpha", 0.7),
-                    linewidth=kwargs.get("streamline_width", 1)
+                    linewidth=kwargs.get("streamline_width", 1),
                 )
                 ax.add_collection3d(lc)
 
@@ -288,7 +291,7 @@ class Vector3DRenderer(Renderer3D):
         metadata["streamlines"] = {
             "count": n_streamlines,
             "max_length": max_length,
-            "step_size": step_size
+            "step_size": step_size,
         }
 
     def _render_slices(
@@ -304,7 +307,7 @@ class Vector3DRenderer(Renderer3D):
         norm: plt.Normalize,
         view: ViewConfig,
         metadata: Dict[str, Any],
-        **kwargs
+        **kwargs,
     ) -> None:
         """断面上のベクトル場を描画
 
@@ -327,7 +330,7 @@ class Vector3DRenderer(Renderer3D):
         component_map = {
             "xy": ([0, 1], ["u", "v"]),
             "yz": ([1, 2], ["v", "w"]),
-            "xz": ([0, 2], ["u", "w"])
+            "xz": ([0, 2], ["u", "w"]),
         }
 
         for axis_name, pos in zip(view.slice_axes, view.slice_positions):
@@ -367,15 +370,17 @@ class Vector3DRenderer(Renderer3D):
                     length=kwargs.get("scale", 1.0),
                     normalize=True,
                     colors=colors,
-                    alpha=kwargs.get("alpha", 1.0)
+                    alpha=kwargs.get("alpha", 1.0),
                 )
 
                 # メタデータの更新
-                metadata["slices"].append({
-                    "axis": axis_name,
-                    "position": float(pos),
-                    "components": comp_names
-                })
+                metadata["slices"].append(
+                    {
+                        "axis": axis_name,
+                        "position": float(pos),
+                        "components": comp_names,
+                    }
+                )
 
             except Exception as e:
                 if self.logger:
@@ -388,7 +393,7 @@ class Vector3DRenderer(Renderer3D):
         v: np.ndarray,
         w: np.ndarray,
         max_length: int = 50,
-        step_size: float = 0.5
+        step_size: float = 0.5,
     ) -> List[np.ndarray]:
         """流線を計算
 
@@ -416,11 +421,7 @@ class Vector3DRenderer(Renderer3D):
             # 最近傍点での速度を返す
             ix, iy, iz = np.floor(pos).astype(int)
             try:
-                return np.array([
-                    u[ix, iy, iz],
-                    v[ix, iy, iz],
-                    w[ix, iy, iz]
-                ])
+                return np.array([u[ix, iy, iz], v[ix, iy, iz], w[ix, iy, iz]])
             except IndexError:
                 return None
 
@@ -456,10 +457,7 @@ class Vector3DRenderer(Renderer3D):
         return points
 
     def create_multiview(
-        self,
-        vector_components: List[np.ndarray],
-        view: ViewConfig,
-        **kwargs
+        self, vector_components: List[np.ndarray], view: ViewConfig, **kwargs
     ) -> Dict[str, Tuple[Figure, Dict[str, Any]]]:
         """複数のビューを作成
 
@@ -474,11 +472,7 @@ class Vector3DRenderer(Renderer3D):
         result = {}
 
         # 3Dビュー
-        fig_3d, meta_3d = self.render(
-            vector_components,
-            view=view,
-            **kwargs
-        )
+        fig_3d, meta_3d = self.render(vector_components, view=view, **kwargs)
         result["3D"] = (fig_3d, meta_3d)
 
         # 2D断面ビュー
@@ -486,7 +480,7 @@ class Vector3DRenderer(Renderer3D):
         component_map = {
             "xy": ([0, 1], ["u", "v"]),
             "yz": ([1, 2], ["v", "w"]),
-            "xz": ([0, 2], ["u", "w"])
+            "xz": ([0, 2], ["u", "w"]),
         }
 
         for axis_name, pos in zip(view.slice_axes, view.slice_positions):
@@ -508,10 +502,10 @@ class Vector3DRenderer(Renderer3D):
 
                 # 2Dレンダラーを使用してスライスを描画
                 from .vector2d import Vector2DRenderer
+
                 renderer_2d = Vector2DRenderer(self.config)
                 fig_slice, meta_slice = renderer_2d.render(
-                    slice_components,
-                    **slice_kwargs
+                    slice_components, **slice_kwargs
                 )
                 result[axis_name] = (fig_slice, meta_slice)
 
@@ -522,11 +516,7 @@ class Vector3DRenderer(Renderer3D):
         return result
 
     def compute_derived_quantities(
-        self,
-        u: np.ndarray,
-        v: np.ndarray,
-        w: np.ndarray,
-        dx: float = 1.0
+        self, u: np.ndarray, v: np.ndarray, w: np.ndarray, dx: float = 1.0
     ) -> Dict[str, np.ndarray]:
         """ベクトル場の導出量を計算
 
@@ -552,24 +542,23 @@ class Vector3DRenderer(Renderer3D):
         vorticity_z = dvdx - dudy
 
         # ヘリシティの計算 (H = v・ω)
-        helicity = (
-            u * vorticity_x +
-            v * vorticity_y +
-            w * vorticity_z
-        )
+        helicity = u * vorticity_x + v * vorticity_y + w * vorticity_z
 
         # Qクライテリオンの計算
         q_criterion = -0.5 * (
-            dudy * dvdx + dudz * dwdx +
-            dvdx * dudy + dvdz * dwdy +
-            dwdx * dudz + dwdy * dvdz
+            dudy * dvdx
+            + dudz * dwdx
+            + dvdx * dudy
+            + dvdz * dwdy
+            + dwdx * dudz
+            + dwdy * dvdz
         )
 
         # 発散の計算 (∇・v)
         divergence = (
-            np.gradient(u, dx, axis=0) +
-            np.gradient(v, dx, axis=1) +
-            np.gradient(w, dx, axis=2)
+            np.gradient(u, dx, axis=0)
+            + np.gradient(v, dx, axis=1)
+            + np.gradient(w, dx, axis=2)
         )
 
         return {
@@ -578,5 +567,5 @@ class Vector3DRenderer(Renderer3D):
             "vorticity_z": vorticity_z,
             "helicity": helicity,
             "q_criterion": q_criterion,
-            "divergence": divergence
+            "divergence": divergence,
         }

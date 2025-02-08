@@ -14,6 +14,7 @@ from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 try:
     from skimage import measure
+
     HAVE_SKIMAGE = True
 except ImportError:
     HAVE_SKIMAGE = False
@@ -24,10 +25,10 @@ from ..core.base import VisualizationConfig, ViewConfig
 
 class Scalar3DRenderer(Renderer3D):
     """3Dスカラー場のレンダラー
-    
+
     スカラー場を等値面や断面として表示します。
     """
-    
+
     def __init__(self, config: VisualizationConfig):
         """3Dスカラーレンダラーを初期化"""
         super().__init__(config)
@@ -37,7 +38,7 @@ class Scalar3DRenderer(Renderer3D):
         data: np.ndarray,
         view: Optional[ViewConfig] = None,
         ax: Optional[Axes] = None,
-        **kwargs
+        **kwargs,
     ) -> Tuple[Figure, Dict[str, Any]]:
         """3Dスカラー場を描画
 
@@ -73,26 +74,21 @@ class Scalar3DRenderer(Renderer3D):
 
         # カラーマップの設定
         cmap = self.create_colormap(
-            kwargs.get("cmap"),
-            kwargs.get("colors"),
-            kwargs.get("reverse", False)
+            kwargs.get("cmap"), kwargs.get("colors"), kwargs.get("reverse", False)
         )
 
         # データの正規化
         norm = self.create_normalizer(
             data,
             symmetric=kwargs.get("symmetric", False),
-            robust=kwargs.get("robust", True)
+            robust=kwargs.get("robust", True),
         )
 
         # メタデータの初期化
         metadata = {
-            "data_range": {
-                "min": float(norm.vmin),
-                "max": float(norm.vmax)
-            },
+            "data_range": {"min": float(norm.vmin), "max": float(norm.vmax)},
             "dimensions": data.shape,
-            "display_type": []
+            "display_type": [],
         }
 
         # 等値面の描画
@@ -105,7 +101,7 @@ class Scalar3DRenderer(Renderer3D):
                 opacity=kwargs.get("opacity", 0.3),
                 cmap=cmap,
                 norm=norm,
-                metadata=metadata
+                metadata=metadata,
             )
 
         # 断面の描画
@@ -117,7 +113,7 @@ class Scalar3DRenderer(Renderer3D):
                 cmap=cmap,
                 norm=norm,
                 opacity=kwargs.get("opacity", 0.7),
-                metadata=metadata
+                metadata=metadata,
             )
 
         # ボリュームレンダリング
@@ -128,7 +124,7 @@ class Scalar3DRenderer(Renderer3D):
                 cmap=cmap,
                 norm=norm,
                 alpha=kwargs.get("volume_alpha"),
-                metadata=metadata
+                metadata=metadata,
             )
 
         # 視点の設定
@@ -152,9 +148,7 @@ class Scalar3DRenderer(Renderer3D):
         if self.config.show_colorbar:
             label = kwargs.get("colorbar_label", "")
             self.setup_colorbar(
-                plt.cm.ScalarMappable(norm=norm, cmap=cmap),
-                ax,
-                label=label
+                plt.cm.ScalarMappable(norm=norm, cmap=cmap), ax, label=label
             )
 
         # タイトルの追加
@@ -172,7 +166,7 @@ class Scalar3DRenderer(Renderer3D):
         opacity: float,
         cmap: plt.cm.ScalarMappable,
         norm: plt.Normalize,
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
     ) -> None:
         """等値面を描画
 
@@ -212,11 +206,13 @@ class Scalar3DRenderer(Renderer3D):
                 ax.add_collection3d(mesh)
 
                 # メタデータの更新
-                metadata["isovalues"].append({
-                    "value": float(isovalue),
-                    "vertices": len(verts),
-                    "faces": len(faces)
-                })
+                metadata["isovalues"].append(
+                    {
+                        "value": float(isovalue),
+                        "vertices": len(verts),
+                        "faces": len(faces),
+                    }
+                )
 
             except Exception as e:
                 if self.logger:
@@ -230,7 +226,7 @@ class Scalar3DRenderer(Renderer3D):
         cmap: plt.cm.ScalarMappable,
         norm: plt.Normalize,
         opacity: float,
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
     ) -> None:
         """断面を描画
 
@@ -271,19 +267,23 @@ class Scalar3DRenderer(Renderer3D):
 
                 # 断面の描画
                 surf = ax.plot_surface(
-                    X, Y, Z,
+                    X,
+                    Y,
+                    Z,
                     facecolors=cmap(norm(slice_data)),
                     alpha=opacity,
-                    shade=False
+                    shade=False,
                 )
 
                 # メタデータの更新
-                metadata["slices"].append({
-                    "axis": axis_name,
-                    "position": float(pos),
-                    "min": float(np.min(slice_data)),
-                    "max": float(np.max(slice_data))
-                })
+                metadata["slices"].append(
+                    {
+                        "axis": axis_name,
+                        "position": float(pos),
+                        "min": float(np.min(slice_data)),
+                        "max": float(np.max(slice_data)),
+                    }
+                )
 
             except Exception as e:
                 if self.logger:
@@ -296,7 +296,7 @@ class Scalar3DRenderer(Renderer3D):
         cmap: plt.cm.ScalarMappable,
         norm: plt.Normalize,
         alpha: Optional[np.ndarray],
-        metadata: Dict[str, Any]
+        metadata: Dict[str, Any],
     ) -> None:
         """ボリュームレンダリングを実行
 
@@ -311,21 +311,21 @@ class Scalar3DRenderer(Renderer3D):
         # ボリュームレンダリングはまだ実験的な機能
         # 現在のmatplotlibではサポートが限定的
         metadata["display_type"].append("volume")
-        
+
         try:
             # データのダウンサンプリング（必要に応じて）
             downsample = 2
             data_ds = data[::downsample, ::downsample, ::downsample]
-            
+
             # カラーマップの適用
             colors = cmap(norm(data_ds))
-            
+
             # 透明度の設定
             if alpha is None:
                 # デフォルトの透明度関数
                 alpha = np.clip(norm(data_ds), 0.1, 0.5)
             colors[..., 3] = alpha
-            
+
             # ボクセルの描画
             nx, ny, nz = data_ds.shape
             positions = np.moveaxis(np.mgrid[0:nx, 0:ny, 0:nz], 0, -1) * downsample
@@ -334,24 +334,21 @@ class Scalar3DRenderer(Renderer3D):
                 positions[..., 1],
                 positions[..., 2],
                 data_ds > norm.vmin,
-                facecolors=colors
+                facecolors=colors,
             )
-            
+
             # メタデータの更新
             metadata["volume"] = {
                 "downsample": downsample,
-                "voxels": int(np.sum(data_ds > norm.vmin))
+                "voxels": int(np.sum(data_ds > norm.vmin)),
             }
-            
+
         except Exception as e:
             if self.logger:
                 self.logger.warning(f"ボリュームレンダリングエラー: {e}")
 
     def create_multiview(
-        self,
-        data: np.ndarray,
-        view: ViewConfig,
-        **kwargs
+        self, data: np.ndarray, view: ViewConfig, **kwargs
     ) -> Dict[str, Tuple[Figure, Dict[str, Any]]]:
         """複数のビューを作成
 
@@ -377,15 +374,8 @@ class Scalar3DRenderer(Renderer3D):
                 slice_kwargs["title"] = f"{slice_kwargs['title']} ({axis_name})"
 
             # 2Dレンダラーを使用してスライスを描画
-            slice_view = ViewConfig(
-                slice_axes=[axis_name],
-                slice_positions=[pos]
-            )
-            fig_slice, meta_slice = self.render(
-                data,
-                view=slice_view,
-                **slice_kwargs
-            )
+            slice_view = ViewConfig(slice_axes=[axis_name], slice_positions=[pos])
+            fig_slice, meta_slice = self.render(data, view=slice_view, **slice_kwargs)
             result[axis_name] = (fig_slice, meta_slice)
 
         return result
