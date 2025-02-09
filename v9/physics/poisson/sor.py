@@ -1,37 +1,45 @@
 """SOR法によるPoissonソルバーを提供するモジュール
 
-このモジュールは、Successive Over-Relaxation (SOR)法によるPoisson方程式の
-ソルバーを実装します。最適な緩和係数を自動的に推定する機能も提供します。
+このモジュールは、Successive Over-Relaxation (SOR)法による
+Poisson方程式のソルバーを実装します。
 """
 
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 from .solver import PoissonSolver
+from core.boundary import BoundaryCondition
 
 
 class SORSolver(PoissonSolver):
-    """SOR法によるPoissonソルバー
-
-    ガウス・ザイデル法に緩和係数を導入することで、収束を加速します。
-    赤黒順序付けによる並列化可能な実装も提供します。
-    """
+    """SOR法によるPoissonソルバー"""
 
     def __init__(
         self,
         omega: float = 1.5,
         use_redblack: bool = True,
         auto_tune: bool = True,
-        **kwargs,
+        boundary_conditions: Optional[List[BoundaryCondition]] = None,
+        tolerance: float = 1e-6,
+        max_iterations: int = 1000,
+        logger = None
     ):
         """SORソルバーを初期化
-
+        
         Args:
             omega: 緩和係数（1 < ω < 2）
             use_redblack: 赤黒順序付けを使用するかどうか
             auto_tune: 緩和係数を自動調整するかどうか
-            **kwargs: 基底クラスに渡すパラメータ
+            boundary_conditions: 境界条件のリスト
+            tolerance: 収束判定の許容誤差
+            max_iterations: 最大反復回数
+            logger: ロガー（オプション）
         """
-        super().__init__(**kwargs)
+        super().__init__(
+            boundary_conditions=boundary_conditions,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
+            logger=logger
+        )
         self.omega = omega
         self.use_redblack = use_redblack
         self.auto_tune = auto_tune
@@ -41,50 +49,14 @@ class SORSolver(PoissonSolver):
         self._update_interval = 10
         self._previous_diff = None
 
-    def initialize(self, **kwargs) -> None:
-        """ソルバーの初期化
-
-        Args:
-            **kwargs: 初期化パラメータ（未使用）
-        """
-        self._spectral_radius = None
-        self._previous_diff = None
-        self._iteration_count = 0
-        self._residual_history = []
-
-    @property
-    def omega(self) -> float:
-        """緩和係数を取得"""
-        return self._omega
-
-    @omega.setter
-    def omega(self, value: float):
-        """緩和係数を設定
-
-        Args:
-            value: 設定する緩和係数
-
-        Raises:
-            ValueError: 不適切な値が指定された場合
-        """
-        if value <= 1.0 or value >= 2.0:
-            raise ValueError("緩和係数は1と2の間である必要があります")
-        self._omega = value
-
     def iterate(
-        self, solution: np.ndarray, rhs: np.ndarray, dx: float, **kwargs
+        self,
+        solution: np.ndarray,
+        rhs: np.ndarray,
+        dx: float,
+        **kwargs
     ) -> np.ndarray:
-        """1回のSOR反復を実行
-
-        Args:
-            solution: 現在の解
-            rhs: 右辺
-            dx: グリッド間隔
-            **kwargs: 未使用
-
-        Returns:
-            更新された解
-        """
+        """1回のSOR反復を実行"""
         result = solution.copy()
 
         if self.use_redblack:
@@ -102,7 +74,7 @@ class SORSolver(PoissonSolver):
                     )
 
                 # SOR更新
-                gauss_seidel = (dx**2 * rhs[mask] + neighbors_sum[mask]) / (
+                gauss_seidel = (dx * dx * rhs[mask] + neighbors_sum[mask]) / (
                     2 * result.ndim
                 )
                 result[mask] = (1 - self.omega) * result[
@@ -115,11 +87,14 @@ class SORSolver(PoissonSolver):
                 neighbors_sum = np.roll(result, 1, axis=axis) + np.roll(
                     result, -1, axis=axis
                 )
-                gauss_seidel = (dx**2 * rhs + neighbors_sum) / (2 * result.ndim)
+                gauss_seidel = (dx * dx * rhs + neighbors_sum) / (2 * result.ndim)
                 result = (1 - self.omega) * result + self.omega * gauss_seidel
 
         # 境界条件の適用
-        result = self.apply_boundary_conditions(result)
+        if self.boundary_conditions:
+            for i, bc in enumerate(self.boundary_conditions):
+                if bc is not None:
+                    result = bc.apply_all(result, i)
 
         # 必要に応じて緩和係数を調整
         if self.auto_tune and self.iteration_count % self._update_interval == 0:
@@ -128,15 +103,7 @@ class SORSolver(PoissonSolver):
         return result
 
     def _update_omega(self, old_solution: np.ndarray, new_solution: np.ndarray):
-        """緩和係数を自動調整
-
-        ヤコビ法の反復行列のスペクトル半径を推定し、
-        最適な緩和係数を計算します。
-
-        Args:
-            old_solution: 前回の解
-            new_solution: 現在の解
-        """
+        """緩和係数を自動調整"""
         # 解の変化から反復行列のスペクトル半径を推定
         diff = new_solution - old_solution
         if self.iteration_count > self._update_interval:

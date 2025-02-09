@@ -113,7 +113,7 @@ def extend_velocity(
         vel_grad = np.array(np.gradient(result, dx))
 
         # 法線方向の速度勾配をゼロにする
-        result = result - dt * sum(normal[i] * vel_grad[i] for i in range(phi.ndim))
+        result = result - dx * sum(normal[i] * vel_grad[i] for i in range(phi.ndim))
 
         # 数値的な安定化
         result = gaussian_filter(result, sigma=0.5 * dx)

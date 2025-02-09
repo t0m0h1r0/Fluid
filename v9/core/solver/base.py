@@ -14,20 +14,22 @@ class Solver(ABC):
 
     この抽象基底クラスは、全てのソルバーに共通のインターフェースと
     基本機能を提供します。
-
-    Attributes:
-        name (str): ソルバーの名前
-        tolerance (float): 収束判定の許容誤差
-        max_iterations (int): 最大反復回数
     """
 
-    def __init__(self, name: str, tolerance: float = 1e-6, max_iterations: int = 1000):
+    def __init__(
+        self, 
+        name: str, 
+        tolerance: float = 1e-6, 
+        max_iterations: int = 1000,
+        logger = None
+    ):
         """ソルバーを初期化
 
         Args:
             name: ソルバーの名前
             tolerance: 収束判定の許容誤差
             max_iterations: 最大反復回数
+            logger: ロガー（オプション）
         """
         self.name = name
         self._tolerance = tolerance
@@ -36,6 +38,7 @@ class Solver(ABC):
         self._residual_history = []
         self._start_time = None
         self._end_time = None
+        self._logger = logger
 
     @property
     def tolerance(self) -> float:
@@ -44,14 +47,7 @@ class Solver(ABC):
 
     @tolerance.setter
     def tolerance(self, value: float):
-        """収束判定の許容誤差を設定
-
-        Args:
-            value: 設定する許容誤差
-
-        Raises:
-            ValueError: 負の値が指定された場合
-        """
+        """収束判定の許容誤差を設定"""
         if value <= 0:
             raise ValueError("許容誤差は正の値である必要があります")
         self._tolerance = value
@@ -63,14 +59,7 @@ class Solver(ABC):
 
     @max_iterations.setter
     def max_iterations(self, value: int):
-        """最大反復回数を設定
-
-        Args:
-            value: 設定する最大反復回数
-
-        Raises:
-            ValueError: 負の値が指定された場合
-        """
+        """最大反復回数を設定"""
         if value <= 0:
             raise ValueError("最大反復回数は正の整数である必要があります")
         self._max_iterations = value
@@ -95,23 +84,12 @@ class Solver(ABC):
 
     @abstractmethod
     def initialize(self, **kwargs) -> None:
-        """ソルバーの初期化
-
-        Args:
-            **kwargs: 初期化に必要なパラメータ
-        """
+        """ソルバーの初期化"""
         pass
 
     @abstractmethod
     def solve(self, **kwargs) -> Dict[str, Any]:
-        """ソルバーを実行
-
-        Args:
-            **kwargs: 計算に必要なパラメータ
-
-        Returns:
-            計算結果と統計情報を含む辞書
-        """
+        """ソルバーを実行"""
         pass
 
     def reset(self):
@@ -125,17 +103,20 @@ class Solver(ABC):
         """計算開始時の処理"""
         self.reset()
         self._start_time = datetime.now()
+        if self._logger:
+            self._logger.info(f"{self.name}ソルバーの計算を開始")
 
     def _end_solving(self):
         """計算終了時の処理"""
         self._end_time = datetime.now()
+        if self._logger:
+            self._logger.info(
+                f"{self.name}ソルバーの計算を終了 "
+                f"(経過時間: {self.elapsed_time:.2f}秒)"
+            )
 
     def get_status(self) -> Dict[str, Any]:
-        """ソルバーの現在の状態を取得
-
-        Returns:
-            状態を表す辞書
-        """
+        """ソルバーの現在の状態を取得"""
         return {
             "name": self.name,
             "iteration_count": self.iteration_count,

@@ -63,7 +63,7 @@ def run_simulation_loop(runner, config, logger):
             break
 
         state, step_info = runner.step_forward()
-
+        current_time += step_info["dt"]
         if current_time >= next_save_time:
             checkpoint_path = output_dir / f"checkpoint_{current_time:.3f}.npz"
             runner.save_checkpoint(checkpoint_path)
@@ -85,7 +85,6 @@ def main():
     checkpoint = Path(args.checkpoint) if args.checkpoint else None
 
     runner, _ = initialize_simulation(config, logger, checkpoint)
-    sys.exit(0)
     run_simulation_loop(runner, config, logger)
 
     return 0

@@ -9,16 +9,7 @@ from .base import Solver
 
 
 class TemporalSolver(Solver):
-    """時間発展ソルバーの基底クラス
-
-    この抽象基底クラスは、時間発展問題を解くソルバーに共通の
-    機能を提供します。
-
-    Attributes:
-        time (float): 現在の時刻
-        dt (float): 時間刻み幅
-        cfl (float): CFL数
-    """
+    """時間発展ソルバーの基底クラス"""
 
     def __init__(
         self,
@@ -26,18 +17,17 @@ class TemporalSolver(Solver):
         cfl: float = 0.5,
         min_dt: float = 1e-6,
         max_dt: float = 1.0,
-        **kwargs,
+        tolerance: float = 1e-6,
+        max_iterations: int = 1000,
+        logger = None
     ):
-        """時間発展ソルバーを初期化
-
-        Args:
-            name: ソルバーの名前
-            cfl: CFL数
-            min_dt: 最小時間刻み幅
-            max_dt: 最大時間刻み幅
-            **kwargs: 基底クラスに渡すパラメータ
-        """
-        super().__init__(name, **kwargs)
+        """時間発展ソルバーを初期化"""
+        super().__init__(
+            name=name,
+            tolerance=tolerance,
+            max_iterations=max_iterations,
+            logger=logger
+        )
         self._time = 0.0
         self._dt = None
         self._cfl = cfl
@@ -62,88 +52,17 @@ class TemporalSolver(Solver):
 
     @cfl.setter
     def cfl(self, value: float):
-        """CFL数を設定
-
-        Args:
-            value: 設定するCFL数
-
-        Raises:
-            ValueError: 負の値が指定された場合
-        """
+        """CFL数を設定"""
         if value <= 0:
             raise ValueError("CFL数は正の値である必要があります")
         self._cfl = value
 
     @abstractmethod
     def compute_timestep(self, **kwargs) -> float:
-        """時間刻み幅を計算
-
-        Args:
-            **kwargs: 計算に必要なパラメータ
-
-        Returns:
-            計算された時間刻み幅
-        """
+        """時間刻み幅を計算"""
         pass
 
     @abstractmethod
     def advance(self, dt: float, **kwargs) -> Dict[str, Any]:
-        """1時間ステップ進める
-
-        Args:
-            dt: 時間刻み幅
-            **kwargs: 計算に必要なパラメータ
-
-        Returns:
-            計算結果と統計情報を含む辞書
-        """
+        """1時間ステップ進める"""
         pass
-
-    def solve(self, end_time: float, **kwargs) -> Dict[str, Any]:
-        """指定時刻まで時間発展を計算
-
-        Args:
-            end_time: 計算終了時刻
-            **kwargs: 計算に必要なパラメータ
-
-        Returns:
-            計算結果と統計情報を含む辞書
-        """
-        self._start_solving()
-
-        results = []
-        while self._time < end_time:
-            # 時間刻み幅の計算
-            self._dt = self.compute_timestep(**kwargs)
-            self._dt = min(self._dt, end_time - self._time)
-
-            # 1ステップ進める
-            result = self.advance(self._dt, **kwargs)
-            results.append(result)
-
-            # 時刻の更新
-            self._time += self._dt
-            self._time_history.append(self._time)
-
-            # 反復回数の更新
-            self._iteration_count += 1
-
-            # 残差の記録
-            if "residual" in result:
-                self._residual_history.append(result["residual"])
-
-        self._end_solving()
-
-        return {
-            "results": results,
-            "time_history": self._time_history,
-            "final_time": self._time,
-            "iterations": self._iteration_count,
-            "elapsed_time": self.elapsed_time,
-        }
-
-    def get_status(self) -> Dict[str, Any]:
-        """ソルバーの現在の状態を取得"""
-        status = super().get_status()
-        status.update({"time": self._time, "dt": self._dt, "cfl": self._cfl})
-        return status
