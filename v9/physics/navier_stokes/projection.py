@@ -1,115 +1,86 @@
-"""圧力投影法を提供するモジュール"""
+"""圧力投影法を提供するモジュール
+
+このモジュールは、非圧縮性流れのための圧力投影法を実装します。
+速度場の発散をゼロにするように圧力場を計算し、速度場を補正します。
+"""
 
 from typing import Tuple, Optional
 import numpy as np
+
 from core.field import VectorField, ScalarField
-from physics.poisson import PoissonSolver, SORSolver
-from .base import NSComponentBase
-import logging
+from physics.levelset import LevelSetField
+from physics.properties import PropertiesManager
+from physics.poisson import PoissonSolver
 
 
-class ClassicProjection(NSComponentBase):
+class ClassicProjection:
     """古典的な圧力投影法"""
 
-    def __init__(
-        self,
-        poisson_solver: Optional[PoissonSolver] = None,
-        rhs_computer=None,
-        logger: Optional[logging.Logger] = None,
-    ):
-        """初期化
+    def __init__(self, poisson_solver: PoissonSolver, logger=None):
+        """圧力投影法を初期化
 
         Args:
-            poisson_solver: ポアソンソルバー
-            rhs_computer: 右辺計算機
-            logger: ロガー（オプション）
+            poisson_solver: 圧力ポアソンソルバー
+            logger: ロガー
         """
-        super().__init__(logger)
-
-        self.poisson_solver = poisson_solver or SORSolver(
-            omega=1.5,  # より適切な緩和係数
-            tolerance=1e-8,  # より厳しい収束判定
-            max_iterations=1000,  # 反復回数を増やす
-            use_redblack=True,  # より効率的な反復
-            auto_tune=True,  # 自動調整を有効化
-        )
-        self.rhs_computer = rhs_computer
-
-        # 診断情報の初期化
-        self._iterations = 0
-        self._residuals = []
+        self.poisson_solver = poisson_solver
+        self.logger = logger
 
     def project(
-        self, velocity: VectorField, pressure: ScalarField, dt: float, **kwargs
+        self,
+        velocity: VectorField,
+        pressure: ScalarField,
+        dt: float,
+        levelset: Optional[LevelSetField] = None,
+        properties: Optional[PropertiesManager] = None,
     ) -> Tuple[VectorField, ScalarField]:
         """速度場を非圧縮に投影
 
         Args:
-            velocity: 速度場
-            pressure: 圧力場
+            velocity: 補正前の速度場
+            pressure: 前ステップの圧力場
             dt: 時間刻み幅
-            **kwargs: 追加のパラメータ
+            levelset: レベルセット場（オプション）
+            properties: 物性値マネージャー（オプション）
 
         Returns:
-            (補正された速度場, 更新された圧力場)
+            (補正された速度場, 更新された圧力場)のタプル
         """
         try:
-            # 右辺の計算
-            if self.rhs_computer:
-                rhs = self.rhs_computer.compute(velocity, **kwargs)
-            else:
-                # 単純な発散に基づく右辺
-                rhs = ScalarField(velocity.shape, velocity.dx)
-                rhs.data = velocity.divergence().data / dt
+            # 速度場の発散を計算
+            div = velocity.divergence()
+
+            # 圧力ポアソン方程式の右辺
+            rhs = ScalarField(velocity.shape, velocity.dx)
+            rhs.data = -div.data / dt
 
             # 圧力補正値の計算
-            p_corr = ScalarField(pressure.shape, pressure.dx)
+            p_corr = ScalarField(velocity.shape, velocity.dx)
+            p_corr.data = self.poisson_solver.solve(
+                initial_solution=np.zeros_like(pressure.data),
+                rhs=rhs.data,
+                dx=velocity.dx,
+            )
 
-            try:
-                p_corr.data = self.poisson_solver.solve(
-                    initial_solution=np.zeros_like(pressure.data),
-                    rhs=rhs.data,
-                    dx=velocity.dx,
-                )
-            except Exception as solve_error:
-                # ソルバーの収束に失敗した場合のロギング
-                if self._logger:
-                    self.log("error", f"ポアソン方程式の求解に失敗: {solve_error}")
-                raise
+            # 密度を考慮した速度場の補正
+            velocity_new = velocity.copy()
+            density = (
+                properties.get_density(levelset).data
+                if properties and levelset
+                else np.ones_like(pressure.data)
+            )
 
-            # 収束状態の確認
-            iterations = getattr(self.poisson_solver, "iteration_count", 1000)
-            residuals = getattr(self.poisson_solver, "residual_history", [])
-            converged = getattr(self.poisson_solver, "converged", False)
-
-            # 収束していない場合の警告
-            if not converged:
-                if self._logger:
-                    self.log(
-                        "warning",
-                        f"圧力ポアソン方程式が収束しませんでした: "
-                        f"反復回数 = {iterations}, "
-                        f"最終残差 = {residuals[-1] if residuals else 'N/A'}",
-                    )
-
-            # 診断情報の更新
-            self._iterations = iterations
-            self._residuals = residuals
-
-            # 速度場の補正
-            result_velocity = velocity.copy()
-            for i in range(velocity.ndim):
+            for i, component in enumerate(velocity_new.components):
                 grad_p = np.gradient(p_corr.data, velocity.dx, axis=i)
-                result_velocity.components[i].data -= dt * grad_p
+                component.data -= dt * grad_p / density
 
             # 圧力場の更新
-            result_pressure = pressure.copy()
-            result_pressure.data += p_corr.data
+            pressure_new = pressure.copy()
+            pressure_new.data += p_corr.data
 
-            return result_velocity, result_pressure
+            return velocity_new, pressure_new
 
         except Exception as e:
-            # 包括的なエラーハンドリング
-            if self._logger:
-                self.log("error", f"圧力投影中にエラー: {e}")
+            if self.logger:
+                self.logger.error(f"圧力投影中にエラー: {e}")
             raise

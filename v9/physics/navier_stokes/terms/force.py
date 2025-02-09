@@ -6,19 +6,16 @@
 from typing import List, Dict, Any, Optional
 import numpy as np
 from core.field import VectorField
-from ..base import NavierStokesTerm
 from physics.levelset import LevelSetField
+from physics.properties import PropertiesManager
+from .base import NavierStokesTerm
 
 
 class ForceBase:
     """外力の基底クラス"""
 
     def __init__(self, name: str):
-        """外力を初期化
-
-        Args:
-            name: 外力の名前
-        """
+        """外力を初期化"""
         self.name = name
         self._enabled = True
 
@@ -32,11 +29,23 @@ class ForceBase:
         """外力の有効/無効を設定"""
         self._enabled = value
 
-    def compute(self, velocity: VectorField, **kwargs) -> List[np.ndarray]:
+    def compute(
+        self,
+        velocity: VectorField,
+        levelset: LevelSetField,
+        properties: PropertiesManager,
+        **kwargs,
+    ) -> List[np.ndarray]:
         """外力の寄与を計算"""
         raise NotImplementedError
 
-    def get_diagnostics(self, velocity: VectorField, **kwargs) -> Dict[str, Any]:
+    def get_diagnostics(
+        self,
+        velocity: VectorField,
+        levelset: LevelSetField,
+        properties: PropertiesManager,
+        **kwargs,
+    ) -> Dict[str, Any]:
         """外力の診断情報を取得"""
         raise NotImplementedError
 
@@ -58,8 +67,8 @@ class GravityForce(ForceBase):
     def compute(
         self,
         velocity: VectorField,
-        levelset: Optional[LevelSetField] = None,
-        properties=None,
+        levelset: LevelSetField,
+        properties: PropertiesManager,
         **kwargs,
     ) -> List[np.ndarray]:
         """重力項の寄与を計算"""
@@ -82,7 +91,13 @@ class GravityForce(ForceBase):
 
         return result
 
-    def get_diagnostics(self, velocity: VectorField, **kwargs) -> Dict[str, Any]:
+    def get_diagnostics(
+        self,
+        velocity: VectorField,
+        levelset: LevelSetField,
+        properties: PropertiesManager,
+        **kwargs,
+    ) -> Dict[str, Any]:
         """重力項の診断情報を取得"""
         return {"type": "gravity", "gravity": self.gravity, "direction": self.direction}
 
@@ -102,15 +117,15 @@ class SurfaceTensionForce(ForceBase):
     def compute(
         self,
         velocity: VectorField,
-        levelset: Optional[LevelSetField] = None,
-        properties=None,
+        levelset: LevelSetField,
+        properties: PropertiesManager,
         **kwargs,
     ) -> List[np.ndarray]:
         """表面張力項の寄与を計算"""
         if not self.enabled or levelset is None:
             return [np.zeros_like(v.data) for v in velocity.components]
 
-        # 表面張力係数の取得（プロパティから、またはデフォルト値）
+        # 表面張力係数の取得
         sigma = (
             properties.get_surface_tension_coefficient()
             if properties is not None
@@ -127,11 +142,6 @@ class SurfaceTensionForce(ForceBase):
         # 表面力の計算
         force = sigma * kappa * delta
 
-        # 密度による重みづけ（オプション）
-        if properties is not None:
-            density = properties.get_density(levelset)
-            force /= density.data
-
         # 各方向の力を計算
         result = [np.zeros_like(v.data) for v in velocity.components]
         for i in range(velocity.ndim):
@@ -146,7 +156,11 @@ class SurfaceTensionForce(ForceBase):
         return result
 
     def get_diagnostics(
-        self, velocity: VectorField, levelset: Optional[LevelSetField] = None, **kwargs
+        self,
+        velocity: VectorField,
+        levelset: LevelSetField,
+        properties: PropertiesManager,
+        **kwargs,
     ) -> Dict[str, Any]:
         """表面張力項の診断情報を取得"""
         diag = {
@@ -171,11 +185,7 @@ class ForceTerm(NavierStokesTerm):
     """外力項クラス"""
 
     def __init__(self, forces: Optional[List[ForceBase]] = None):
-        """外力項を初期化
-
-        Args:
-            forces: 外力のリスト
-        """
+        """外力項を初期化"""
         self._name = "Force"
         self.forces = forces or []
 
@@ -184,7 +194,13 @@ class ForceTerm(NavierStokesTerm):
         """項の名前を取得"""
         return self._name
 
-    def compute(self, velocity: VectorField, dt: float, **kwargs) -> List[np.ndarray]:
+    def compute(
+        self,
+        velocity: VectorField,
+        levelset: LevelSetField,
+        properties: PropertiesManager,
+        **kwargs,
+    ) -> List[np.ndarray]:
         """外力項の寄与を計算"""
         if not self.forces:
             return [np.zeros_like(v.data) for v in velocity.components]
@@ -193,19 +209,29 @@ class ForceTerm(NavierStokesTerm):
         result = [np.zeros_like(v.data) for v in velocity.components]
         for force in self.forces:
             if force.enabled:
-                force_contribution = force.compute(velocity, **kwargs)
+                force_contribution = force.compute(
+                    velocity, levelset, properties, **kwargs
+                )
                 for i in range(len(result)):
                     result[i] += force_contribution[i]
 
         return result
 
-    def get_diagnostics(self, velocity: VectorField, **kwargs) -> Dict[str, Any]:
+    def get_diagnostics(
+        self,
+        velocity: VectorField,
+        levelset: LevelSetField,
+        properties: PropertiesManager,
+        **kwargs,
+    ) -> Dict[str, Any]:
         """外力項の診断情報を取得"""
         diag = {"enabled_forces": len([f for f in self.forces if f.enabled])}
 
         # 各外力の診断情報を収集
         for force in self.forces:
             if force.enabled:
-                diag[force.name] = force.get_diagnostics(velocity, **kwargs)
+                diag[force.name] = force.get_diagnostics(
+                    velocity, levelset, properties, **kwargs
+                )
 
         return diag

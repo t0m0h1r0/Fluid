@@ -1,27 +1,18 @@
-"""Navier-Stokes方程式関連のモジュール
+"""Navier-Stokes方程式関連のパッケージ
 
-このパッケージは、非圧縮性Navier-Stokes方程式の数値計算に必要な
-クラスとユーティリティを提供します。
+このパッケージは、非圧縮性Navier-Stokes方程式の数値計算に関する機能を提供します。
 """
 
-# ソルバーのインポート
 from .solver import NavierStokesSolver
+from .projection import ClassicProjection
+from .terms import AdvectionTerm, DiffusionTerm, PressureTerm, ForceTerm, GravityForce
 
-# 各項のインポート
-from .terms import AdvectionTerm, DiffusionTerm, PressureTerm, ForceTerm
-
-# 力項のインポート
-from .terms.force import GravityForce, SurfaceTensionForce
-
-from .pressure_rhs import PoissonRHSComputer
-
-# エクスポートするモジュール
 __all__ = [
     "NavierStokesSolver",
+    "ClassicProjection",
     "AdvectionTerm",
     "DiffusionTerm",
     "PressureTerm",
     "ForceTerm",
     "GravityForce",
-    "SurfaceTensionForce",
 ]

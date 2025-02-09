@@ -1,84 +1,36 @@
-"""Level Setソルバーを提供するモジュール
+"""Level Set法のソルバーを提供するモジュール
 
-このモジュールは、Level Set方程式を解くためのソルバーを定義します。
-WENOスキームを用いた高次精度の解法を実装します。
+このモジュールは、Level Set方程式の時間発展を計算するためのソルバーを提供します。
+WENOスキームによる高精度な空間離散化と、符号付き距離関数としての性質を
+保つための再初期化機能を実装します。
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import numpy as np
-from core.solver import TemporalSolver
-from core.field import VectorField
+
+from core.time_evolution import TimeEvolutionSolver
 from .field import LevelSetField
+from .reinitialize import reinitialize_levelset
 
 
-class LevelSetSolver(TemporalSolver):
-    """Level Setソルバークラス
+class LevelSetSolver(TimeEvolutionSolver):
+    """Level Setソルバークラス"""
 
-    このクラスは、Level Set方程式を時間発展させるソルバーを実装します。
-    移流方程式に対してWENOスキームを使用し、高次精度で数値振動の少ない解法を提供します。
-    """
-
-    def __init__(self, use_weno: bool = True, weno_order: int = 5, **kwargs):
-        """Level Setソルバーを初期化
+    def __init__(self, use_weno: bool = True, weno_order: int = 5, logger=None):
+        """ソルバーを初期化
 
         Args:
             use_weno: WENOスキームを使用するかどうか
             weno_order: WENOスキームの次数（3または5）
-            **kwargs: 基底クラスに渡すパラメータ
+            logger: ロガー
         """
-        super().__init__(name="LevelSet", **kwargs)
+        super().__init__(logger=logger)
         self.use_weno = use_weno
         self.weno_order = weno_order
 
         # WENOスキームの係数を初期化
         if use_weno:
             self._init_weno_coefficients()
-
-    def solve(self, **kwargs) -> Dict[str, Any]:
-        """ソルバーを実行（具体的な実装は他のメソッドで行う）
-
-        他のメソッドで実装されるため、基本的には例外を投げる。
-        """
-        raise NotImplementedError(
-            "時間発展ソルバーの具体的な実装は`advance`メソッドで行います。"
-        )
-
-    def initialize(self, **kwargs) -> None:
-        """ソルバーの初期化
-
-        Args:
-            **kwargs: 初期化に必要なパラメータ
-        """
-        # 現時点では特別な初期化処理は不要
-        pass
-
-    def compute_timestep(
-        self, phi: LevelSetField, velocity: Optional[VectorField] = None, **kwargs
-    ) -> float:
-        """時間刻み幅を計算
-
-        Args:
-            phi: Level Set場
-            velocity: 速度場（オプション）
-            **kwargs: 追加のパラメータ
-
-        Returns:
-            計算された時間刻み幅
-        """
-        # デフォルトの時間刻み幅
-        default_dt = 0.001
-
-        # 速度場が提供されている場合
-        if velocity is not None:
-            # 最大速度を計算
-            max_velocity = max(np.max(np.abs(v.data)) for v in velocity.components)
-
-            # CFL条件に基づく時間刻み幅
-            dt = self.cfl * phi.dx / (max_velocity + 1e-10)
-
-            return np.clip(dt, self._min_dt, self._max_dt)
-
-        return default_dt
 
     def _init_weno_coefficients(self):
         """WENOスキームの係数を初期化"""
@@ -103,6 +55,70 @@ class LevelSetSolver(TemporalSolver):
             ]
         else:
             raise ValueError(f"未対応のWENO次数です: {self.weno_order}")
+
+    def compute_timestep(self, **kwargs) -> float:
+        """CFL条件に基づく時間刻み幅を計算
+
+        Args:
+            **kwargs: 必要なパラメータ
+                - state: 現在のシミュレーション状態
+
+        Returns:
+            計算された時間刻み幅
+        """
+        state = kwargs.get("state")
+        if state is None:
+            raise ValueError("stateが指定されていません")
+
+        # 速度の最大値を計算
+        velocity = state.velocity
+        max_velocity = max(np.max(np.abs(comp.data)) for comp in velocity.components)
+
+        # CFL条件に基づく時間刻み幅
+        dx = state.levelset.dx
+        return self.cfl * dx / (max_velocity + 1e-10)
+
+    def compute_derivative(self, state: Any, **kwargs) -> LevelSetField:
+        """Level Set関数の時間微分を計算
+
+        Args:
+            state: 現在の状態
+            **kwargs: 追加のパラメータ
+
+        Returns:
+            計算された時間微分
+        """
+        levelset = state.levelset
+        velocity = state.velocity
+
+        result = LevelSetField(levelset.shape, levelset.dx, params=levelset.params)
+
+        if self.use_weno:
+            # WENOスキームによる空間離散化
+            flux = np.zeros_like(levelset.data)
+            for i, v in enumerate(velocity.components):
+                # 風上差分の方向を決定
+                upwind = v.data < 0
+
+                # 正の速度に対する flux
+                phi_plus = self._weno_reconstruction(levelset.data, i)
+                # 負の速度に対する flux
+                phi_minus = self._weno_reconstruction(np.flip(levelset.data, i), i)
+                phi_minus = np.flip(phi_minus, i)
+
+                # 風上方向に応じてfluxを選択
+                flux += v.data * np.where(upwind, phi_minus, phi_plus)
+
+            result.data = -flux
+
+        else:
+            # 標準的な中心差分
+            flux = sum(
+                v.data * levelset.gradient(i) for i, v in enumerate(velocity.components)
+            )
+            result.data = -flux
+
+        return result
 
     def _weno_reconstruction(self, values: np.ndarray, axis: int) -> np.ndarray:
         """WENOスキームによる再構築
@@ -186,62 +202,56 @@ class LevelSetSolver(TemporalSolver):
 
             return omega0 * p0 + omega1 * p1
 
-    def advance(
-        self, dt: float, phi: LevelSetField, velocity: VectorField, **kwargs
-    ) -> Dict[str, Any]:
+    def step_forward(self, dt: float, **kwargs) -> Dict[str, Any]:
         """1時間ステップを進める
 
         Args:
             dt: 時間刻み幅
-            phi: Level Set場
-            velocity: 速度場
             **kwargs: 追加のパラメータ
+                - state: 現在のシミュレーション状態
 
         Returns:
-            計算結果と統計情報を含む辞書
+            計算結果と診断情報を含む辞書
         """
-        # 移流項の計算
-        if self.use_weno:
-            # WENOスキームによる空間離散化
-            flux = np.zeros_like(phi.data)
-            for i, v in enumerate(velocity.components):
-                # 風上差分の方向を決定
-                upwind = v.data < 0
+        try:
+            # 時間発展の実行
+            result = super().step_forward(dt, **kwargs)
+            levelset_new = result["state"]
 
-                # 正の速度に対する flux
-                phi_plus = self._weno_reconstruction(phi.data, i)
-                # 負の速度に対する flux
-                phi_minus = self._weno_reconstruction(np.flip(phi.data, i), i)
-                phi_minus = np.flip(phi_minus, i)
+            # 必要に応じて再初期化
+            if levelset_new.need_reinit():
+                levelset_new = reinitialize_levelset(
+                    levelset_new, n_steps=levelset_new.params.reinit_steps
+                )
 
-                # 風上方向に応じてfluxを選択
-                flux += v.data * np.where(upwind, phi_minus, phi_plus)
-        else:
-            # 標準的な中心差分
-            flux = sum(
-                v.data * phi.gradient(i) for i, v in enumerate(velocity.components)
-            )
+            # 体積保存の補正
+            state = kwargs.get("state")
+            if state is not None:
+                initial_volume = state.levelset.compute_volume()
+                current_volume = levelset_new.compute_volume()
+                if abs(current_volume) > 1e-10:
+                    levelset_new.data *= (initial_volume / current_volume) ** (
+                        1.0 / levelset_new.ndim
+                    )
 
-        # 時間積分（前進Euler法）
-        phi.data = phi.data - dt * flux
-
-        # 必要に応じて再初期化
-        if phi.need_reinit():
-            phi.reinitialize()
-
-        # 統計情報の収集
-        diagnostics = phi.get_diagnostics()
-        diagnostics.update(
-            {
+            # 診断情報の収集
+            diagnostics = {
+                "time": self.time,
                 "dt": dt,
-                "max_velocity": max(
-                    np.max(np.abs(v.data)) for v in velocity.components
+                "reinitialized": levelset_new.need_reinit(),
+                "volume": float(levelset_new.compute_volume()),
+                "volume_error": float(
+                    abs(
+                        levelset_new.compute_volume() / state.levelset.compute_volume()
+                        - 1.0
+                    )
                 ),
+                "interface_area": float(levelset_new.compute_area()),
             }
-        )
 
-        return {
-            "converged": True,
-            "residual": np.max(np.abs(flux)) * dt,
-            "diagnostics": diagnostics,
-        }
+            return {"levelset": levelset_new, "diagnostics": diagnostics}
+
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Level Setソルバーの時間発展中にエラー: {e}")
+            raise

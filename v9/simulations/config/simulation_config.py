@@ -13,12 +13,7 @@ from physics.properties import FluidProperties
 
 @dataclass
 class DomainConfig:
-    """計算領域の設定
-
-    Attributes:
-        dimensions: 各方向のグリッド数
-        size: 各方向の物理サイズ [m]
-    """
+    """計算領域の設定"""
 
     dimensions: List[int]
     size: List[float]
@@ -35,12 +30,7 @@ class DomainConfig:
 
 @dataclass
 class PhysicsConfig:
-    """物理パラメータの設定
-
-    Attributes:
-        gravity: 重力加速度 [m/s²]
-        surface_tension: 表面張力係数 [N/m]
-    """
+    """物理パラメータの設定"""
 
     gravity: float = 9.81
     surface_tension: float = 0.072
@@ -48,13 +38,7 @@ class PhysicsConfig:
 
 @dataclass
 class PhaseConfig:
-    """各相の物性値設定
-
-    Attributes:
-        density: 密度 [kg/m³]
-        viscosity: 粘性係数 [Pa·s]
-        surface_tension: 表面張力係数 [N/m]
-    """
+    """各相の物性値設定"""
 
     density: float
     viscosity: float
@@ -71,15 +55,7 @@ class PhaseConfig:
 
 @dataclass
 class SolverConfig:
-    """ソルバーの設定
-
-    Attributes:
-        time_integrator: 時間積分法の種類
-        use_weno: WENOスキームを使用するか
-        weno_order: WENOスキームの次数
-        level_set: レベルセット法の設定
-        pressure_solver: 圧力ソルバーの設定
-    """
+    """ソルバーの設定"""
 
     time_integrator: str = "rk4"
     use_weno: bool = True
@@ -102,15 +78,7 @@ class SolverConfig:
 
 @dataclass
 class TimeConfig:
-    """時間発展の設定
-
-    Attributes:
-        max_time: 最大計算時間 [s]
-        cfl: CFL数
-        min_dt: 最小時間刻み幅 [s]
-        max_dt: 最大時間刻み幅 [s]
-        save_interval: 結果保存の時間間隔 [s]
-    """
+    """時間発展の設定"""
 
     max_time: float
     cfl: float = 0.5
@@ -121,14 +89,7 @@ class TimeConfig:
 
 @dataclass
 class ObjectConfig:
-    """物体の設定
-
-    Attributes:
-        type: 物体の種類（"sphere"など）
-        phase: 相の種類（"water"または"nitrogen"）
-        center: 中心座標（無次元）
-        radius: 半径（無次元）
-    """
+    """物体の設定"""
 
     type: str
     phase: str
@@ -138,13 +99,7 @@ class ObjectConfig:
 
 @dataclass
 class InitialConditionConfig:
-    """初期条件の設定
-
-    Attributes:
-        background_layer: 背景水層の高さ（無次元）
-        objects: 物体のリスト
-        velocity: 速度場の初期化設定
-    """
+    """初期条件の設定"""
 
     background_layer: Optional[float] = None
     objects: List[ObjectConfig] = field(default_factory=list)
@@ -153,13 +108,7 @@ class InitialConditionConfig:
 
 @dataclass
 class OutputConfig:
-    """出力の設定
-
-    Attributes:
-        directory: 出力ディレクトリ
-        format: 出力フォーマット
-        variables: 出力する変数のリスト
-    """
+    """出力の設定"""
 
     directory: str = "results"
     format: str = "vti"

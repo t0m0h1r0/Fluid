@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from logger import SimulationLogger, LogConfig
-from twoflow import TwoPhaseFlowSimulation, SimulationConfig
+from simulations import TwoPhaseFlowSimulation, SimulationConfig
 from visualization import visualize_simulation_state
 
 
