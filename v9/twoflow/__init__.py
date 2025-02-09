@@ -14,7 +14,7 @@ from .config.simulation_config import (
     TimeConfig,
     ObjectConfig,
     InitialConditionConfig,
-    OutputConfig
+    OutputConfig,
 )
 
 __all__ = [

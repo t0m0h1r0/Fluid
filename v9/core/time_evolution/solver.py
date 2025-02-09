@@ -3,11 +3,11 @@
 このモジュールは、時間発展方程式を解くためのソルバーの基底クラスを定義します。
 """
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Dict, Any, Optional
 from logging import Logger
 from .base import TimeEvolutionBase
-from .integrator import TimeIntegratorBase, create_integrator
+from .integrator import create_integrator
 
 
 class TimeEvolutionSolver(TimeEvolutionBase):
@@ -19,7 +19,7 @@ class TimeEvolutionSolver(TimeEvolutionBase):
         cfl: float = 0.5,
         min_dt: float = 1e-6,
         max_dt: float = 1.0,
-        logger: Optional[Logger] = None
+        logger: Optional[Logger] = None,
     ):
         """初期化
 
@@ -72,10 +72,7 @@ class TimeEvolutionSolver(TimeEvolutionBase):
 
             # 時間積分を実行
             new_state = self.integrator.integrate(
-                state=state,
-                dt=dt,
-                derivative_fn=self.compute_derivative,
-                **kwargs
+                state=state, dt=dt, derivative_fn=self.compute_derivative, **kwargs
             )
 
             # 反復回数と時刻の更新
@@ -88,7 +85,7 @@ class TimeEvolutionSolver(TimeEvolutionBase):
                 "time": self._time,
                 "dt": dt,
                 "iteration": self._iteration_count,
-                "integrator_info": self.integrator.get_diagnostics()
+                "integrator_info": self.integrator.get_diagnostics(),
             }
 
         except Exception as e:
@@ -99,11 +96,13 @@ class TimeEvolutionSolver(TimeEvolutionBase):
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""
         diag = super().get_diagnostics()
-        diag.update({
-            "iteration_count": self._iteration_count,
-            "cfl": self.cfl,
-            "integrator_type": self.integrator.__class__.__name__
-        })
+        diag.update(
+            {
+                "iteration_count": self._iteration_count,
+                "cfl": self.cfl,
+                "integrator_type": self.integrator.__class__.__name__,
+            }
+        )
         return diag
 
     def initialize(self, **kwargs) -> None:

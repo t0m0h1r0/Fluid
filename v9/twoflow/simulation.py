@@ -22,31 +22,28 @@ from .config import SimulationConfig
 @dataclass
 class SimulationState:
     """シミュレーションの状態を保持するクラス"""
+
     velocity: VectorField
     levelset: LevelSetField
     pressure: ScalarField
     time: float = 0.0
     properties: Optional[PropertiesManager] = None
 
-    def copy(self) -> 'SimulationState':
+    def copy(self) -> "SimulationState":
         """状態の深いコピーを作成"""
         return SimulationState(
             velocity=self.velocity.copy(),
             levelset=self.levelset.copy(),
             pressure=self.pressure.copy(),
             time=self.time,
-            properties=self.properties  # PropertiesManagerは共有して問題ない
+            properties=self.properties,  # PropertiesManagerは共有して問題ない
         )
 
 
 class TwoPhaseFlowSimulation:
     """二相流シミュレーションクラス"""
 
-    def __init__(
-        self,
-        config: SimulationConfig,
-        logger=None
-    ):
+    def __init__(self, config: SimulationConfig, logger=None):
         """シミュレーションを初期化
 
         Args:
@@ -67,7 +64,7 @@ class TwoPhaseFlowSimulation:
         """物性値マネージャーを初期化"""
         self._properties = PropertiesManager(
             phase1=self.config.phases["water"].to_properties(),
-            phase2=self.config.phases["nitrogen"].to_properties()
+            phase2=self.config.phases["nitrogen"].to_properties(),
         )
 
     def initialize(self):
@@ -95,8 +92,7 @@ class TwoPhaseFlowSimulation:
         """ソルバーを初期化"""
         # Navier-Stokesソルバーの初期化
         self._ns_solver = NavierStokesSolver(
-            logger=self.logger,
-            use_weno=self.config.solver.use_weno
+            logger=self.logger, use_weno=self.config.solver.use_weno
         )
         self._ns_solver.initialize()
 
@@ -104,7 +100,7 @@ class TwoPhaseFlowSimulation:
         self._ls_solver = LevelSetSolver(
             use_weno=self.config.solver.use_weno,
             weno_order=self.config.solver.weno_order,
-            logger=self.logger
+            logger=self.logger,
         )
         self._ls_solver.initialize()
 
@@ -122,16 +118,10 @@ class TwoPhaseFlowSimulation:
             dt = self._compute_timestep()
 
             # 速度場の時間発展
-            state_ns, ns_info = self._ns_solver.step_forward(
-                self._state,
-                dt
-            )
+            state_ns, ns_info = self._ns_solver.step_forward(self._state, dt)
 
             # レベルセット場の時間発展
-            state_ls, ls_info = self._ls_solver.step_forward(
-                state_ns,
-                dt
-            )
+            state_ls, ls_info = self._ls_solver.step_forward(state_ns, dt)
 
             # 状態の更新
             self._state = state_ls
@@ -142,7 +132,7 @@ class TwoPhaseFlowSimulation:
                 "time": self._state.time,
                 "dt": dt,
                 "navier_stokes": ns_info,
-                "level_set": ls_info
+                "level_set": ls_info,
             }
 
             return self._state, info
@@ -162,11 +152,7 @@ class TwoPhaseFlowSimulation:
         dt = min(dt_ns, dt_ls)
 
         # 設定された最大・最小値で制限
-        return np.clip(
-            dt,
-            self.config.time.min_dt,
-            self.config.time.max_dt
-        )
+        return np.clip(dt, self.config.time.min_dt, self.config.time.max_dt)
 
     def save_checkpoint(self, filepath: Path):
         """チェックポイントを保存
@@ -182,11 +168,8 @@ class TwoPhaseFlowSimulation:
 
     @classmethod
     def load_checkpoint(
-        cls,
-        config: SimulationConfig,
-        checkpoint_path: Path,
-        logger=None
-    ) -> 'TwoPhaseFlowSimulation':
+        cls, config: SimulationConfig, checkpoint_path: Path, logger=None
+    ) -> "TwoPhaseFlowSimulation":
         """チェックポイントから読み込み
 
         Args:
@@ -211,18 +194,18 @@ class TwoPhaseFlowSimulation:
         return {
             "time": self._state.time,
             "velocity": {
-                "max": float(max(
-                    np.max(np.abs(c.data))
-                    for c in self._state.velocity.components
-                )),
-                "kinetic_energy": float(sum(
-                    np.sum(c.data**2)
-                    for c in self._state.velocity.components
-                ) * 0.5 * self._state.velocity.dx**3)
+                "max": float(
+                    max(np.max(np.abs(c.data)) for c in self._state.velocity.components)
+                ),
+                "kinetic_energy": float(
+                    sum(np.sum(c.data**2) for c in self._state.velocity.components)
+                    * 0.5
+                    * self._state.velocity.dx**3
+                ),
             },
             "pressure": {
                 "min": float(np.min(self._state.pressure.data)),
-                "max": float(np.max(self._state.pressure.data))
+                "max": float(np.max(self._state.pressure.data)),
             },
-            "level_set": self._state.levelset.get_diagnostics()
+            "level_set": self._state.levelset.get_diagnostics(),
         }

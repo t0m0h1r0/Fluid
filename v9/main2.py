@@ -10,10 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from logger import SimulationLogger, LogConfig
-from twoflow import (
-    TwoPhaseFlowSimulation,
-    SimulationConfig
-)
+from twoflow import TwoPhaseFlowSimulation, SimulationConfig
 from visualization import visualize_simulation_state
 
 
@@ -22,22 +19,9 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Level Set法による二相流シミュレーション"
     )
-    parser.add_argument(
-        "--config",
-        type=str,
-        required=True,
-        help="設定ファイルのパス"
-    )
-    parser.add_argument(
-        "--checkpoint",
-        type=str,
-        help="チェックポイントファイルのパス"
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="デバッグモードを有効化"
-    )
+    parser.add_argument("--config", type=str, required=True, help="設定ファイルのパス")
+    parser.add_argument("--checkpoint", type=str, help="チェックポイントファイルのパス")
+    parser.add_argument("--debug", action="store_true", help="デバッグモードを有効化")
     return parser.parse_args()
 
 
@@ -54,16 +38,13 @@ def setup_logging(config: SimulationConfig, debug: bool) -> SimulationLogger:
     log_level = "debug" if debug else "info"
     log_dir = Path(config.output.directory) / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    return SimulationLogger(
-        "TwoPhaseFlow",
-        LogConfig(level=log_level, log_dir=log_dir)
-    )
+    return SimulationLogger("TwoPhaseFlow", LogConfig(level=log_level, log_dir=log_dir))
 
 
 def initialize_simulation(
     config: SimulationConfig,
     logger: SimulationLogger,
-    checkpoint: Optional[Path] = None
+    checkpoint: Optional[Path] = None,
 ) -> TwoPhaseFlowSimulation:
     """シミュレーションを初期化
 
@@ -81,11 +62,7 @@ def initialize_simulation(
 
     if checkpoint:
         logger.info(f"チェックポイントから再開: {checkpoint}")
-        return TwoPhaseFlowSimulation.load_checkpoint(
-            config,
-            checkpoint,
-            logger
-        )
+        return TwoPhaseFlowSimulation.load_checkpoint(config, checkpoint, logger)
     else:
         logger.info("新規シミュレーションを開始")
         sim = TwoPhaseFlowSimulation(config, logger)
@@ -94,9 +71,7 @@ def initialize_simulation(
 
 
 def run_simulation(
-    sim: TwoPhaseFlowSimulation,
-    config: SimulationConfig,
-    logger: SimulationLogger
+    sim: TwoPhaseFlowSimulation, config: SimulationConfig, logger: SimulationLogger
 ) -> int:
     """シミュレーションを実行
 
@@ -136,15 +111,8 @@ def run_simulation(
 
                 # 結果の保存
                 if current_time >= next_save_time:
-                    visualize_simulation_state(
-                        state,
-                        config,
-                        timestamp=current_time
-                    )
-                    checkpoint_path = (
-                        output_dir /
-                        f"checkpoint_{current_time:.3f}.npz"
-                    )
+                    visualize_simulation_state(state, config, timestamp=current_time)
+                    checkpoint_path = output_dir / f"checkpoint_{current_time:.3f}.npz"
                     sim.save_checkpoint(checkpoint_path)
                     next_save_time += save_interval
 
@@ -174,6 +142,7 @@ def run_simulation(
     except Exception as e:
         logger.error(f"シミュレーション実行中にエラー: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
@@ -200,6 +169,7 @@ def main():
     except Exception as e:
         logger.error(f"実行中にエラーが発生: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 

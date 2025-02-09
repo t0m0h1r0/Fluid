@@ -4,12 +4,7 @@
 """
 
 from .base import TimeEvolutionBase
-from .integrator import (
-    TimeIntegratorBase,
-    ForwardEuler,
-    RungeKutta4,
-    create_integrator
-)
+from .integrator import TimeIntegratorBase, ForwardEuler, RungeKutta4, create_integrator
 from .solver import TimeEvolutionSolver
 
 __all__ = [

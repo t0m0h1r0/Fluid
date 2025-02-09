@@ -13,11 +13,7 @@ class TimeIntegratorBase(ABC):
 
     @abstractmethod
     def integrate(
-        self,
-        state: Any,
-        dt: float,
-        derivative_fn: Callable[[Any], Any],
-        **kwargs
+        self, state: Any, dt: float, derivative_fn: Callable[[Any], Any], **kwargs
     ) -> Any:
         """時間積分を実行
 
@@ -41,11 +37,7 @@ class ForwardEuler(TimeIntegratorBase):
     """前進Euler法による時間積分"""
 
     def integrate(
-        self,
-        state: Any,
-        dt: float,
-        derivative_fn: Callable[[Any], Any],
-        **kwargs
+        self, state: Any, dt: float, derivative_fn: Callable[[Any], Any], **kwargs
     ) -> Any:
         """前進Euler法で時間積分を実行
 
@@ -66,11 +58,7 @@ class RungeKutta4(TimeIntegratorBase):
     """4次のRunge-Kutta法による時間積分"""
 
     def integrate(
-        self,
-        state: Any,
-        dt: float,
-        derivative_fn: Callable[[Any], Any],
-        **kwargs
+        self, state: Any, dt: float, derivative_fn: Callable[[Any], Any], **kwargs
     ) -> Any:
         """4次のRunge-Kutta法で時間積分を実行
 

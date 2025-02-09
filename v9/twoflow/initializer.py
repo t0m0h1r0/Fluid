@@ -4,7 +4,7 @@
 速度場、レベルセット場、圧力場の初期化を行います。
 """
 
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List
 import numpy as np
 
 from physics.levelset import LevelSetField, LevelSetParameters
@@ -18,10 +18,7 @@ class TwoPhaseFlowInitializer:
     """二相流シミュレーションの初期化クラス"""
 
     def __init__(
-        self,
-        config: SimulationConfig,
-        properties: PropertiesManager,
-        logger=None
+        self, config: SimulationConfig, properties: PropertiesManager, logger=None
     ):
         """初期化クラスを初期化
 
@@ -48,9 +45,7 @@ class TwoPhaseFlowInitializer:
             # フィールドの作成
             velocity = VectorField(shape, dx)
             levelset = LevelSetField(
-                shape,
-                dx,
-                params=LevelSetParameters(**self.config.solver.level_set)
+                shape, dx, params=LevelSetParameters(**self.config.solver.level_set)
             )
             pressure = ScalarField(shape, dx)
 
@@ -62,7 +57,7 @@ class TwoPhaseFlowInitializer:
                 velocity=velocity,
                 levelset=levelset,
                 pressure=pressure,
-                properties=self.properties
+                properties=self.properties,
             )
 
             if self.logger:
@@ -81,10 +76,7 @@ class TwoPhaseFlowInitializer:
             raise
 
     def _apply_initial_conditions(
-        self,
-        velocity: VectorField,
-        levelset: LevelSetField,
-        pressure: ScalarField
+        self, velocity: VectorField, levelset: LevelSetField, pressure: ScalarField
     ):
         """初期条件を適用
 
@@ -96,8 +88,7 @@ class TwoPhaseFlowInitializer:
         # 背景の水層を初期化
         if self.config.initial_condition.background_layer:
             self._initialize_water_layer(
-                levelset,
-                self.config.initial_condition.background_layer
+                levelset, self.config.initial_condition.background_layer
             )
 
         # オブジェクトの初期化
@@ -111,11 +102,7 @@ class TwoPhaseFlowInitializer:
         if self.config.initial_condition.velocity:
             self._initialize_velocity(velocity)
 
-    def _initialize_water_layer(
-        self,
-        levelset: LevelSetField,
-        height_fraction: float
-    ):
+    def _initialize_water_layer(self, levelset: LevelSetField, height_fraction: float):
         """水層を初期化
 
         Args:
@@ -130,11 +117,7 @@ class TwoPhaseFlowInitializer:
         height = height_fraction
         levelset.data = height - Z
 
-    def _initialize_object(
-        self,
-        levelset: LevelSetField,
-        obj: ObjectConfig
-    ):
+    def _initialize_object(self, levelset: LevelSetField, obj: ObjectConfig):
         """オブジェクトを初期化
 
         Args:
@@ -143,10 +126,7 @@ class TwoPhaseFlowInitializer:
         """
         if obj.type == "sphere":
             self._initialize_sphere(
-                levelset,
-                obj.center,
-                obj.radius,
-                obj.phase == "water"
+                levelset, obj.center, obj.radius, obj.phase == "water"
             )
         else:
             if self.logger:
@@ -157,7 +137,7 @@ class TwoPhaseFlowInitializer:
         levelset: LevelSetField,
         center: List[float],
         radius: float,
-        is_water: bool
+        is_water: bool,
     ):
         """球を初期化
 
@@ -171,13 +151,11 @@ class TwoPhaseFlowInitializer:
         x = np.linspace(0, 1, levelset.shape[0])
         y = np.linspace(0, 1, levelset.shape[1])
         z = np.linspace(0, 1, levelset.shape[2])
-        X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+        X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
 
         # 球からの符号付き距離を計算
         distance = np.sqrt(
-            (X - center[0])**2 +
-            (Y - center[1])**2 +
-            (Z - center[2])**2
+            (X - center[0]) ** 2 + (Y - center[1]) ** 2 + (Z - center[2]) ** 2
         )
 
         # 現在のレベルセット場と合成（最小値を取る）
@@ -188,9 +166,7 @@ class TwoPhaseFlowInitializer:
             levelset.data = np.maximum(levelset.data, phi_sphere)
 
     def _initialize_hydrostatic_pressure(
-        self,
-        pressure: ScalarField,
-        levelset: LevelSetField
+        self, pressure: ScalarField, levelset: LevelSetField
     ):
         """静水圧分布を初期化
 
@@ -231,11 +207,7 @@ class TwoPhaseFlowInitializer:
             if self.logger:
                 self.logger.warning(f"未対応の速度場初期化タイプ: {vel_config.type}")
 
-    def _initialize_vortex(
-        self,
-        velocity: VectorField,
-        vel_config: Dict[str, Any]
-    ):
+    def _initialize_vortex(self, velocity: VectorField, vel_config: Dict[str, Any]):
         """渦を初期化
 
         Args:
@@ -250,13 +222,10 @@ class TwoPhaseFlowInitializer:
         x = np.linspace(0, 1, velocity.shape[0])
         y = np.linspace(0, 1, velocity.shape[1])
         z = np.linspace(0, 1, velocity.shape[2])
-        X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+        X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
 
         # 中心からの距離を計算
-        R = np.sqrt(
-            (X - center[0])**2 +
-            (Y - center[1])**2
-        )
+        R = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
         R = np.maximum(R, velocity.dx)  # ゼロ除算を防ぐ
 
         # 渦の速度成分を計算
