@@ -19,7 +19,7 @@ phases:
 # 計算領域の設定
 domain:
   dimensions: [32, 32, 32]  # X, Y, Z方向のグリッドポイント数
-  size: [0.1, 0.1, 0.1]  # X, Y, Z方向の物理的サイズ [m]
+  size: [1.0, 1.0, 1.0]  # X, Y, Z方向の物理的サイズ [m]
 
 # 境界条件
 boundary_conditions:
@@ -43,7 +43,7 @@ initial_conditions:
     - type: sphere
       phase: nitrogen
       center: [0.5, 0.5, 0.4]
-      radius: 0.3
+      radius: 0.2
 
   velocity:
     type: zero

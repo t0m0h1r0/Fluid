@@ -1,7 +1,4 @@
 .
-├── config
-│   ├── default.yaml
-│   └── simulation_config.py
 ├── config.yaml
 ├── core
 │   ├── boundary
@@ -16,11 +13,16 @@
 │   │   ├── field.py
 │   │   ├── scalar.py
 │   │   └── vector.py
-│   └── solver
+│   ├── solver
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── iterative.py
+│   │   └── temporal.py
+│   └── time_evolution
 │       ├── __init__.py
 │       ├── base.py
-│       ├── iterative.py
-│       └── temporal.py
+│       ├── integrator.py
+│       └── solver.py
 ├── logger
 │   ├── __init__.py
 │   ├── config.py
@@ -28,33 +30,43 @@
 │   ├── handlers.py
 │   └── logger.py
 ├── main.py
+├── main2.py
 ├── physics
 │   ├── levelset
 │   │   ├── __init__.py
+│   │   ├── extend.py
 │   │   ├── field.py
+│   │   ├── reinitialize.py
 │   │   ├── solver.py
 │   │   └── utils.py
 │   ├── navier_stokes
 │   │   ├── __init__.py
+│   │   ├── base.py
 │   │   ├── base_term.py
+│   │   ├── pressure_rhs.py
+│   │   ├── projection.py
 │   │   ├── solver.py
-│   │   └── terms
-│   │       ├── __init__.py
-│   │       ├── advection.py
-│   │       ├── diffusion.py
-│   │       ├── force.py
-│   │       └── pressure.py
+│   │   ├── terms
+│   │   │   ├── __init__.py
+│   │   │   ├── advection.py
+│   │   │   ├── base.py
+│   │   │   ├── diffusion.py
+│   │   │   ├── force.py
+│   │   │   └── pressure.py
+│   │   └── timestepping.py
 │   ├── poisson
 │   │   ├── __init__.py
 │   │   ├── solver.py
 │   │   └── sor.py
 │   └── properties.py
+├── results
 ├── simulations
 │   ├── __init__.py
+│   ├── config
+│   │   ├── __init__.py
+│   │   └── simulation_config.py
 │   ├── initializer.py
-│   ├── manager.py
-│   ├── monitor.py
-│   ├── runner.py
+│   ├── simulation.py
 │   └── state.py
 ├── tree.txt
 └── visualization
@@ -64,16 +76,17 @@
     │   ├── base.py
     │   ├── exporter.py
     │   └── renderer.py
+    ├── interfaces.py
+    ├── renderer_strategy.py
     ├── renderers
     │   ├── __init__.py
     │   ├── scalar2d.py
     │   ├── scalar3d.py
     │   ├── vector2d.py
     │   └── vector3d.py
-    ├── state.py
     ├── utils
     │   ├── camera.py
     │   └── colormap.py
     └── visualizer.py
 
-17 directories, 60 files
+19 directories, 71 files
