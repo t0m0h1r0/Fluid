@@ -67,55 +67,23 @@ visualization:
   show_axes: true      # 軸の表示
   show_grid: false     # グリッドの表示
 
-  # カメラ設定（3D可視化用）
-  camera:
-    elevation: 30.0    # 仰角（度）
-    azimuth: 45.0     # 方位角（度）
-    distance: 10.0     # 視点距離
-    focal_point: [0.5, 0.5, 0.5]  # 注視点
+  # スライス位置と軸を明示的に指定
+  slices:
+    axes: 
+      - "xy"   # XY面
+      - "xz"   # XZ面
+    positions: 
+      - 0.5    # 中央
+      - 0.75
 
-  # ベクトル場の設定
-  vector_plot:
-    density: 20        # ベクトル矢印の密度
-    scale: 1.0         # ベクトル矢印のスケール
-    width: 0.005       # 矢印の幅
-    show_magnitude: true  # 大きさの表示
-    streamlines: false    # 流線の表示
-    n_streamlines: 50     # 流線の数
-
-  # スカラー場の設定
-  scalar_plot:
-    interpolation: "nearest"  # 補間方法
-    contour: false           # 等高線の表示
-    n_contours: 10           # 等高線の数
-    symmetric: false         # 対称なカラースケール
-
-  # 3D表示の設定
-  volume_plot:
-    opacity: 0.7            # 不透明度
-    slice_positions: [0.5, 0.5, 0.5]  # 各軸のデフォルト断面位置
-    show_isosurfaces: true  # 等値面の表示
-    n_isosurfaces: 5        # 等値面の数
-
-  # Level Set場の設定
-  interface_plot:
-    color: "black"          # 界面の色
-    width: 2.0              # 界面線の幅
-    filled: true            # 領域の塗りつぶし
-    phase_colors: ["lightblue", "white"]  # 各相の色
-
-  # フィールドごとの可視化設定
+  # 可視化する物理量を選択
   fields:
     velocity:
-      enabled: true
-      plot_types: ["vector", "magnitude"]
+      enabled: false   # 速度場を可視化
     pressure:
-      enabled: true
-      plot_types: ["scalar", "contour"]
+      enabled: false   # 圧力場を可視化
     levelset:
       enabled: true
-      plot_types: ["contour"]
-      #plot_types: ["interface", "contour"]
 
 # デバッグ設定
 debug:

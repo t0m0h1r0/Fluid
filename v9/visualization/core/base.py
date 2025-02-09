@@ -6,7 +6,6 @@
 
 from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Union, Tuple
-import numpy as np
 from pathlib import Path
 
 
@@ -35,12 +34,12 @@ class ViewConfig:
     def validate(self):
         """設定値の検証"""
         if len(self.slice_positions) != 3:
-            raise ValueError("slice_positions must have 3 elements")
+            raise ValueError("slice_positionsは3つの要素を持つ必要があります")
         if any(not 0 <= pos <= 1 for pos in self.slice_positions):
-            raise ValueError("slice_positions must be between 0 and 1")
+            raise ValueError("slice_positionsは0から1の間である必要があります")
         valid_axes = {"xy", "yz", "xz", "yx", "zy", "zx"}
         if any(axis not in valid_axes for axis in self.slice_axes):
-            raise ValueError(f"Invalid slice_axes. Must be one of {valid_axes}")
+            raise ValueError(f"無効なslice_axes: {valid_axes}から選択してください")
 
 
 @dataclass
@@ -117,18 +116,32 @@ class VisualizationConfig:
             filename = f"{name}.{self.format}"
         return self.output_dir / filename
 
-    def get_field_config(self, field_name: str) -> Dict[str, Any]:
-        """フィールドの可視化設定を取得
+    def get_field_config(self, section: str, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """指定されたセクションの設定を取得
 
         Args:
-            field_name: フィールド名
+            section: 設定セクション名
+            default: デフォルト値（オプション）
 
         Returns:
             設定辞書（存在しない場合はデフォルト設定）
         """
-        return self.fields.get(
-            field_name, {"enabled": True, "plot_types": ["scalar"], "alpha": 0.7}
-        )
+        import yaml
+        import os
+
+        # コンフィグファイルの読み込み
+        config_path = os.path.join(os.getcwd(), 'config.yaml')
+        
+        try:
+            with open(config_path, 'r') as f:
+                full_config = yaml.safe_load(f)
+                
+            # 指定されたセクションの設定を取得
+            section_config = full_config.get(section, {})
+            return section_config
+        except Exception as e:
+            print(f"設定ファイルの読み込み中にエラー: {e}")
+            return default or {}
 
     @classmethod
     def from_dict(cls, config: Dict[str, Any]) -> "VisualizationConfig":
@@ -163,65 +176,10 @@ class VisualizationConfig:
         return cls(**base_config, fields=fields)
 
 
-class DataSource:
-    """データソースの基底クラス
-
-    可視化対象のデータを提供するインターフェースを定義します。
-    """
-
-    @property
-    def data(self) -> np.ndarray:
-        """データ配列を取得"""
-        raise NotImplementedError
-
-    @property
-    def shape(self) -> Tuple[int, ...]:
-        """データの形状を取得"""
-        raise NotImplementedError
-
-    @property
-    def ndim(self) -> int:
-        """次元数を取得"""
-        raise NotImplementedError
-
-
-class Renderer:
-    """レンダラーの基底クラス
-
-    可視化の描画処理を担当する抽象基底クラスです。
-    """
-
-    def __init__(self, config: VisualizationConfig):
-        """レンダラーを初期化
-
-        Args:
-            config: 可視化設定
-        """
-        self.config = config
-
-    def render(
-        self,
-        data: Union[DataSource, np.ndarray],
-        view: Optional[ViewConfig] = None,
-        **kwargs,
-    ) -> Tuple[Any, Dict[str, Any]]:
-        """データを描画
-
-        Args:
-            data: 描画するデータ
-            view: 視点設定
-            **kwargs: 追加の描画オプション
-
-        Returns:
-            (描画結果, メタデータの辞書)
-        """
-        raise NotImplementedError
-
-
 class Exporter:
     """エクスポーターの基底クラス
 
-    描画結果をファイルとして出力する抽象基底クラスです。
+    描画結果をファイルとして出力する基底クラス
     """
 
     def __init__(self, config: VisualizationConfig):
@@ -232,14 +190,12 @@ class Exporter:
         """
         self.config = config
 
-    def export(
-        self, figure: Any, filepath: Path, metadata: Optional[Dict[str, Any]] = None
-    ) -> None:
+    def export(self, figure: Any, filepath: Path, metadata: Optional[Dict[str, Any]] = None) -> None:
         """描画結果を出力
 
         Args:
             figure: 描画結果
             filepath: 出力パス
-            metadata: メタデータ
+            metadata: メタデータ（オプション）
         """
-        raise NotImplementedError
+        raise NotImplementedError("サブクラスで実装する必要があります")

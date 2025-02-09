@@ -4,35 +4,125 @@
 """
 
 import numpy as np
+from typing import List, Dict, Any
+from pathlib import Path
 
 from .core.base import VisualizationConfig, ViewConfig
-from .interfaces import (
-    VisualizationStrategy,
-    MultiFieldVisualizationStrategy,
-    VisualizationContext,
-    VisualizationFactory,
-)
-from .renderer_strategy import (
-    Renderer2DVisualizationStrategy,
-    Renderer3DVisualizationStrategy,
-)
-from .visualizer import Visualizer
-
-__all__ = [
-    "Visualizer",
-    "VisualizationConfig",
-    "ViewConfig",
-    "VisualizationStrategy",
-    "MultiFieldVisualizationStrategy",
-    "VisualizationContext",
-    "VisualizationFactory",
-    "Renderer2DVisualizationStrategy",
-    "Renderer3DVisualizationStrategy",
-]
+from .interfaces import VisualizationContext, VisualizationFactory
 
 
-def visualize_simulation_state(state, config: dict, timestamp: float = 0.0) -> str:
-    """シミュレーション状態を可視化する便利関数
+def create_multiview_visualization(
+    state,
+    config: VisualizationConfig,
+    timestamp: float = 0.0,
+    base_name: str = "simulation_state"
+) -> List[str]:
+    """シミュレーション状態の多視点可視化を生成
+
+    Args:
+        state: シミュレーション状態
+        config: 可視化設定
+        timestamp: 現在の時刻
+        base_name: 出力ファイル名のベース
+
+    Returns:
+        生成された可視化ファイルのパス一覧
+    """
+    # 出力ディレクトリの作成
+    output_dir = Path(config.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 出力ファイルのパスを格納するリスト
+    output_files = []
+
+    # 可視化戦略の選択（次元数に基づく）
+    ndim = len(state.velocity.components[0].data.shape)
+    strategy_type = "3d" if ndim == 3 else "2d"
+    viz_context = VisualizationContext(
+        VisualizationFactory.create_strategy(strategy_type, config)
+    )
+
+    # 可視化設定の取得（config.yamlから）
+    viz_config = config.get_field_config('visualization', {})
+    
+    # スライス設定の取得
+    slice_axes = viz_config.get('slices', {}).get('axes', ['xy'])
+    slice_positions = viz_config.get('slices', {}).get('positions', [0.5])
+    
+    print(f"デバッグ: スライス軸 = {slice_axes}, スライス位置 = {slice_positions}")
+
+    # 可視化する物理量の設定
+    fields_config = viz_config.get('fields', {})
+    physics_fields = []
+
+    # 速度場の設定
+    if fields_config.get('velocity', {}).get('enabled', False):
+        physics_fields.append({
+            'name': 'velocity', 
+            'data': [comp.data for comp in state.velocity.components],
+            'plot_type': 'vector'
+        })
+
+    # 圧力場の設定
+    if fields_config.get('pressure', {}).get('enabled', False):
+        physics_fields.append({
+            'name': 'pressure', 
+            'data': state.pressure.data,
+            'plot_type': 'scalar'
+        })
+
+    # レベルセット場の設定
+    if fields_config.get('levelset', {}).get('enabled', False):
+        physics_fields.append({
+            'name': 'levelset', 
+            'data': state.levelset.data,
+            'plot_type': 'scalar'
+        })
+
+    # 可視化の実行
+    for field in physics_fields:
+        for slice_axis in slice_axes:
+            for slice_pos in slice_positions:
+                try:
+                    # ViewConfigの作成
+                    view_config = ViewConfig(
+                        slice_axes=[slice_axis],
+                        slice_positions=[slice_pos]
+                    )
+
+                    # ファイル名の生成
+                    filename = (
+                        f"{base_name}_{field['name']}"
+                        f"_{slice_axis}_slice_{slice_pos:.2f}_{timestamp:.3f}"
+                    )
+
+                    print(f"デバッグ: 可視化 - フィールド: {field['name']}, "
+                          f"軸: {slice_axis}, 位置: {slice_pos}")
+
+                    # 可視化の実行
+                    filepath = viz_context.visualize(
+                        field['data'], 
+                        name=filename, 
+                        timestamp=timestamp,
+                        view=view_config
+                    )
+
+                    output_files.append(filepath)
+
+                except Exception as e:
+                    print(f"可視化中にエラー発生: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+    return output_files
+
+
+def visualize_simulation_state(
+    state, 
+    config, 
+    timestamp: float = 0.0
+) -> List[str]:
+    """シミュレーション状態を可視化
 
     Args:
         state: シミュレーション状態
@@ -40,55 +130,14 @@ def visualize_simulation_state(state, config: dict, timestamp: float = 0.0) -> s
         timestamp: 現在の時刻
 
     Returns:
-        生成された可視化ファイルのパス
+        生成された可視化ファイルのパス一覧
     """
-    # 状態からフィールドデータを抽出
-    fields = {}
+    # 設定が辞書の場合、VisualizationConfigに変換
+    if isinstance(config, dict):
+        config = VisualizationConfig.from_dict(config)
 
-    # 速度場の抽出
-    if hasattr(state, "velocity"):
-        velocity_components = [
-            _ensure_3d(comp.data) for comp in state.velocity.components
-        ]
-        fields["vector"] = velocity_components
-
-    # 圧力場の抽出
-    if hasattr(state, "pressure"):
-        fields["pressure"] = _ensure_3d(state.pressure.data)
-
-    # Level Set場の抽出
-    if hasattr(state, "levelset"):
-        fields["levelset"] = _ensure_3d(state.levelset.data)
-
-    # 次元数に基づいて可視化戦略を選択
-    ndim = len(state.velocity.shape) if hasattr(state, "velocity") else 3
-    strategy_type = "3d" if ndim == 3 else "2d"
-
-    # 可視化コンテキストの作成と可視化の実行
-    strategy = VisualizationFactory.create_strategy(
-        strategy_type, config.get("visualization", {})
+    return create_multiview_visualization(
+        state, 
+        config, 
+        timestamp=timestamp
     )
-    visualization_context = VisualizationContext(strategy)
-
-    return visualization_context.visualize_combined(
-        fields,
-        name=f"combined_{timestamp:.3f}",
-        timestamp=timestamp,
-    )
-
-
-def _ensure_3d(data: np.ndarray) -> np.ndarray:
-    """データを3次元配列に変換
-
-    Args:
-        data: 入力データ
-
-    Returns:
-        3次元配列に変換されたデータ
-    """
-    if data.ndim == 1:
-        nx = int(np.sqrt(len(data)))
-        return data.reshape(nx, nx, 1)
-    elif data.ndim == 2:
-        return data[..., np.newaxis]
-    return data

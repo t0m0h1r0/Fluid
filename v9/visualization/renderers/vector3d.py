@@ -18,10 +18,46 @@ class Vector3DRenderer:
         """
         self.config = config or {}
 
+    def _get_slice(self, data: np.ndarray, slice_axis: str, slice_pos: float) -> Tuple[np.ndarray, ...]:
+        """指定された軸とスライス位置でデータをスライス
+
+        Args:
+            data: 入力データ配列
+            slice_axis: スライス軸 ('xy', 'xz', 'yz')
+            slice_pos: スライス位置 (0-1)
+
+        Returns:
+            スライスされたデータと座標
+        """
+        # データの形状を取得
+        nx, ny, nz = data.shape
+
+        # スライス位置のインデックスを計算
+        if slice_axis == 'xy':
+            slice_idx = int(slice_pos * (nz - 1))
+            slice_data = data[:, :, slice_idx]
+            x, y = np.meshgrid(np.arange(nx), np.arange(ny), indexing='ij')
+            z = np.full_like(x, slice_idx)
+        elif slice_axis == 'xz':
+            slice_idx = int(slice_pos * (ny - 1))
+            slice_data = data[:, slice_idx, :]
+            x, z = np.meshgrid(np.arange(nx), np.arange(nz), indexing='ij')
+            y = np.full_like(x, slice_idx)
+        elif slice_axis == 'yz':
+            slice_idx = int(slice_pos * (nx - 1))
+            slice_data = data[slice_idx, :, :]
+            y, z = np.meshgrid(np.arange(ny), np.arange(nz), indexing='ij')
+            x = np.full_like(y, slice_idx)
+        else:
+            raise ValueError(f"無効なスライス軸: {slice_axis}")
+
+        return slice_data, x, y, z
+
     def render(
         self, 
         vector_components: List[np.ndarray], 
         ax: Optional[Axes] = None, 
+        view: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> Tuple[plt.Figure, Dict[str, Any]]:
         """3Dベクトル場を描画
@@ -29,6 +65,7 @@ class Vector3DRenderer:
         Args:
             vector_components: ベクトル場の各成分 [u, v, w]
             ax: 既存のAxes（Noneの場合は新規作成）
+            view: スライス情報
             **kwargs: 追加の描画オプション
 
         Returns:
@@ -40,6 +77,10 @@ class Vector3DRenderer:
         
         u, v, w = vector_components
 
+        # スライス情報の取得
+        slice_axis = view.get('slice_axes', ['xy'])[0] if view else 'xy'
+        slice_pos = view.get('slice_positions', [0.5])[0] if view else 0.5
+
         # 図とAxesの準備
         if ax is None:
             fig = plt.figure()
@@ -47,40 +88,32 @@ class Vector3DRenderer:
         else:
             fig = ax.figure
 
-        # ベクトルの大きさを計算
-        magnitude = np.sqrt(u**2 + v**2 + w**2)
-
-        # デフォルトのパラメータ設定
-        density = kwargs.get('density', 10)
-        scale = kwargs.get('scale', 1.0)
-        skip = max(1, min(u.shape) // density)
+        # スライスの取得
+        slice_data_list = []
+        for component in [u, v, w]:
+            slice_data, x, y, z = self._get_slice(component, slice_axis, slice_pos)
+            slice_data_list.append(slice_data)
 
         # メタデータの準備
         metadata = {
             'data_range': {
-                'min_magnitude': float(np.min(magnitude)),
-                'max_magnitude': float(np.max(magnitude))
+                'min_magnitude': float(np.min(slice_data_list[0])),
+                'max_magnitude': float(np.max(slice_data_list[0]))
             },
-            'display_type': ['vector']
+            'display_type': ['vector', 'slice'],
+            'slice_info': {
+                'axis': slice_axis,
+                'position': slice_pos
+            }
         }
-
-        # グリッドの生成
-        nx, ny, nz = u.shape
-        x, y, z = np.meshgrid(
-            np.arange(nx), np.arange(ny), np.arange(nz), indexing='ij'
-        )
 
         # ベクトル場の描画
         ax.quiver(
-            x[::skip, ::skip, ::skip], 
-            y[::skip, ::skip, ::skip], 
-            z[::skip, ::skip, ::skip],
-            u[::skip, ::skip, ::skip], 
-            v[::skip, ::skip, ::skip], 
-            w[::skip, ::skip, ::skip],
-            length=scale,
-            normalize=True,
-            color='blue',  # 単純な静的な色
+            x, y, z,
+            slice_data_list[0], 
+            slice_data_list[1], 
+            slice_data_list[2],
+            color='blue',
             alpha=kwargs.get('alpha', 0.7)
         )
 

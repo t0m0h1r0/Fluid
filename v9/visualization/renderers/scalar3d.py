@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import Optional, Tuple, Dict, Any, Union
 from matplotlib.axes import Axes
-from mpl_toolkits.mplot3d import Axes3D
 
 
 class Scalar3DRenderer:
