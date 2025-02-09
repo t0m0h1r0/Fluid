@@ -9,7 +9,6 @@ import numpy as np
 from core.solver import TemporalSolver
 from core.field import VectorField
 from .field import LevelSetField
-from .utils import reinitialize, extend_velocity
 
 
 class LevelSetSolver(TemporalSolver):
@@ -19,12 +18,7 @@ class LevelSetSolver(TemporalSolver):
     移流方程式に対してWENOスキームを使用し、高次精度で数値振動の少ない解法を提供します。
     """
 
-    def __init__(
-        self, 
-        use_weno: bool = True, 
-        weno_order: int = 5, 
-        **kwargs
-    ):
+    def __init__(self, use_weno: bool = True, weno_order: int = 5, **kwargs):
         """Level Setソルバーを初期化
 
         Args:
@@ -45,7 +39,9 @@ class LevelSetSolver(TemporalSolver):
 
         他のメソッドで実装されるため、基本的には例外を投げる。
         """
-        raise NotImplementedError("時間発展ソルバーの具体的な実装は`advance`メソッドで行います。")
+        raise NotImplementedError(
+            "時間発展ソルバーの具体的な実装は`advance`メソッドで行います。"
+        )
 
     def initialize(self, **kwargs) -> None:
         """ソルバーの初期化
@@ -57,10 +53,7 @@ class LevelSetSolver(TemporalSolver):
         pass
 
     def compute_timestep(
-        self, 
-        phi: LevelSetField, 
-        velocity: Optional[VectorField] = None, 
-        **kwargs
+        self, phi: LevelSetField, velocity: Optional[VectorField] = None, **kwargs
     ) -> float:
         """時間刻み幅を計算
 
@@ -194,11 +187,7 @@ class LevelSetSolver(TemporalSolver):
             return omega0 * p0 + omega1 * p1
 
     def advance(
-        self, 
-        dt: float, 
-        phi: LevelSetField, 
-        velocity: VectorField, 
-        **kwargs
+        self, dt: float, phi: LevelSetField, velocity: VectorField, **kwargs
     ) -> Dict[str, Any]:
         """1時間ステップを進める
 

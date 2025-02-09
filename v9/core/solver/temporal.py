@@ -19,14 +19,11 @@ class TemporalSolver(Solver):
         max_dt: float = 1.0,
         tolerance: float = 1e-6,
         max_iterations: int = 1000,
-        logger = None
+        logger=None,
     ):
         """時間発展ソルバーを初期化"""
         super().__init__(
-            name=name,
-            tolerance=tolerance,
-            max_iterations=max_iterations,
-            logger=logger
+            name=name, tolerance=tolerance, max_iterations=max_iterations, logger=logger
         )
         self._time = 0.0
         self._dt = None

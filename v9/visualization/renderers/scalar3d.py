@@ -18,11 +18,11 @@ class Scalar3DRenderer:
         self.config = config or {}
 
     def render(
-        self, 
-        data: Union[np.ndarray, int], 
-        ax: Optional[Axes] = None, 
+        self,
+        data: Union[np.ndarray, int],
+        ax: Optional[Axes] = None,
         view: Optional[Dict[str, Any]] = None,
-        **kwargs
+        **kwargs,
     ) -> Tuple[plt.Figure, Dict[str, Any]]:
         """3Dスカラー場を描画
 
@@ -50,7 +50,7 @@ class Scalar3DRenderer:
             fig = ax.figure
 
         # スライス位置の決定
-        _ = {'yz':0, 'xz':1, 'xy':2}
+        _ = {"yz": 0, "xz": 1, "xy": 2}
         if view is None:
             slice_axis = 2
             slice_pos = data.shape[0] // 2

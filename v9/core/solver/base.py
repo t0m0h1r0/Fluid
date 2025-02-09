@@ -17,11 +17,11 @@ class Solver(ABC):
     """
 
     def __init__(
-        self, 
-        name: str, 
-        tolerance: float = 1e-6, 
+        self,
+        name: str,
+        tolerance: float = 1e-6,
         max_iterations: int = 1000,
-        logger = None
+        logger=None,
     ):
         """ソルバーを初期化
 
@@ -111,8 +111,7 @@ class Solver(ABC):
         self._end_time = datetime.now()
         if self._logger:
             self._logger.info(
-                f"{self.name}ソルバーの計算を終了 "
-                f"(経過時間: {self.elapsed_time:.2f}秒)"
+                f"{self.name}ソルバーの計算を終了 (経過時間: {self.elapsed_time:.2f}秒)"
             )
 
     def get_status(self) -> Dict[str, Any]:

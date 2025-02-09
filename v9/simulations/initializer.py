@@ -11,6 +11,7 @@ from simulations.state import SimulationState
 
 class SphereConfig:
     """球体の設定を保持するクラス"""
+
     def __init__(self, center: List[float], radius: float, is_water: bool):
         self.center = center
         self.radius = radius
@@ -136,19 +137,19 @@ class SimulationInitializer:
             sphere_distance = self._compute_signed_distance_to_sphere(
                 X, Y, Z, sphere.center, sphere.radius
             )
-            
+
             # 距離の絶対値を比較
             abs_sphere_distance = np.abs(sphere_distance)
             closer_to_sphere = abs_sphere_distance < np.abs(min_distance)
-            
+
             # より近い界面の情報で更新
             min_distance = np.where(closer_to_sphere, abs_sphere_distance, min_distance)
-            
+
             # 球の内部か外部かで水/空気を判定
-            sphere_phase = np.where(sphere_distance > 0,
-                                  sphere.is_water,
-                                  not sphere.is_water)
-            
+            sphere_phase = np.where(
+                sphere_distance > 0, sphere.is_water, not sphere.is_water
+            )
+
             is_water = np.where(closer_to_sphere, sphere_phase, is_water)
 
         # 符号を設定（水領域が正、空気領域が負）
@@ -164,7 +165,7 @@ class SimulationInitializer:
         Y: np.ndarray,
         Z: np.ndarray,
         sigma: float,
-        dx: float
+        dx: float,
     ) -> np.ndarray:
         """曲率による圧力ジャンプを計算
 
@@ -185,18 +186,18 @@ class SimulationInitializer:
         for sphere in spheres:
             # 球からの距離を計算
             distance = np.sqrt(
-                (X - sphere.center[0])**2 +
-                (Y - sphere.center[1])**2 +
-                (Z - sphere.center[2])**2
+                (X - sphere.center[0]) ** 2
+                + (Y - sphere.center[1]) ** 2
+                + (Z - sphere.center[2]) ** 2
             )
-            
+
             # 界面近傍の判定
             interface_region = np.abs(distance - sphere.radius) < interface_width
-            
+
             # 球の曲率は半径の逆数（符号は球の内外で反転）
             # 2/Rは平均曲率（主曲率1/Rが2回足される）
             curvature = 2.0 / sphere.radius
-            
+
             # 圧力ジャンプの追加（水球と空気球で符号が逆）
             if sphere.is_water:
                 pressure_jump += sigma * curvature * interface_region
@@ -228,9 +229,7 @@ class SimulationInitializer:
         radius_phys = radius * domain_size[0]  # スケーリングはx方向のサイズを使用
 
         return SphereConfig(
-            center=center_phys,
-            radius=radius_phys,
-            is_water=(phase != "nitrogen")
+            center=center_phys, radius=radius_phys, is_water=(phase != "nitrogen")
         )
 
     def _compute_pressure_field(
@@ -273,7 +272,8 @@ class SimulationInitializer:
         pressure = np.where(
             Z > water_height,
             rho_a * g * (domain_size[2] - Z),  # 空気領域
-            rho_a * g * (domain_size[2] - water_height) + rho_w * g * (water_height - Z)  # 水領域
+            rho_a * g * (domain_size[2] - water_height)
+            + rho_w * g * (water_height - Z),  # 水領域
         )
 
         # グリッド間隔

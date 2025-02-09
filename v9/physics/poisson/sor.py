@@ -21,10 +21,10 @@ class SORSolver(PoissonSolver):
         boundary_conditions: Optional[List[BoundaryCondition]] = None,
         tolerance: float = 1e-6,
         max_iterations: int = 1000,
-        logger = None
+        logger=None,
     ):
         """SORソルバーを初期化
-        
+
         Args:
             omega: 緩和係数（1 < ω < 2）
             use_redblack: 赤黒順序付けを使用するかどうか
@@ -38,7 +38,7 @@ class SORSolver(PoissonSolver):
             boundary_conditions=boundary_conditions,
             tolerance=tolerance,
             max_iterations=max_iterations,
-            logger=logger
+            logger=logger,
         )
         self.omega = omega
         self.use_redblack = use_redblack
@@ -50,11 +50,7 @@ class SORSolver(PoissonSolver):
         self._previous_diff = None
 
     def iterate(
-        self,
-        solution: np.ndarray,
-        rhs: np.ndarray,
-        dx: np.ndarray,
-        **kwargs
+        self, solution: np.ndarray, rhs: np.ndarray, dx: np.ndarray, **kwargs
     ) -> np.ndarray:
         """1回のSOR反復を実行"""
         result = solution.copy()
@@ -66,7 +62,7 @@ class SORSolver(PoissonSolver):
             raise ValueError(f"dx must have length {result.ndim}, got {len(dx)}")
 
         # グリッド間隔の2乗を計算
-        dx_squared = np.prod(dx)**2
+        dx_squared = np.prod(dx) ** 2
 
         if self.use_redblack:
             # 赤黒順序付けによる更新
@@ -95,7 +91,9 @@ class SORSolver(PoissonSolver):
                 gauss_seidel = (dx_squared * rhs[mask] + neighbors_sum[mask]) / (
                     2 * result.ndim
                 )
-                result[mask] = (1 - self.omega) * result[mask] + self.omega * gauss_seidel
+                result[mask] = (1 - self.omega) * result[
+                    mask
+                ] + self.omega * gauss_seidel
 
         else:
             # 通常のSOR反復

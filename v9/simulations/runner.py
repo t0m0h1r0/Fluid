@@ -91,9 +91,9 @@ class SimulationRunner:
 
             # レベルセットの移流
             ls_result = self.ls_solver.advance(
-                dt=self._dt, 
-                phi=advanced_state.levelset, 
-                velocity=advanced_state.velocity
+                dt=self._dt,
+                phi=advanced_state.levelset,
+                velocity=advanced_state.velocity,
             )
 
             # 時間を更新
@@ -162,11 +162,11 @@ class SimulationRunner:
         """
         # チェックポイントからの状態復元
         state = SimulationState.load_from_file(str(checkpoint_path))
-        
+
         # ランナーの初期化
         monitor = SimulationMonitor(config, logger)
         runner = cls(config, logger, monitor)
-        
+
         return runner, state
 
     def finalize(self, output_dir: Path):

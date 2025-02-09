@@ -31,7 +31,7 @@ class NavierStokesSolver(TemporalSolver):
         logger=None,
         use_weno: bool = True,
         poisson_solver: Optional[PoissonSolver] = None,
-        **kwargs
+        **kwargs,
     ):
         """Navier-Stokesソルバーを初期化
 
@@ -58,9 +58,7 @@ class NavierStokesSolver(TemporalSolver):
 
         # Poissonソルバーの設定
         self.poisson_solver = poisson_solver or SORSolver(
-            omega=1.5,
-            tolerance=1e-6,
-            max_iterations=100
+            omega=1.5, tolerance=1e-6, max_iterations=100
         )
 
         # 診断用の変数
@@ -72,7 +70,9 @@ class NavierStokesSolver(TemporalSolver):
 
         他のメソッドで実装されるため、基本的には例外を投げる。
         """
-        raise NotImplementedError("時間発展ソルバーの具体的な実装は`advance`メソッドで行います。")
+        raise NotImplementedError(
+            "時間発展ソルバーの具体的な実装は`advance`メソッドで行います。"
+        )
 
     def initialize(self, state=None, **kwargs):
         """ソルバーの初期化
@@ -82,7 +82,7 @@ class NavierStokesSolver(TemporalSolver):
             **kwargs: 追加のパラメータ
         """
         # 表面張力の初期化（二相流体の場合）
-        levelset = kwargs.get('levelset')
+        levelset = kwargs.get("levelset")
         if levelset is not None and not any(
             isinstance(f, SurfaceTensionForce) for f in self.force.forces
         ):
@@ -251,9 +251,7 @@ class NavierStokesSolver(TemporalSolver):
 
             # Poisson方程式を解く
             p_corr.data = self.poisson_solver.solve(
-                initial_solution=np.zeros_like(pressure.data), 
-                rhs=rhs, 
-                dx=velocity.dx
+                initial_solution=np.zeros_like(pressure.data), rhs=rhs, dx=velocity.dx
             )
 
             # 圧力補正の反復回数を記録

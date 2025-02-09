@@ -120,7 +120,7 @@ class PoissonSolver(IterativeSolver):
             # 各方向のグリッド間隔を考慮
             forward = np.roll(solution, 1, axis=axis)
             backward = np.roll(solution, -1, axis=axis)
-            laplacian += (forward + backward - 2 * solution) / (dx[axis]**2)
+            laplacian += (forward + backward - 2 * solution) / (dx[axis] ** 2)
 
         # 残差の計算と境界条件の適用
         residual = laplacian - rhs

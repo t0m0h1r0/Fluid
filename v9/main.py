@@ -30,7 +30,9 @@ def setup_logging(config: dict, debug: bool) -> SimulationLogger:
     return SimulationLogger("TwoPhaseFlow", LogConfig(level=log_level, log_dir=log_dir))
 
 
-def initialize_simulation(config: dict, logger: SimulationLogger, checkpoint: Path = None):
+def initialize_simulation(
+    config: dict, logger: SimulationLogger, checkpoint: Path = None
+):
     """シミュレーションを初期化"""
     output_dir = Path(config["visualization"]["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -64,7 +66,9 @@ def run_simulation(runner, initial_state, config, logger):
     current_time = 0.0
     next_save_time = save_interval
 
-    logger.info(f"シミュレーションを開始: max_time = {max_time}, save_interval = {save_interval}")
+    logger.info(
+        f"シミュレーションを開始: max_time = {max_time}, save_interval = {save_interval}"
+    )
 
     while current_time < max_time:
         try:
@@ -73,10 +77,11 @@ def run_simulation(runner, initial_state, config, logger):
             current_time = step_info.get("time", current_time)
 
             # 結果の可視化
-            visualize_simulation_state(state, config, timestamp=current_time)
 
             # チェックポイントの保存
             if current_time >= next_save_time:
+                visualize_simulation_state(state, config, timestamp=current_time)
+
                 checkpoint_path = output_dir / f"checkpoint_{current_time:.3f}.npz"
                 runner.save_checkpoint(checkpoint_path)
                 next_save_time += save_interval
@@ -122,6 +127,7 @@ def main():
     except Exception as e:
         logger.error(f"シミュレーション中にエラーが発生: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
 
