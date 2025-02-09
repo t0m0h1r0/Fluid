@@ -19,9 +19,22 @@ class NSComponentBase:
         self._logger = logger
 
     def log(self, level: str, msg: str):
-        """ログを出力"""
+        """ログを出力
+
+        Args:
+            level: ログレベル（'debug', 'info', 'warning', 'error', 'critical'）
+            msg: ログメッセージ
+        """
         if self._logger:
-            self._logger.log(getattr(logging, level.upper()), msg)
+            # SimulationLoggerの場合
+            if hasattr(self._logger, "log"):
+                self._logger.log(getattr(logging, level.upper()), msg)
+            # 標準のloggingの場合
+            elif hasattr(self._logger, level):
+                log_method = getattr(self._logger, level)
+                log_method(msg)
+            else:
+                print(f"{level.upper()}: {msg}")
 
 
 class NavierStokesTerm(Protocol):

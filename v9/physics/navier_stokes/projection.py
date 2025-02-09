@@ -5,21 +5,27 @@ import numpy as np
 from core.field import VectorField, ScalarField
 from physics.poisson import PoissonSolver, SORSolver
 from .base import NSComponentBase
+import logging  # ロギング機能を追加
 
 
 class ClassicProjection(NSComponentBase):
     """古典的な圧力投影法"""
 
     def __init__(
-        self, poisson_solver: Optional[PoissonSolver] = None, rhs_computer=None
+        self,
+        poisson_solver: Optional[PoissonSolver] = None,
+        rhs_computer=None,
+        logger: Optional[logging.Logger] = None,  # loggerを追加
     ):
         """初期化
 
         Args:
             poisson_solver: ポアソンソルバー
             rhs_computer: 右辺計算機
+            logger: ロガー（オプション）
         """
-        super().__init__(None)  # loggerはNavierStokesBaseから継承
+        # NSComponentBaseに渡すloggerを追加
+        super().__init__(logger)  # 基底クラスのコンストラクタを呼び出す際にloggerを渡す
 
         self.poisson_solver = poisson_solver or SORSolver(
             omega=1.5,  # より適切な緩和係数
@@ -57,11 +63,16 @@ class ClassicProjection(NSComponentBase):
 
             # 収束状態の確認
             if not self.poisson_solver.converged:
-                self.log(
-                    "warning",
-                    f"圧力ポアソン方程式が収束しませんでした: "
-                    f"残差 = {self.poisson_solver.residual_history[-1]:.3e}",
-                )
+                # エラーハンドリングを安全に
+                if self._logger:
+                    try:
+                        self.log(
+                            "warning",
+                            f"圧力ポアソン方程式が収束しませんでした: "
+                            f"残差 = {self.poisson_solver.residual_history[-1]:.3e}",
+                        )
+                    except Exception as log_error:
+                        print(f"ログ出力中にエラー: {log_error}")
 
             # 診断情報の更新
             self._iterations = self.poisson_solver.iteration_count
@@ -80,5 +91,10 @@ class ClassicProjection(NSComponentBase):
             return result_velocity, result_pressure
 
         except Exception as e:
-            self.log("error", f"圧力投影中にエラー: {e}")
+            # エラーハンドリングを安全に
+            if self._logger:
+                try:
+                    self.log("error", f"圧力投影中にエラー: {e}")
+                except Exception as log_error:
+                    print(f"エラーログ出力中にエラー: {log_error}")
             raise

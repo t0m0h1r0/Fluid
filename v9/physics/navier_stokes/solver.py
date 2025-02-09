@@ -24,35 +24,108 @@ class NavierStokesSolver(NavierStokesBase, TemporalSolver):
     時間発展には4次のRunge-Kutta法を、圧力投影には古典的な手法を用います。
     """
 
-    def __init__(self, logger=None, use_weno: bool = True, **kwargs):
-        """ソルバーを初期化
+
+def __init__(self, logger=None, use_weno: bool = True, **kwargs):
+    """ソルバーを初期化
+
+    Args:
+        logger: ロガー
+        use_weno: WENOスキームを使用するかどうか
+        **kwargs: 基底クラスに渡すパラメータ
+    """
+    # 物理項の初期化
+    force_term = ForceTerm()
+    force_term.forces.append(GravityForce())
+
+    terms = [AdvectionTerm(use_weno=use_weno), DiffusionTerm(), force_term]
+
+    # 時間積分とプロジェクションの設定
+    time_integrator = RungeKutta4()
+    pressure_projection = ClassicProjection(
+        rhs_computer=PoissonRHSComputer(),
+        logger=logger,  # loggerを渡す
+    )
+
+    # 基底クラスの初期化
+    NavierStokesBase.__init__(
+        self,
+        time_integrator=time_integrator,
+        pressure_projection=pressure_projection,
+        terms=terms,
+        logger=logger,  # loggerを渡す
+    )
+    TemporalSolver.__init__(self, name="NavierStokes", logger=logger, **kwargs)
+
+    def step_forward(
+        self, state, dt: Optional[float] = None, **kwargs
+    ) -> Tuple[Any, Dict[str, Any]]:
+        """1時間ステップを進める
 
         Args:
-            logger: ロガー
-            use_weno: WENOスキームを使用するかどうか
-            **kwargs: 基底クラスに渡すパラメータ
+            state: 現在の状態
+            dt: 時間刻み幅（Noneの場合は自動計算）
+            **kwargs: 追加のパラメータ
+
+        Returns:
+            (更新された状態, 計算情報を含む辞書)のタプル
         """
-        # 物理項の初期化
-        force_term = ForceTerm()
-        force_term.forces.append(GravityForce())
+        try:
+            # 時間刻みの計算
+            if dt is None:
+                dt = self.compute_timestep(state.velocity, **kwargs)
 
-        terms = [AdvectionTerm(use_weno=use_weno), DiffusionTerm(), force_term]
+            # 1. 速度場の時間発展（圧力項を除く）
+            velocity_star = self.time_integrator.step(
+                state.velocity, dt, self.terms, **kwargs
+            )
 
-        # 時間積分とプロジェクションの設定
-        time_integrator = RungeKutta4()
-        pressure_projection = ClassicProjection(
-            rhs_computer=PoissonRHSComputer(), logger=logger
-        )
+            # 2. 圧力投影による速度場の補正と圧力場の更新
+            velocity_new, pressure_new = self.pressure_projection.project(
+                velocity_star,
+                state.pressure,
+                dt,
+                levelset=state.levelset,
+                properties=state.properties,
+            )
 
-        # 基底クラスの初期化
-        NavierStokesBase.__init__(
-            self,
-            time_integrator=time_integrator,
-            pressure_projection=pressure_projection,
-            terms=terms,
-            logger=logger,
-        )
-        TemporalSolver.__init__(self, name="NavierStokes", logger=logger, **kwargs)
+            # 時間と状態の更新
+            self._total_time += dt
+            self._iteration_count += 1
+
+            new_state = state.copy()
+            new_state.velocity = velocity_new
+            new_state.pressure = pressure_new
+            new_state.time = self._total_time
+
+            # 診断情報の収集
+            diagnostics = self._collect_diagnostics(new_state, dt)
+
+            # エラーログの出力を安全に
+            if self._logger:
+                try:
+                    self._logger.info(
+                        f"Time: {self._total_time:.3f}, "
+                        f"dt = {dt:.3e}, "
+                        f"Step: {self._iteration_count}"
+                    )
+                except Exception as log_error:
+                    print(f"ロギング中にエラー: {log_error}")
+
+            return new_state, {
+                "dt": dt,
+                "time": self._total_time,
+                "step": self._iteration_count,
+                "diagnostics": diagnostics,
+            }
+
+        except Exception as e:
+            # エラーハンドリングを安全に
+            if self._logger:
+                try:
+                    self._logger.error(f"ステップ実行中にエラー: {str(e)}")
+                except Exception as log_error:
+                    print(f"エラーログ出力中にエラー: {log_error}")
+            raise
 
     def solve(self, **kwargs) -> Dict[str, Any]:
         """ソルバーを実行（TemporalSolverの要求するメソッド）
@@ -126,62 +199,6 @@ class NavierStokesSolver(NavierStokesBase, TemporalSolver):
 
         # 安全係数を適用
         return self.cfl * dt
-
-    def step_forward(
-        self, state, dt: Optional[float] = None, **kwargs
-    ) -> Tuple[Any, Dict[str, Any]]:
-        """1時間ステップを進める
-
-        Args:
-            state: 現在の状態
-            dt: 時間刻み幅（Noneの場合は自動計算）
-            **kwargs: 追加のパラメータ
-
-        Returns:
-            (更新された状態, 計算情報を含む辞書)のタプル
-        """
-        try:
-            # 時間刻みの計算
-            if dt is None:
-                dt = self.compute_timestep(state.velocity, **kwargs)
-
-            # 1. 速度場の時間発展（圧力項を除く）
-            velocity_star = self.time_integrator.step(
-                state.velocity, dt, self.terms, **kwargs
-            )
-
-            # 2. 圧力投影による速度場の補正と圧力場の更新
-            velocity_new, pressure_new = self.pressure_projection.project(
-                velocity_star,
-                state.pressure,
-                dt,
-                levelset=state.levelset,
-                properties=state.properties,
-            )
-
-            # 時間と状態の更新
-            self._total_time += dt
-            self._iteration_count += 1
-
-            new_state = state.copy()
-            new_state.velocity = velocity_new
-            new_state.pressure = pressure_new
-            new_state.time = self._total_time
-
-            # 診断情報の収集
-            diagnostics = self._collect_diagnostics(new_state, dt)
-
-            return new_state, {
-                "dt": dt,
-                "time": self._total_time,
-                "step": self._iteration_count,
-                "diagnostics": diagnostics,
-            }
-
-        except Exception as e:
-            if self.logger:
-                self.logger.error(f"ステップ実行中にエラー: {str(e)}")
-            raise
 
     def _collect_diagnostics(self, state, dt: float) -> Dict[str, Any]:
         """診断情報を収集"""
