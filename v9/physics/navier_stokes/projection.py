@@ -5,7 +5,7 @@ import numpy as np
 from core.field import VectorField, ScalarField
 from physics.poisson import PoissonSolver, SORSolver
 from .base import NSComponentBase
-import logging  # ロギング機能を追加
+import logging
 
 
 class ClassicProjection(NSComponentBase):
@@ -15,7 +15,7 @@ class ClassicProjection(NSComponentBase):
         self,
         poisson_solver: Optional[PoissonSolver] = None,
         rhs_computer=None,
-        logger: Optional[logging.Logger] = None,  # loggerを追加
+        logger: Optional[logging.Logger] = None,
     ):
         """初期化
 
@@ -24,8 +24,7 @@ class ClassicProjection(NSComponentBase):
             rhs_computer: 右辺計算機
             logger: ロガー（オプション）
         """
-        # NSComponentBaseに渡すloggerを追加
-        super().__init__(logger)  # 基底クラスのコンストラクタを呼び出す際にloggerを渡す
+        super().__init__(logger)
 
         self.poisson_solver = poisson_solver or SORSolver(
             omega=1.5,  # より適切な緩和係数
@@ -43,7 +42,17 @@ class ClassicProjection(NSComponentBase):
     def project(
         self, velocity: VectorField, pressure: ScalarField, dt: float, **kwargs
     ) -> Tuple[VectorField, ScalarField]:
-        """速度場を非圧縮に投影"""
+        """速度場を非圧縮に投影
+
+        Args:
+            velocity: 速度場
+            pressure: 圧力場
+            dt: 時間刻み幅
+            **kwargs: 追加のパラメータ
+
+        Returns:
+            (補正された速度場, 更新された圧力場)
+        """
         try:
             # 右辺の計算
             if self.rhs_computer:
@@ -55,28 +64,37 @@ class ClassicProjection(NSComponentBase):
 
             # 圧力補正値の計算
             p_corr = ScalarField(pressure.shape, pressure.dx)
-            p_corr.data = self.poisson_solver.solve(
-                initial_solution=np.zeros_like(pressure.data),
-                rhs=rhs.data,
-                dx=velocity.dx,
-            )
+
+            try:
+                p_corr.data = self.poisson_solver.solve(
+                    initial_solution=np.zeros_like(pressure.data),
+                    rhs=rhs.data,
+                    dx=velocity.dx,
+                )
+            except Exception as solve_error:
+                # ソルバーの収束に失敗した場合のロギング
+                if self._logger:
+                    self.log("error", f"ポアソン方程式の求解に失敗: {solve_error}")
+                raise
 
             # 収束状態の確認
-            if not self.poisson_solver.converged:
-                # エラーハンドリングを安全に
+            iterations = getattr(self.poisson_solver, "iteration_count", 1000)
+            residuals = getattr(self.poisson_solver, "residual_history", [])
+            converged = getattr(self.poisson_solver, "converged", False)
+
+            # 収束していない場合の警告
+            if not converged:
                 if self._logger:
-                    try:
-                        self.log(
-                            "warning",
-                            f"圧力ポアソン方程式が収束しませんでした: "
-                            f"残差 = {self.poisson_solver.residual_history[-1]:.3e}",
-                        )
-                    except Exception as log_error:
-                        print(f"ログ出力中にエラー: {log_error}")
+                    self.log(
+                        "warning",
+                        f"圧力ポアソン方程式が収束しませんでした: "
+                        f"反復回数 = {iterations}, "
+                        f"最終残差 = {residuals[-1] if residuals else 'N/A'}",
+                    )
 
             # 診断情報の更新
-            self._iterations = self.poisson_solver.iteration_count
-            self._residuals = self.poisson_solver.residual_history
+            self._iterations = iterations
+            self._residuals = residuals
 
             # 速度場の補正
             result_velocity = velocity.copy()
@@ -91,10 +109,7 @@ class ClassicProjection(NSComponentBase):
             return result_velocity, result_pressure
 
         except Exception as e:
-            # エラーハンドリングを安全に
+            # 包括的なエラーハンドリング
             if self._logger:
-                try:
-                    self.log("error", f"圧力投影中にエラー: {e}")
-                except Exception as log_error:
-                    print(f"エラーログ出力中にエラー: {log_error}")
+                self.log("error", f"圧力投影中にエラー: {e}")
             raise

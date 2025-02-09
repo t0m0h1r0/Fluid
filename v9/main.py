@@ -24,7 +24,8 @@ def load_config(config_path: str) -> dict:
 
 def setup_logging(config: dict, debug: bool) -> SimulationLogger:
     """ロギングを設定"""
-    log_level = "debug" if debug else config.get("debug", {}).get("level", "info")
+    # デバッグモードでない場合は、情報レベルのログを抑制
+    log_level = "debug" if debug else "warning"
     log_dir = Path(config.get("visualization", {}).get("output_dir", "results"))
     log_dir.mkdir(parents=True, exist_ok=True)
     return SimulationLogger("TwoPhaseFlow", LogConfig(level=log_level, log_dir=log_dir))
