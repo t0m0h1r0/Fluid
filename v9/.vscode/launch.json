@@ -9,9 +9,9 @@
             "name": "Python デバッガー: 現在のファイル",
             "type": "debugpy",
             "request": "launch",
-            "program": "poisson.py",
+            "program": "main.py",
             "console": "integratedTerminal",
-            "args": ["--config", "config.yaml", "--output", "./output", "--max-iter", "10", "--save-interval", "10"]
+            "args": ["--config", "config.yaml"]
         }
     ]
 }
