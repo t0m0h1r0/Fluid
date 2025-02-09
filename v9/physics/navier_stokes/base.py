@@ -1,15 +1,27 @@
-"""Navier-Stokes方程式の基底クラスとインターフェースを提供
+"""Navier-Stokes方程式の基底クラスとインターフェースを提供"""
 
-このモジュールでは、Navier-Stokes方程式の解法に関する
-基本的なインターフェースと抽象基底クラスを定義します。
-"""
-
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Protocol, Dict, Any, Tuple, List, Optional
 import numpy as np
-
-from core.field import VectorField, ScalarField
 import logging
+from core.field import VectorField, ScalarField
+
+
+class NSComponentBase:
+    """Navier-Stokes関連コンポーネントの基底クラス"""
+
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        """初期化
+
+        Args:
+            logger: ロガー
+        """
+        self._logger = logger
+
+    def log(self, level: str, msg: str):
+        """ログを出力"""
+        if self._logger:
+            self._logger.log(getattr(logging, level.upper()), msg)
 
 
 class NavierStokesTerm(Protocol):
@@ -53,7 +65,7 @@ class PressureProjection(Protocol):
         ...
 
 
-class NavierStokesBase(ABC):
+class NavierStokesBase(NSComponentBase, ABC):
     """Navier-Stokesソルバーの基底クラス"""
 
     def __init__(
@@ -61,53 +73,15 @@ class NavierStokesBase(ABC):
         time_integrator: TimeIntegrator,
         pressure_projection: PressureProjection,
         terms: List[NavierStokesTerm],
-        logger=None,
+        logger: Optional[logging.Logger] = None,
     ):
-        """初期化
-
-        Args:
-            time_integrator: 時間積分スキーム
-            pressure_projection: 圧力投影法
-            terms: NS方程式の各項
-            logger: ロガー
-        """
+        """初期化"""
+        super().__init__(logger)
         self.time_integrator = time_integrator
         self.pressure_projection = pressure_projection
         self.terms = terms
-        self.logger = logger
 
         # 診断情報の初期化
         self._iteration_count = 0
         self._total_time = 0.0
         self._diagnostics: Dict[str, Any] = {}
-
-    @abstractmethod
-    def initialize(self, **kwargs) -> None:
-        """ソルバーを初期化"""
-        pass
-
-    @abstractmethod
-    def compute_timestep(self, velocity: VectorField, **kwargs) -> float:
-        """時間刻み幅を計算"""
-        pass
-
-    @abstractmethod
-    def step_forward(
-        self, state, dt: Optional[float] = None, **kwargs
-    ) -> Tuple[Any, Dict[str, Any]]:
-        """1時間ステップを進める"""
-        pass
-
-    def get_diagnostics(self) -> Dict[str, Any]:
-        """診断情報を取得"""
-        return {
-            "iteration_count": self._iteration_count,
-            "total_time": self._total_time,
-            **self._diagnostics,
-        }
-
-    def log_diagnostics(self, level: str = "info"):
-        """診断情報をログに出力"""
-        if self.logger:
-            diag = self.get_diagnostics()
-            self.logger.log(getattr(logging, level.upper()), f"Diagnostics: {diag}")

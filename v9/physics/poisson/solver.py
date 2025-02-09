@@ -81,6 +81,7 @@ class PoissonSolver(IterativeSolver):
 
             # 反復解法の実行
             solution = initial_solution.copy()
+            residual = float("inf")  # 初期残差
 
             while self._iteration_count < self.max_iterations:
                 # 1回の反復
