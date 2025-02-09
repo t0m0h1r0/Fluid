@@ -61,7 +61,7 @@ class Scalar3DRenderer:
         # スライスの抽出
         slices = [slice(None)] * 3
         slices[slice_axis] = slice_pos
-        slice_data = data[tuple(slices)]
+        slice_data = data[tuple(slices)].T
 
         # メタデータの準備
         metadata = {

@@ -41,7 +41,7 @@ initial_conditions:
     - type: sphere
       phase: nitrogen
       center: [0.5, 0.5, 0.4]
-      radius: 0.3
+      radius: 0.2
 
   velocity:
     type: zero
@@ -72,16 +72,16 @@ visualization:
     axes: 
       - "xy"   # XY面
       - "xz"   # XZ面
+      - "yz"   # YZ面
     positions: 
       - 0.5    # 中央
-      - 0.75
 
   # 可視化する物理量を選択
   fields:
     velocity:
       enabled: false   # 速度場を可視化
     pressure:
-      enabled: false   # 圧力場を可視化
+      enabled: true   # 圧力場を可視化
     levelset:
       enabled: true
 

@@ -85,6 +85,7 @@ def main():
     checkpoint = Path(args.checkpoint) if args.checkpoint else None
 
     runner, _ = initialize_simulation(config, logger, checkpoint)
+    sys.exit(0)
     run_simulation_loop(runner, config, logger)
 
     return 0
