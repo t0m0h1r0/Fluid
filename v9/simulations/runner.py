@@ -5,10 +5,9 @@ from pathlib import Path
 import logging
 from typing import Dict, Any, Optional, Tuple
 
-from simulations.state import SimulationState
-from simulations.monitor import SimulationMonitor
 from physics.navier_stokes import NavierStokesSolver
-from physics.levelset import LevelSetSolver
+from .state import SimulationState
+from .monitor import SimulationMonitor
 
 
 class SimulationRunner:
@@ -34,25 +33,12 @@ class SimulationRunner:
         self.monitor = monitor or SimulationMonitor(config, logger)
 
         # Navier-Stokesソルバーの初期化
-        self.ns_solver = NavierStokesSolver(
+        self.solver = NavierStokesSolver(
             logger=self.logger,
             use_weno=config.get("numerical", {})
             .get("advection", {})
             .get("use_weno", True),
         )
-
-        # Level Setソルバーの初期化
-        self.ls_solver = LevelSetSolver(
-            use_weno=config.get("numerical", {})
-            .get("advection", {})
-            .get("use_weno", True)
-        )
-
-        # ステップ管理用の変数
-        self._current_state = None
-        self._current_time = 0.0
-        self._current_step = 0
-        self._dt = None
 
     def initialize(self, initial_state: SimulationState):
         """シミュレーションを初期化
@@ -62,13 +48,9 @@ class SimulationRunner:
         """
         # 初期状態の設定
         self._current_state = initial_state.copy()
-        self._current_time = 0.0
-        self._current_step = 0
 
-        # 各フィールドの時間を初期化
-        self._current_state.velocity.time = 0.0
-        self._current_state.pressure.time = 0.0
-        self._current_state.levelset.time = 0.0
+        # ソルバーを初期化
+        self.solver.initialize(state=self._current_state)
 
         # モニターを初期化
         self.monitor.update(self._current_state)
@@ -80,45 +62,16 @@ class SimulationRunner:
             (更新された状態, ステップ情報の辞書)のタプル
         """
         try:
-            # 時間刻み幅の計算
-            self._dt = self.ns_solver.compute_timestep(self._current_state.velocity)
-
             # Navier-Stokesソルバーで状態を更新
-            advanced_state, ns_result = self.ns_solver.advance(
-                self._current_state,
-                dt=self._dt,
-            )
-
-            # レベルセットの移流
-            ls_result = self.ls_solver.advance(
-                dt=self._dt,
-                phi=advanced_state.levelset,
-                velocity=advanced_state.velocity,
-            )
-
-            # 時間を更新
-            self._current_time += self._dt
-            advanced_state.velocity.time = self._current_time
-            advanced_state.pressure.time = self._current_time
-            advanced_state.levelset.time = self._current_time
-            self._current_step += 1
-
-            # 現在の状態を更新
-            self._current_state = advanced_state
+            state, step_info = self.solver.step_forward(self._current_state)
 
             # モニターを更新
-            self.monitor.update(self._current_state)
+            self.monitor.update(state)
 
-            # ステップ情報を統合
-            step_info = {
-                "dt": self._dt,
-                "time": self._current_time,
-                "step": self._current_step,
-                "ns_result": ns_result,
-                "ls_result": ls_result,
-            }
+            # 現在の状態を更新
+            self._current_state = state
 
-            return self._current_state, step_info
+            return state, step_info
 
         except Exception as e:
             # エラーログの出力
@@ -133,9 +86,9 @@ class SimulationRunner:
             状態情報を含む辞書
         """
         return {
-            "current_time": self._current_time,
-            "current_step": self._current_step,
-            "dt": self._dt,
+            "time": self.solver._total_time,
+            "step": self.solver._iteration_count,
+            "diagnostics": self.solver.get_diagnostics(),
         }
 
     def save_checkpoint(self, filepath: Path):
@@ -144,7 +97,6 @@ class SimulationRunner:
         Args:
             filepath: 保存先のパス
         """
-        # チェックポイントデータの作成
         filepath.parent.mkdir(parents=True, exist_ok=True)
         self._current_state.save_to_file(str(filepath))
 
@@ -166,6 +118,7 @@ class SimulationRunner:
         # ランナーの初期化
         monitor = SimulationMonitor(config, logger)
         runner = cls(config, logger, monitor)
+        runner.initialize(state)
 
         return runner, state
 

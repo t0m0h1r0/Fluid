@@ -1,21 +1,17 @@
-"""Navier-Stokes方程式の移流項を提供するモジュール
+"""移流項を実装するモジュール
 
-このモジュールは、Navier-Stokes方程式の移流項の計算を実装します。
-WENOスキームを用いた高精度な空間離散化を提供します。
+このモジュールは、Navier-Stokes方程式の移流項 (u・∇)u を実装します。
+WENOスキームによる高精度な空間離散化を提供します。
 """
 
-import numpy as np
 from typing import List, Dict, Any
+import numpy as np
 from core.field import VectorField
-from ..base_term import NavierStokesTerm
+from ..base import NavierStokesTerm
 
 
 class AdvectionTerm(NavierStokesTerm):
-    """移流項クラス
-
-    移流項 (u・∇)u を計算します。
-    WENOスキームによる高精度な空間離散化を提供します。
-    """
+    """移流項クラス"""
 
     def __init__(self, use_weno: bool = True, weno_order: int = 5):
         """移流項を初期化
@@ -24,13 +20,18 @@ class AdvectionTerm(NavierStokesTerm):
             use_weno: WENOスキームを使用するかどうか
             weno_order: WENOスキームの次数（3または5）
         """
-        super().__init__(name="Advection")
+        self._name = "Advection"
         self.use_weno = use_weno
         self.weno_order = weno_order
 
         # WENOスキームの係数を初期化
         if use_weno:
             self._init_weno_coefficients()
+
+    @property
+    def name(self) -> str:
+        """項の名前を取得"""
+        return self._name
 
     def _init_weno_coefficients(self):
         """WENOスキームの係数を初期化"""
@@ -138,19 +139,17 @@ class AdvectionTerm(NavierStokesTerm):
 
             return omega0 * p0 + omega1 * p1
 
-    def compute(self, velocity: VectorField, **kwargs) -> List[np.ndarray]:
+    def compute(self, velocity: VectorField, dt: float, **kwargs) -> List[np.ndarray]:
         """移流項の寄与を計算
 
         Args:
             velocity: 現在の速度場
+            dt: 時間刻み幅
             **kwargs: 未使用
 
         Returns:
             各方向の速度成分への寄与のリスト
         """
-        if not self.enabled:
-            return [np.zeros_like(v.data) for v in velocity.components]
-
         result = []
 
         if self.use_weno:
@@ -184,32 +183,16 @@ class AdvectionTerm(NavierStokesTerm):
 
         return result
 
-    def compute_timestep(self, velocity: VectorField, **kwargs) -> float:
-        """CFL条件に基づく時間刻み幅の制限を計算
-
-        Args:
-            velocity: 現在の速度場
-            **kwargs: 未使用
-
-        Returns:
-            計算された時間刻み幅の制限
-        """
-        if not self.enabled:
-            return float("inf")
-
-        # 最大速度を計算
-        max_velocity = max(np.max(np.abs(v.data)) for v in velocity.components)
-
-        # CFL条件に基づく時間刻み幅
-        return velocity.dx / (max_velocity + 1e-10)
-
     def get_diagnostics(self, velocity: VectorField, **kwargs) -> Dict[str, Any]:
         """移流項の診断情報を取得"""
-        diag = super().get_diagnostics(velocity, **kwargs)
-        diag.update(
-            {
-                "scheme": "WENO" if self.use_weno else "central",
-                "weno_order": self.weno_order if self.use_weno else None,
-            }
-        )
-        return diag
+        # 移流量の計算
+        flux = self.compute(velocity, 1.0)
+        max_flux = max(np.max(np.abs(f)) for f in flux)
+        mean_flux = np.mean([np.mean(np.abs(f)) for f in flux])
+
+        return {
+            "scheme": "WENO" if self.use_weno else "central",
+            "weno_order": self.weno_order if self.use_weno else None,
+            "max_flux": float(max_flux),
+            "mean_flux": float(mean_flux),
+        }

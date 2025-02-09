@@ -28,6 +28,18 @@ class PoissonSolver(IterativeSolver):
         """
         super().__init__(name="Poisson", **kwargs)
         self.boundary_conditions = boundary_conditions
+        self._converged = False  # 収束フラグ
+        self._residual_history = []  # 残差の履歴
+
+    @property
+    def converged(self) -> bool:
+        """収束状態を取得"""
+        return self._converged
+
+    @property
+    def residual_history(self) -> List[float]:
+        """残差の履歴を取得"""
+        return self._residual_history.copy()
 
     def solve(
         self,
@@ -64,6 +76,8 @@ class PoissonSolver(IterativeSolver):
 
             # 初期化処理
             self.initialize(**kwargs)
+            self._converged = False
+            self._residual_history = []
 
             # 反復解法の実行
             solution = initial_solution.copy()
@@ -81,11 +95,17 @@ class PoissonSolver(IterativeSolver):
 
                 # 収束判定
                 if self.check_convergence(residual):
+                    self._converged = True
                     return new_solution
 
                 solution = new_solution
 
             # 最大反復回数に到達
+            if self._logger:
+                self._logger.warning(
+                    f"最大反復回数に到達: 残差 = {residual:.3e}, "
+                    f"相対残差 = {residual / self._residual_history[0]:.3e}"
+                )
             return solution
 
         except Exception as e:
@@ -142,6 +162,8 @@ class PoissonSolver(IterativeSolver):
             **kwargs: 初期化パラメータ
         """
         super().initialize(**kwargs)
+        self._converged = False
+        self._residual_history = []
 
     def iterate(self, solution: np.ndarray, rhs: np.ndarray, dx: np.ndarray):
         """反復計算のデフォルト実装（サブクラスでオーバーライド）"""

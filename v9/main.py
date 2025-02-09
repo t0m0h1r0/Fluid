@@ -39,7 +39,6 @@ def initialize_simulation(
 
     if checkpoint:
         logger.info(f"チェックポイントから再開: {checkpoint}")
-        # チェックポイントから状態を復元する処理
         initializer = SimulationInitializer(config, logger)
         runner, state = initializer.load_checkpoint(checkpoint)
     else:
@@ -72,24 +71,22 @@ def run_simulation(runner, initial_state, config, logger):
 
     while current_time < max_time:
         try:
-            # シミュレーションステップを進める
+            # 時間発展の実行
             state, step_info = runner.step_forward()
-            current_time = step_info.get("time", current_time)
+            current_time = step_info["time"]
 
-            # 結果の可視化
-
-            # チェックポイントの保存
+            # 結果の可視化と保存
             if current_time >= next_save_time:
                 visualize_simulation_state(state, config, timestamp=current_time)
-
                 checkpoint_path = output_dir / f"checkpoint_{current_time:.3f}.npz"
                 runner.save_checkpoint(checkpoint_path)
                 next_save_time += save_interval
 
             # ログに進捗を出力
             logger.info(
-                f"ステップ {step_info.get('step', 0)}: "
-                f"t={current_time:.3f}, dt={step_info.get('dt', 0):.3e}"
+                f"Time: {current_time:.3f}/{max_time:.1f} "
+                f"(dt={step_info['dt']:.3e}), "
+                f"Diagnostics: {step_info['diagnostics']}"
             )
 
         except Exception as e:

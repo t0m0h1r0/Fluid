@@ -145,7 +145,7 @@ class SORSolver(PoissonSolver):
 
     def get_status(self) -> Dict[str, Any]:
         """ソルバーの状態を取得"""
-        status = super().get_status()
+        status = super().get_diagnostics()
         status.update(
             {
                 "method": "SOR",
@@ -155,4 +155,6 @@ class SORSolver(PoissonSolver):
                 "auto_tune": self.auto_tune,
             }
         )
+        if self._logger:
+            self._logger.debug(f"SORソルバーの状態: {status}")
         return status

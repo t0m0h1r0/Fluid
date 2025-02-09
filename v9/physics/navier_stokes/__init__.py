@@ -13,6 +13,8 @@ from .terms import AdvectionTerm, DiffusionTerm, PressureTerm, ForceTerm
 # 力項のインポート
 from .terms.force import GravityForce, SurfaceTensionForce
 
+from .pressure_rhs import PoissonRHSComputer
+
 # エクスポートするモジュール
 __all__ = [
     "NavierStokesSolver",

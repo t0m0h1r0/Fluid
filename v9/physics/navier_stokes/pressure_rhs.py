@@ -2,6 +2,12 @@
 
 このモジュールは、レベルセット法を用いた二層流のNavier-Stokes方程式から
 導出される圧力ポアソン方程式の右辺を計算します。
+
+計算される主な項:
+1. 移流項: ∇・[−ρ(u・∇)u]
+2. 粘性項: ∇・[∇・(2μD)]
+3. 重力項: ∇・(ρg)
+4. 表面張力項: ∇・[σκδ(ϕ)n]
 """
 
 from typing import List, Protocol, Dict, Any
@@ -222,5 +228,19 @@ class PoissonRHSComputer:
             contribution = term.compute(velocity, levelset, properties)
             diagnostics[f"term_{i}_max"] = float(np.max(np.abs(contribution)))
             diagnostics[f"term_{i}_mean"] = float(np.mean(np.abs(contribution)))
+
+        # 寄与の比較のための正規化された値
+        total_contribution = sum(
+            np.sum(np.abs(term.compute(velocity, levelset, properties)))
+            for term in self.source_terms
+        )
+
+        if total_contribution > 0:
+            for i, term in enumerate(self.source_terms):
+                contribution = term.compute(velocity, levelset, properties)
+                term_contribution = np.sum(np.abs(contribution))
+                diagnostics[f"term_{i}_ratio"] = float(
+                    term_contribution / total_contribution
+                )
 
         return diagnostics
