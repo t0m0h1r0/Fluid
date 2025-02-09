@@ -244,7 +244,7 @@ class NavierStokesSolver(NavierStokesBase, TemporalSolver):
                 "min": np.min(state.pressure.data),
                 "max": np.max(state.pressure.data),
                 "l2norm": np.sqrt(np.sum(state.pressure.data**2)),
-            }
+            },
         }
 
         # 各項の診断情報
@@ -252,12 +252,13 @@ class NavierStokesSolver(NavierStokesBase, TemporalSolver):
             diag[term.name] = term.get_diagnostics(state.velocity)
 
         # 圧力投影の情報
-        if hasattr(self.pressure_projection, '_iterations'):
+        if hasattr(self.pressure_projection, "_iterations"):
             diag["pressure_projection"] = {
                 "iterations": self.pressure_projection._iterations,
                 "final_residual": (
                     self.pressure_projection._residuals[-1]
-                    if self.pressure_projection._residuals else None
+                    if self.pressure_projection._residuals
+                    else None
                 ),
             }
 

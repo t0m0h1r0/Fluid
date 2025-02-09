@@ -142,13 +142,13 @@ class SimulationLogger:
         """
         # 文字列のログレベルを対応する数値に変換
         level_map = {
-            'debug': logging.DEBUG,
-            'info': logging.INFO,
-            'warning': logging.WARNING,
-            'error': logging.ERROR,
-            'critical': logging.CRITICAL
+            "debug": logging.DEBUG,
+            "info": logging.INFO,
+            "warning": logging.WARNING,
+            "error": logging.ERROR,
+            "critical": logging.CRITICAL,
         }
-        
+
         # configのレベルを数値に変換
         str_level = self.config.level.lower()
         return level_map.get(str_level, logging.INFO)  # デフォルトはINFO
