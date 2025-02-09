@@ -132,3 +132,23 @@ class SimulationLogger:
                 "Error in simulation section", exc_val, {"section": self.name}
             )
         return False  # 例外を伝播させる
+
+    @property
+    def level(self) -> int:
+        """ログレベルを取得
+
+        Returns:
+            logging モジュールのログレベル定数
+        """
+        # 文字列のログレベルを対応する数値に変換
+        level_map = {
+            'debug': logging.DEBUG,
+            'info': logging.INFO,
+            'warning': logging.WARNING,
+            'error': logging.ERROR,
+            'critical': logging.CRITICAL
+        }
+        
+        # configのレベルを数値に変換
+        str_level = self.config.level.lower()
+        return level_map.get(str_level, logging.INFO)  # デフォルトはINFO
