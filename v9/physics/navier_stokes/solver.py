@@ -15,6 +15,7 @@ from .terms.advection import AdvectionTerm
 from .terms.diffusion import DiffusionTerm
 from .terms.force import ForceTerm, GravityForce
 from .pressure_rhs import PoissonRHSComputer
+import numpy as np
 
 
 class NavierStokesSolver(NavierStokesBase, TemporalSolver):
@@ -219,3 +220,45 @@ class NavierStokesSolver(NavierStokesBase, TemporalSolver):
                 except Exception as log_error:
                     print(f"エラーログ出力中にエラー: {log_error}")
             raise
+
+    def _collect_diagnostics(self, state, dt: float) -> Dict[str, Any]:
+        """診断情報を収集
+
+        Args:
+            state: 現在の状態
+            dt: 時間刻み幅
+
+        Returns:
+            診断情報の辞書
+        """
+        # 速度場の情報
+        diag = {
+            "velocity": {
+                "max": max(np.max(np.abs(v.data)) for v in state.velocity.components),
+                "kinetic_energy": 0.5
+                * sum(np.sum(v.data**2) for v in state.velocity.components)
+                * state.velocity.dx**state.velocity.ndim,
+            },
+            # 圧力場の情報
+            "pressure": {
+                "min": np.min(state.pressure.data),
+                "max": np.max(state.pressure.data),
+                "l2norm": np.sqrt(np.sum(state.pressure.data**2)),
+            }
+        }
+
+        # 各項の診断情報
+        for term in self.terms:
+            diag[term.name] = term.get_diagnostics(state.velocity)
+
+        # 圧力投影の情報
+        if hasattr(self.pressure_projection, '_iterations'):
+            diag["pressure_projection"] = {
+                "iterations": self.pressure_projection._iterations,
+                "final_residual": (
+                    self.pressure_projection._residuals[-1]
+                    if self.pressure_projection._residuals else None
+                ),
+            }
+
+        return diag
