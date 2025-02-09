@@ -6,7 +6,7 @@
 from typing import Tuple, Optional
 import numpy as np
 from .field import Field
-
+from typing import Dict, Any
 
 class ScalarField(Field):
     """スカラー場クラス
@@ -160,3 +160,35 @@ class ScalarField(Field):
         else:
             raise TypeError("無効な型との演算です")
         return result
+
+    def save_state(self) -> Dict[str, Any]:
+        """現在の状態を保存
+
+        Returns:
+            現在の状態を表す辞書
+        """
+        return {
+            "data": self.data.copy(),
+            "shape": self.shape,
+            "dx": self.dx,
+            "time": self.time,
+        }
+
+    def load_state(self, state: Dict[str, Any]):
+        """状態を読み込み
+
+        Args:
+            state: 読み込む状態の辞書
+        """
+        # データの復元
+        if tuple(state["shape"]) != self.shape:
+            raise ValueError("形状が一致しません")
+        
+        self.data = state["data"].copy()
+        
+        # 時刻の復元
+        self.time = state.get("time", 0.0)
+        
+        # グリッド間隔の確認（必要に応じて）
+        if abs(state["dx"] - self.dx) > 1e-10:
+            raise ValueError("グリッド間隔が一致しません")

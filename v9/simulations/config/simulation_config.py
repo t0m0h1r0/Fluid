@@ -5,10 +5,11 @@ YAMLファイルから設定を読み込み、適切なデータ構造に変換�
 """
 
 from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 import yaml
-
+from typing import Dict, Any
 from physics.properties import FluidProperties
+from pathlib import Path
 
 
 @dataclass
@@ -110,11 +111,37 @@ class InitialConditionConfig:
 class OutputConfig:
     """出力の設定"""
 
-    directory: str = "results"
-    format: str = "vti"
-    variables: List[str] = field(
-        default_factory=lambda: ["velocity", "pressure", "levelset"]
+    directory: str = "results/visualization"
+    output_dir: str = "results/visualization"
+    format: str = "png"
+    dpi: int = 300
+    colormap: str = "viridis"
+    show_colorbar: bool = True
+    show_axes: bool = True
+    show_grid: bool = False
+    
+    # 可視化するフィールドの設定
+    fields: Dict[str, Dict[str, Any]] = field(
+        default_factory=lambda: {
+            "velocity": {"enabled": False, "plot_types": ["vector"]},
+            "pressure": {"enabled": True, "plot_types": ["scalar"]},
+            "levelset": {"enabled": True, "plot_types": ["interface"]}
+        }
     )
+    
+    # スライス設定の追加
+    slices: Dict[str, List[Union[str, float]]] = field(
+        default_factory=lambda: {
+            "axes": ["xy", "xz", "yz"],
+            "positions": [0.5]
+        }
+    )
+
+    def __post_init__(self):
+        """初期化後の処理"""
+        # output_dirが設定されている場合、directoryを上書き
+        if self.output_dir:
+            self.directory = self.output_dir
 
 
 @dataclass
@@ -150,18 +177,21 @@ class SimulationConfig:
             for name, props in config_dict.get("phases", {}).items()
         }
         solver = SolverConfig(**config_dict.get("solver", {}))
-        time = TimeConfig(**config_dict.get("time", {}))
+        time = TimeConfig(**config_dict.get("time", {
+            "max_time": config_dict.get("numerical", {}).get("max_time", 1.0),
+            "save_interval": config_dict.get("numerical", {}).get("save_interval", 0.1)
+        }))
 
         # 初期条件の設定を変換
-        ic_dict = config_dict.get("initial_condition", {})
+        ic_dict = config_dict.get("initial_conditions", {})
         objects = [ObjectConfig(**obj) for obj in ic_dict.get("objects", [])]
         initial_condition = InitialConditionConfig(
-            background_layer=ic_dict.get("background_layer"),
+            background_layer=ic_dict.get("background", {}).get("height_fraction"),
             objects=objects,
             velocity=ic_dict.get("velocity", {"type": "zero"}),
         )
 
-        output = OutputConfig(**config_dict.get("output", {}))
+        output = OutputConfig(**config_dict.get("visualization", {}))
 
         return cls(
             domain=domain,
@@ -197,3 +227,70 @@ class SimulationConfig:
         # YAMLファイルとして保存
         with open(filepath, "w", encoding="utf-8") as f:
             yaml.dump(config_dict, f, default_flow_style=False)
+
+    @property
+    def output_dir(self) -> str:
+        """出力ディレクトリを取得するプロパティ"""
+        return self.output.directory
+
+    @output_dir.setter
+    def output_dir(self, value: str):
+        """出力ディレクトリを設定するプロパティ
+
+        Args:
+            value: 設定する出力ディレクトリのパス
+        """
+        self.output.directory = value
+        self.output.output_dir = value
+
+    def get_field_config(
+        self, section: str, default: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """指定されたセクションの設定を取得
+
+        Args:
+            section: 設定セクション名
+            default: デフォルト値（オプション）
+
+        Returns:
+            設定辞書（存在しない場合はデフォルト設定）
+        """
+        # outputセクションの設定を返す
+        if section == "visualization":
+            return {
+                "output_dir": self.output.directory,
+                "format": self.output.format,
+                "dpi": self.output.dpi,
+                "colormap": self.output.colormap,
+                "show_colorbar": self.output.show_colorbar,
+                "show_axes": self.output.show_axes,
+                "show_grid": self.output.show_grid,
+                "fields": self.output.fields,
+                "slices": self.output.slices,
+            }
+        
+        return default or {}
+    
+    def get_output_path(self, name: str, timestamp: Optional[float] = None) -> Path:
+        """出力ファイルのパスを生成
+
+        Args:
+            name: ベース名
+            timestamp: タイムスタンプ（オプション）
+
+        Returns:
+            生成されたパス
+        """
+        from pathlib import Path
+
+        # 出力ディレクトリの作成
+        output_dir = Path(self.output.directory)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # ファイル名の生成
+        if timestamp is not None:
+            filename = f"{name}_{timestamp:.6f}.{self.output.format}"
+        else:
+            filename = f"{name}.{self.output.format}"
+
+        return output_dir / filename

@@ -6,7 +6,7 @@
 from typing import List, Tuple, Optional
 import numpy as np
 from .scalar import ScalarField
-
+from typing import Dict, Any
 
 class VectorField:
     """ベクトル場クラス
@@ -185,3 +185,34 @@ class VectorField:
         result.components[2].data = u1 * v2 - v1 * u2
 
         return result
+
+    def save_state(self) -> Dict[str, Any]:
+        """現在の状態を保存
+
+        Returns:
+            現在の状態を表す辞書
+        """
+        return {
+            "components": [comp.save_state() for comp in self.components],
+            "shape": self.shape,
+            "dx": self.dx,
+        }
+
+    def load_state(self, state: Dict[str, Any]):
+        """状態を読み込み
+
+        Args:
+            state: 読み込む状態の辞書
+        """
+        # コンポーネントの復元
+        if len(state["components"]) != len(self.components):
+            raise ValueError("コンポーネントの数が一致しません")
+        
+        for i, comp_state in enumerate(state["components"]):
+            self.components[i].load_state(comp_state)
+        
+        # その他の属性の確認（必要に応じて）
+        if tuple(state["shape"]) != self.shape:
+            raise ValueError("形状が一致しません")
+        
+        # dx値の確認は省略可（必要に応じて追加）

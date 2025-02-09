@@ -5,39 +5,19 @@
 シミュレーションの実行まで一貫して制御します。
 """
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
-
 import numpy as np
+from typing import Dict, Any, Tuple
 
-from physics.levelset import LevelSetField
-from physics.properties import PropertiesManager
-from core.field import VectorField, ScalarField
-from physics.navier_stokes import NavierStokesSolver
-from physics.levelset import LevelSetSolver
+from .state import SimulationState
+from .initializer import TwoPhaseFlowInitializer
 from .config import SimulationConfig
 
-
-@dataclass
-class SimulationState:
-    """シミュレーションの状態を保持するクラス"""
-
-    velocity: VectorField
-    levelset: LevelSetField
-    pressure: ScalarField
-    time: float = 0.0
-    properties: Optional[PropertiesManager] = None
-
-    def copy(self) -> "SimulationState":
-        """状態の深いコピーを作成"""
-        return SimulationState(
-            velocity=self.velocity.copy(),
-            levelset=self.levelset.copy(),
-            pressure=self.pressure.copy(),
-            time=self.time,
-            properties=self.properties,  # PropertiesManagerは共有して問題ない
-        )
+from physics.navier_stokes import NavierStokesSolver
+from physics.levelset import LevelSetSolver
+from physics.properties import PropertiesManager
+from core.field import VectorField, ScalarField
+from physics.levelset import LevelSetField
+from pathlib import Path
 
 
 class TwoPhaseFlowSimulation:
@@ -71,7 +51,10 @@ class TwoPhaseFlowSimulation:
         """シミュレーションを初期化"""
         try:
             # 初期状態の生成
-            self._state = self._create_initial_state()
+            initializer = TwoPhaseFlowInitializer(
+                self.config, self._properties, self.logger
+            )
+            self._state = initializer.create_initial_state()
 
             # ソルバーの初期化
             self._initialize_solvers()
@@ -92,9 +75,10 @@ class TwoPhaseFlowSimulation:
         """ソルバーを初期化"""
         # Navier-Stokesソルバーの初期化
         self._ns_solver = NavierStokesSolver(
-            logger=self.logger, use_weno=self.config.solver.use_weno
+            use_weno=self.config.solver.use_weno,
+            properties=self._properties,
+            logger=self.logger,
         )
-        self._ns_solver.initialize()
 
         # レベルセットソルバーの初期化
         self._ls_solver = LevelSetSolver(
@@ -102,7 +86,6 @@ class TwoPhaseFlowSimulation:
             weno_order=self.config.solver.weno_order,
             logger=self.logger,
         )
-        self._ls_solver.initialize()
 
     def step_forward(self) -> Tuple[SimulationState, Dict[str, Any]]:
         """1時間ステップを進める
@@ -118,21 +101,28 @@ class TwoPhaseFlowSimulation:
             dt = self._compute_timestep()
 
             # 速度場の時間発展
-            state_ns, ns_info = self._ns_solver.step_forward(self._state, dt)
+            ns_result = self._ns_solver.step_forward(state=self._state, dt=dt)
+            state_ns = ns_result["velocity"]
 
             # レベルセット場の時間発展
-            state_ls, ls_info = self._ls_solver.step_forward(state_ns, dt)
+            ls_result = self._ls_solver.step_forward(state=state_ns, dt=dt)
+            state_ls = ls_result["levelset"]
 
             # 状態の更新
-            self._state = state_ls
-            self._state.time += dt
+            self._state = SimulationState(
+                velocity=state_ns,
+                levelset=state_ls,
+                pressure=ns_result.get("pressure", self._state.pressure),
+                time=ls_result["time"],
+                properties=self._properties,
+            )
 
             # 診断情報の収集
             info = {
                 "time": self._state.time,
                 "dt": dt,
-                "navier_stokes": ns_info,
-                "level_set": ls_info,
+                "navier_stokes": ns_result.get("diagnostics", {}),
+                "level_set": ls_result.get("diagnostics", {}),
             }
 
             return self._state, info
@@ -145,8 +135,8 @@ class TwoPhaseFlowSimulation:
     def _compute_timestep(self) -> float:
         """時間刻み幅を計算"""
         # CFL条件に基づく時間刻み幅の計算
-        dt_ns = self._ns_solver.compute_timestep(self._state)
-        dt_ls = self._ls_solver.compute_timestep(self._state)
+        dt_ns = self._ns_solver.compute_timestep(state=self._state)
+        dt_ls = self._ls_solver.compute_timestep(state=self._state)
 
         # より厳しい制限を採用
         dt = min(dt_ns, dt_ls)
@@ -154,44 +144,17 @@ class TwoPhaseFlowSimulation:
         # 設定された最大・最小値で制限
         return np.clip(dt, self.config.time.min_dt, self.config.time.max_dt)
 
-    def save_checkpoint(self, filepath: Path):
-        """チェックポイントを保存
+    def get_state(self) -> Tuple[SimulationState, Dict[str, Any]]:
+        """現在のシミュレーション状態を取得
 
-        Args:
-            filepath: 保存先のパス
+        Returns:
+            (現在の状態, 診断情報)のタプル
         """
         if self._state is None:
             raise RuntimeError("シミュレーションが初期化されていません")
 
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        self._state.save_to_file(str(filepath))
-
-    @classmethod
-    def load_checkpoint(
-        cls, config: SimulationConfig, checkpoint_path: Path, logger=None
-    ) -> "TwoPhaseFlowSimulation":
-        """チェックポイントから読み込み
-
-        Args:
-            config: シミュレーション設定
-            checkpoint_path: チェックポイントファイルのパス
-            logger: ロガー
-
-        Returns:
-            読み込まれたシミュレーション
-        """
-        sim = cls(config, logger)
-        sim._state = SimulationState.load_from_file(str(checkpoint_path))
-        sim._initialize_properties()
-        sim._initialize_solvers()
-        return sim
-
-    def get_diagnostics(self) -> Dict[str, Any]:
-        """診断情報を取得"""
-        if self._state is None:
-            return {"status": "not_initialized"}
-
-        return {
+        # 診断情報の収集
+        diagnostics = {
             "time": self._state.time,
             "velocity": {
                 "max": float(
@@ -209,3 +172,75 @@ class TwoPhaseFlowSimulation:
             },
             "level_set": self._state.levelset.get_diagnostics(),
         }
+
+        return self._state, diagnostics
+
+    def save_checkpoint(self, filepath: Path):
+        """チェックポイントを保存
+
+        Args:
+            filepath: 保存先のパス
+        """
+        if self._state is None:
+            raise RuntimeError("シミュレーションが初期化されていません")
+
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+
+        # シミュレーション状態の保存
+        checkpoint_data = {
+            "velocity": self._state.velocity.save_state(),
+            "levelset": self._state.levelset.save_state(),
+            "pressure": self._state.pressure.save_state(),
+            "time": self._state.time,
+        }
+
+        np.savez(filepath, **checkpoint_data)
+
+    @classmethod
+    def load_checkpoint(
+        cls, config: SimulationConfig, checkpoint_path: Path, logger=None
+    ) -> "TwoPhaseFlowSimulation":
+        """チェックポイントから読み込み
+
+        Args:
+            config: シミュレーション設定
+            checkpoint_path: チェックポイントファイルのパス
+            logger: ロガー
+
+        Returns:
+            読み込まれたシミュレーション
+        """
+        sim = cls(config, logger)
+
+        # チェックポイントファイルの読み込み
+        checkpoint = np.load(checkpoint_path)
+
+        # 物性値マネージャーの再初期化
+        sim._initialize_properties()
+
+        # ソルバーの初期化
+        sim._initialize_solvers()
+
+        # 状態の復元
+        shape = config.domain.dimensions
+        dx = config.domain.size[0] / shape[0]
+
+        velocity = VectorField(shape, dx)
+        velocity.load_state(checkpoint["velocity"].item())
+
+        levelset = LevelSetField(shape, dx)
+        levelset.load_state(checkpoint["levelset"].item())
+
+        pressure = ScalarField(shape, dx)
+        pressure.load_state(checkpoint["pressure"].item())
+
+        # シミュレーション状態の復元
+        sim._state = SimulationState(
+            velocity=velocity,
+            levelset=levelset,
+            pressure=pressure,
+            time=float(checkpoint["time"]),
+            properties=sim._properties,
+        )
+
+        return sim

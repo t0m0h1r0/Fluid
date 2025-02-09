@@ -10,8 +10,8 @@ import numpy as np
 from physics.levelset import LevelSetField, LevelSetParameters
 from physics.properties import PropertiesManager
 from core.field import VectorField, ScalarField
-from .config import SimulationConfig, ObjectConfig
-from .simulation import SimulationState
+from simulations.config.simulation_config import SimulationConfig, ObjectConfig
+from simulations.state import SimulationState
 
 
 class TwoPhaseFlowInitializer:
@@ -192,20 +192,45 @@ class TwoPhaseFlowInitializer:
             velocity: 速度場
         """
         vel_config = self.config.initial_condition.velocity
-        if vel_config.type == "zero":
+
+        # vel_configが文字列の場合（"zero"など）の対応
+        if isinstance(vel_config, str):
+            vel_config = {"type": vel_config}
+
+        # デフォルトで速度はゼロ
+        vel_type = vel_config.get("type", "zero")
+
+        if vel_type == "zero":
             # ゼロ初期化（デフォルト）
             pass
-        elif vel_config.type == "uniform":
+        elif vel_type == "uniform":
             # 一様流れ
+            values = vel_config.get("values", [0, 0, 0])
             for i, component in enumerate(velocity.components):
-                if i < len(vel_config.values):
-                    component.data.fill(vel_config.values[i])
-        elif vel_config.type == "vortex":
+                if i < len(values):
+                    component.data.fill(values[i])
+        elif vel_type == "vortex":
             # 渦
-            self._initialize_vortex(velocity, vel_config)
+            center = vel_config.get("center", [0.5, 0.5, 0.5])
+            strength = vel_config.get("strength", 1.0)
+
+            # 座標グリッドの生成
+            x = np.linspace(0, 1, velocity.shape[0])
+            y = np.linspace(0, 1, velocity.shape[1])
+            z = np.linspace(0, 1, velocity.shape[2])
+            X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
+
+            # 中心からの距離を計算
+            R = np.sqrt((X - center[0]) ** 2 + (Y - center[1]) ** 2)
+            R = np.maximum(R, velocity.dx)  # ゼロ除算を防ぐ
+
+            # 渦の速度成分を計算
+            velocity.components[0].data = -strength * (Y - center[1]) / R
+            velocity.components[1].data = strength * (X - center[0]) / R
+            # Z方向の速度はゼロのまま
         else:
             if self.logger:
-                self.logger.warning(f"未対応の速度場初期化タイプ: {vel_config.type}")
+                self.logger.warning(f"未対応の速度場初期化タイプ: {vel_type}")
 
     def _initialize_vortex(self, velocity: VectorField, vel_config: Dict[str, Any]):
         """渦を初期化
