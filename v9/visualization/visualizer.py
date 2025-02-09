@@ -60,7 +60,7 @@ class Visualizer:
         renderer = self._renderers["3D" if data.ndim == 3 else "2D"]["scalar"]
 
         # 描画を実行
-        fig, metadata = renderer.render(data, view, **kwargs)
+        fig, metadata = renderer.render(data, **kwargs)
 
         # 出力パスの生成
         filepath = self.config.get_output_path(name, timestamp)
@@ -84,7 +84,7 @@ class Visualizer:
         renderer = self._renderers["3D" if ndim == 3 else "2D"]["vector"]
 
         # 描画を実行
-        fig, metadata = renderer.render(vector_components, view, **kwargs)
+        fig, metadata = renderer.render(vector_components, **kwargs)
 
         # 出力パスの生成
         filepath = self.config.get_output_path(name, timestamp)
@@ -121,7 +121,7 @@ class Visualizer:
         if scalar_data is not None:
             renderer = self._renderers["3D" if ndim == 3 else "2D"]["scalar"]
             _, scalar_metadata = renderer.render(
-                scalar_data, view, ax=ax, **kwargs.get("scalar_options", {})
+                scalar_data, ax=ax, **kwargs.get("scalar_options", {})
             )
             metadata["scalar"] = scalar_metadata
 
@@ -129,7 +129,7 @@ class Visualizer:
         if vector_components is not None:
             renderer = self._renderers["3D" if ndim == 3 else "2D"]["vector"]
             _, vector_metadata = renderer.render(
-                vector_components, view, ax=ax, **kwargs.get("vector_options", {})
+                vector_components, ax=ax, **kwargs.get("vector_options", {})
             )
             metadata["vector"] = vector_metadata
 
