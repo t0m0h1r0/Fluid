@@ -3,7 +3,7 @@
 このモジュールは、Navier-Stokes方程式の粘性項 ∇・(ν∇u) を実装します。
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import numpy as np
 from core.field import VectorField
 from ..base import NavierStokesTerm
@@ -26,22 +26,27 @@ class DiffusionTerm(NavierStokesTerm):
         """項の名前を取得"""
         return self._name
 
-    def compute(self, velocity: VectorField, dt: float, **kwargs) -> List[np.ndarray]:
+    def compute(
+        self, 
+        velocity: VectorField, 
+        state: Optional[Any] = None, 
+        dt: Optional[float] = None, 
+        **kwargs
+    ) -> List[np.ndarray]:
         """粘性項の寄与を計算
 
         Args:
             velocity: 現在の速度場
-            dt: 時間刻み幅
+            state: シミュレーション状態（オプション）
+            dt: 時間刻み幅（オプション）
             **kwargs: 追加のパラメータ
-                - viscosity: 粘性係数場
-                - density: 密度場
 
         Returns:
             各方向の速度成分への寄与のリスト
         """
         # 物性値の取得
-        properties = kwargs.get("properties", None)
-        levelset = kwargs.get("levelset", None)
+        properties = kwargs.get("properties")
+        levelset = kwargs.get("levelset")
 
         # 粘性係数と密度の設定
         if properties is not None and levelset is not None:

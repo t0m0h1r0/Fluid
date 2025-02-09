@@ -294,3 +294,23 @@ class SimulationConfig:
             filename = f"{name}.{self.output.format}"
 
         return output_dir / filename
+    
+    @property
+    def dpi(self) -> int:
+        """出力解像度（DPI）を取得"""
+        return self.output.dpi
+
+    @dpi.setter
+    def dpi(self, value: int):
+        """出力解像度（DPI）を設定"""
+        self.output.dpi = value
+
+    @property
+    def format(self) -> str:
+        """出力フォーマットを取得"""
+        return self.output.format
+
+    @format.setter
+    def format(self, value: str):
+        """出力フォーマットを設定"""
+        self.output.format = value

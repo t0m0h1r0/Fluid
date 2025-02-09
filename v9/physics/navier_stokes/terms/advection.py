@@ -4,7 +4,7 @@
 WENOスキームによる高精度な空間離散化を提供します。
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import numpy as np
 from core.field import VectorField
 from ..base import NavierStokesTerm
@@ -139,13 +139,20 @@ class AdvectionTerm(NavierStokesTerm):
 
             return omega0 * p0 + omega1 * p1
 
-    def compute(self, velocity: VectorField, dt: float, **kwargs) -> List[np.ndarray]:
+    def compute(
+        self, 
+        velocity: VectorField, 
+        state: Optional[Any] = None, 
+        dt: Optional[float] = None, 
+        **kwargs
+    ) -> List[np.ndarray]:
         """移流項の寄与を計算
 
         Args:
             velocity: 現在の速度場
-            dt: 時間刻み幅
-            **kwargs: 未使用
+            state: シミュレーション状態（オプション）
+            dt: 時間刻み幅（オプション）
+            **kwargs: 追加のパラメータ
 
         Returns:
             各方向の速度成分への寄与のリスト
