@@ -1,10 +1,9 @@
-"""Navier-Stokesソルバーを提供するモジュール
+"""Navier-Stokesソルバーのメインクラスを提供するモジュール
 
 このモジュールは、非圧縮性Navier-Stokes方程式を解くためのソルバーを実装します。
 分離解法（Projection Method）を用いて、各時間ステップで予測子-修正子法を適用します。
 """
 
-from dataclasses import dataclass
 from typing import Dict, Any, Optional
 import numpy as np
 import traceback
@@ -20,23 +19,6 @@ from .terms.pressure import PressureTerm
 from .terms.force import ForceTerm, GravityForce, SurfaceTensionForce
 
 
-@dataclass
-class NavierStokesParameters:
-    """Navier-Stokesソルバーのパラメータ
-
-    Attributes:
-        pressure_iterations: 圧力Poisson方程式の最大反復回数
-        pressure_tolerance: 圧力Poisson方程式の収束判定閾値
-        divergence_tolerance: 非圧縮性条件の許容誤差
-        cfl_safety_factor: CFL条件の安全係数
-    """
-
-    pressure_iterations: int = 100
-    pressure_tolerance: float = 1e-6
-    divergence_tolerance: float = 1e-5
-    cfl_safety_factor: float = 0.5
-
-
 class NavierStokesSolver(TemporalSolver):
     """Navier-Stokesソルバークラス
 
@@ -47,25 +29,23 @@ class NavierStokesSolver(TemporalSolver):
     def __init__(
         self,
         logger=None,
-        params: Optional[NavierStokesParameters] = None,
         use_weno: bool = True,
         poisson_solver: Optional[PoissonSolver] = None,
+        **kwargs
     ):
         """Navier-Stokesソルバーを初期化
 
         Args:
             logger: ロガー
-            params: ソルバーのパラメータ
             use_weno: WENOスキームを使用するかどうか
             poisson_solver: 圧力Poisson方程式のソルバー
+            **kwargs: 基底クラスに渡すパラメータ
         """
-        super().__init__(name="NavierStokes")
+        # 基底クラスの初期化
+        super().__init__(name="NavierStokes", **kwargs)
 
         # ロガーの設定
         self.logger = logger
-
-        # パラメータの設定
-        self.params = params or NavierStokesParameters()
 
         # 各項の初期化
         self.advection = AdvectionTerm(use_weno=use_weno)
@@ -77,30 +57,32 @@ class NavierStokesSolver(TemporalSolver):
         self.force.add_force(GravityForce())
 
         # Poissonソルバーの設定
-        if poisson_solver is None:
-            self.poisson_solver = SORSolver(
-                omega=1.5,
-                tolerance=self.params.pressure_tolerance,
-                max_iterations=self.params.pressure_iterations,
-            )
-        else:
-            self.poisson_solver = poisson_solver
+        self.poisson_solver = poisson_solver or SORSolver(
+            omega=1.5,
+            tolerance=1e-6,
+            max_iterations=100
+        )
 
         # 診断用の変数
         self._max_divergence = 0.0
         self._pressure_iterations = 0
 
-    def initialize(
-        self, velocity: VectorField, levelset: Optional[LevelSetField] = None, **kwargs
-    ):
+    def solve(self, **kwargs) -> Dict[str, Any]:
+        """ソルバーを実行（具体的な実装は他のメソッドで行う）
+
+        他のメソッドで実装されるため、基本的には例外を投げる。
+        """
+        raise NotImplementedError("時間発展ソルバーの具体的な実装は`advance`メソッドで行います。")
+
+    def initialize(self, state=None, **kwargs):
         """ソルバーの初期化
 
         Args:
-            velocity: 初期速度場
-            levelset: Level Set場（二相流体の場合）
+            state: 初期状態（オプション）
             **kwargs: 追加のパラメータ
         """
         # 表面張力の初期化（二相流体の場合）
+        levelset = kwargs.get('levelset')
         if levelset is not None and not any(
             isinstance(f, SurfaceTensionForce) for f in self.force.forces
         ):
@@ -130,13 +112,12 @@ class NavierStokesSolver(TemporalSolver):
         dt = min(dt_advection, dt_diffusion)
 
         # 安全係数を適用
-        return self.params.cfl_safety_factor * dt
+        return self.cfl * dt
 
     def advance(
         self,
         state,
         dt: Optional[float] = None,
-        max_iterations: int = 200,
         **kwargs,
     ) -> Dict[str, Any]:
         """1時間ステップを進める
@@ -149,11 +130,10 @@ class NavierStokesSolver(TemporalSolver):
         Args:
             state: 現在の状態
             dt: 時間刻み幅（Noneの場合は自動計算）
-            max_iterations: 最大反復回数
             **kwargs: 追加のパラメータ
 
         Returns:
-            更新された状態
+            更新された状態と計算情報
         """
         try:
             # 時間刻みの計算
@@ -194,7 +174,7 @@ class NavierStokesSolver(TemporalSolver):
                 velocity_new, pressure, levelset, div, **kwargs
             )
 
-            return state
+            return state, diagnostics
 
         except Exception as e:
             # エラーログの出力
@@ -266,18 +246,14 @@ class NavierStokesSolver(TemporalSolver):
             else:
                 rhs = div.data / dt
 
-            # 境界条件の設定
-            # 圧力の境界条件は速度場の境界条件から導出
-            self.poisson_solver.boundary_conditions = (
-                self._get_pressure_boundary_conditions()
-            )
-
             # 圧力補正値の初期推定値
             p_corr = ScalarField(pressure.shape, pressure.dx)
 
             # Poisson方程式を解く
             p_corr.data = self.poisson_solver.solve(
-                initial_solution=np.zeros_like(pressure.data), rhs=rhs, dx=velocity.dx
+                initial_solution=np.zeros_like(pressure.data), 
+                rhs=rhs, 
+                dx=velocity.dx
             )
 
             # 圧力補正の反復回数を記録
@@ -318,15 +294,6 @@ class NavierStokesSolver(TemporalSolver):
         return self.pressure.compute_correction(
             velocity, pressure_correction, dt, **kwargs
         )
-
-    def _get_pressure_boundary_conditions(self):
-        """圧力場の境界条件を取得
-
-        Returns:
-            圧力場の境界条件
-        """
-        # デフォルトはすべての境界でノイマン条件
-        return None
 
     def _collect_diagnostics(
         self,

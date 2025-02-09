@@ -4,11 +4,12 @@
 WENOスキームを用いた高次精度の解法を実装します。
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import numpy as np
 from core.solver import TemporalSolver
 from core.field import VectorField
 from .field import LevelSetField
+from .utils import reinitialize, extend_velocity
 
 
 class LevelSetSolver(TemporalSolver):
@@ -18,7 +19,12 @@ class LevelSetSolver(TemporalSolver):
     移流方程式に対してWENOスキームを使用し、高次精度で数値振動の少ない解法を提供します。
     """
 
-    def __init__(self, use_weno: bool = True, weno_order: int = 5, **kwargs):
+    def __init__(
+        self, 
+        use_weno: bool = True, 
+        weno_order: int = 5, 
+        **kwargs
+    ):
         """Level Setソルバーを初期化
 
         Args:
@@ -34,18 +40,27 @@ class LevelSetSolver(TemporalSolver):
         if use_weno:
             self._init_weno_coefficients()
 
+    def solve(self, **kwargs) -> Dict[str, Any]:
+        """ソルバーを実行（具体的な実装は他のメソッドで行う）
+
+        他のメソッドで実装されるため、基本的には例外を投げる。
+        """
+        raise NotImplementedError("時間発展ソルバーの具体的な実装は`advance`メソッドで行います。")
+
     def initialize(self, **kwargs) -> None:
         """ソルバーの初期化
 
         Args:
             **kwargs: 初期化に必要なパラメータ
         """
-        # Level Setソルバーの初期化処理
-        # 現時点では特別な初期化は必要ないため、パスします
+        # 現時点では特別な初期化処理は不要
         pass
 
     def compute_timestep(
-        self, phi: LevelSetField, velocity: VectorField = None, **kwargs
+        self, 
+        phi: LevelSetField, 
+        velocity: Optional[VectorField] = None, 
+        **kwargs
     ) -> float:
         """時間刻み幅を計算
 
@@ -124,8 +139,8 @@ class LevelSetSolver(TemporalSolver):
                 13 / 12 * (v3 - 2 * v4 + v5) ** 2 + 1 / 4 * (3 * v3 - 4 * v4 + v5) ** 2
             )
 
-            # 非線形重みを計算（ブロードキャスト対応）
-            weights = np.array([0.1, 0.6, 0.3])[:, np.newaxis, np.newaxis]
+            # 非線形重みを計算（ブロードキャストを考慮）
+            weights = self.weno_weights.reshape((-1,) + (1,) * values.ndim)
             alpha0 = weights[0] / (eps + beta0) ** 2
             alpha1 = weights[1] / (eps + beta1) ** 2
             alpha2 = weights[2] / (eps + beta2) ** 2
@@ -165,7 +180,7 @@ class LevelSetSolver(TemporalSolver):
             beta1 = (v3 - v2) ** 2
 
             eps = 1e-6
-            weights = np.array([1 / 3, 2 / 3])[:, np.newaxis, np.newaxis]
+            weights = self.weno_weights.reshape((-1,) + (1,) * values.ndim)
             alpha0 = weights[0] / (eps + beta0) ** 2
             alpha1 = weights[1] / (eps + beta1) ** 2
             alpha_sum = alpha0 + alpha1
@@ -179,7 +194,11 @@ class LevelSetSolver(TemporalSolver):
             return omega0 * p0 + omega1 * p1
 
     def advance(
-        self, dt: float, phi: LevelSetField, velocity: VectorField, **kwargs
+        self, 
+        dt: float, 
+        phi: LevelSetField, 
+        velocity: VectorField, 
+        **kwargs
     ) -> Dict[str, Any]:
         """1時間ステップを進める
 
@@ -218,7 +237,6 @@ class LevelSetSolver(TemporalSolver):
         phi.data = phi.data - dt * flux
 
         # 必要に応じて再初期化
-        phi.advance_step()
         if phi.need_reinit():
             phi.reinitialize()
 

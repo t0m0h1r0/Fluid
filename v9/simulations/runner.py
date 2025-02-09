@@ -49,55 +49,10 @@ class SimulationRunner:
         )
 
         # ステップ管理用の変数
+        self._current_state = None
         self._current_time = 0.0
         self._current_step = 0
         self._dt = None
-
-    @classmethod
-    def from_checkpoint(cls, checkpoint_path, config, logger=None):
-        """チェックポイントからシミュレーションを再開
-
-        Args:
-            checkpoint_path: チェックポイントファイルのパス
-            config: シミュレーション設定
-            logger: ロガー
-
-        Returns:
-            再開されたシミュレーションランナーと状態
-        """
-        # TODO: チェックポイントからの復元処理を実装
-        raise NotImplementedError("チェックポイントからの復元はまだ実装されていません")
-
-    def _compute_timestep(self, state: SimulationState) -> float:
-        """時間刻み幅を計算
-
-        Args:
-            state: 現在のシミュレーション状態
-
-        Returns:
-            計算された時間刻み幅
-        """
-        # 数値スキーム設定を取得
-        numerical_config = self.config.get("numerical", {})
-
-        # デフォルトの最大時間刻み幅
-        max_dt = numerical_config.get("max_dt", 0.1)
-        initial_dt = numerical_config.get("initial_dt", 0.001)
-        cfl_safety_factor = numerical_config.get("cfl_safety_factor", 0.5)
-
-        # CFL条件に基づく時間刻み幅
-        # Navier-Stokesソルバーからの推奨時間刻み幅
-        try:
-            recommended_dt = self.ns_solver.compute_timestep(state.velocity)
-        except Exception as e:
-            self.logger.warning(f"時間刻み幅の計算中にエラー: {e}")
-            recommended_dt = initial_dt
-
-        # CFL安全係数を適用
-        recommended_dt *= cfl_safety_factor
-
-        # 最大時間刻み幅を超えないようにする
-        return min(recommended_dt, max_dt)
 
     def initialize(self, initial_state: SimulationState):
         """シミュレーションを初期化
@@ -126,43 +81,41 @@ class SimulationRunner:
         """
         try:
             # 時間刻み幅の計算
-            self._dt = self._compute_timestep(self._current_state)
+            self._dt = self.ns_solver.compute_timestep(self._current_state.velocity)
 
-            # Navier-Stokesソルバーで速度場と圧力場を更新
-            velocity = self._current_state.velocity
-            pressure = self._current_state.pressure
-            levelset = self._current_state.levelset
-            properties = self._current_state.properties
+            # Navier-Stokesソルバーで状態を更新
+            advanced_state, ns_result = self.ns_solver.advance(
+                self._current_state,
+                dt=self._dt,
+            )
 
             # レベルセットの移流
             ls_result = self.ls_solver.advance(
-                dt=self._dt, phi=levelset, velocity=velocity
-            )
-
-            # Navier-Stokesソルバーで状態を更新
-            ns_result = self.ns_solver.advance(
-                state=self._current_state,
-                dt=self._dt,
-                properties=properties,
+                dt=self._dt, 
+                phi=advanced_state.levelset, 
+                velocity=advanced_state.velocity
             )
 
             # 時間を更新
             self._current_time += self._dt
-            velocity.time = self._current_time
-            pressure.time = self._current_time
-            levelset.time = self._current_time
+            advanced_state.velocity.time = self._current_time
+            advanced_state.pressure.time = self._current_time
+            advanced_state.levelset.time = self._current_time
             self._current_step += 1
+
+            # 現在の状態を更新
+            self._current_state = advanced_state
 
             # モニターを更新
             self.monitor.update(self._current_state)
 
-            # ステップ情報を収集
+            # ステップ情報を統合
             step_info = {
-                "time": self._current_time,
                 "dt": self._dt,
+                "time": self._current_time,
                 "step": self._current_step,
-                "ls_result": ls_result,
                 "ns_result": ns_result,
+                "ls_result": ls_result,
             }
 
             return self._current_state, step_info
@@ -192,16 +145,29 @@ class SimulationRunner:
             filepath: 保存先のパス
         """
         # チェックポイントデータの作成
-        checkpoint_data = {
-            "time": self._current_time,
-            "step": self._current_step,
-            "dt": self._dt,
-            "state": self._current_state.save_state(),
-        }
-
-        # データの保存
         filepath.parent.mkdir(parents=True, exist_ok=True)
         self._current_state.save_to_file(str(filepath))
+
+    @classmethod
+    def from_checkpoint(cls, checkpoint_path, config, logger=None):
+        """チェックポイントからシミュレーションを再開
+
+        Args:
+            checkpoint_path: チェックポイントファイルのパス
+            config: シミュレーション設定
+            logger: ロガー
+
+        Returns:
+            再開されたシミュレーションランナーと状態
+        """
+        # チェックポイントからの状態復元
+        state = SimulationState.load_from_file(str(checkpoint_path))
+        
+        # ランナーの初期化
+        monitor = SimulationMonitor(config, logger)
+        runner = cls(config, logger, monitor)
+        
+        return runner, state
 
     def finalize(self, output_dir: Path):
         """シミュレーションの終了処理
