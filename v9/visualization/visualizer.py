@@ -60,7 +60,7 @@ class Visualizer:
         renderer = self._renderers["3D" if data.ndim == 3 else "2D"]["scalar"]
 
         # 描画を実行
-        fig, metadata = renderer.render(data, **kwargs)
+        fig, metadata = renderer.render(data, view=view, **kwargs)
 
         # 出力パスの生成
         filepath = self.config.get_output_path(name, timestamp)
