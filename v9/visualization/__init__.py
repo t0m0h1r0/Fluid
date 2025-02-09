@@ -15,7 +15,7 @@ def create_multiview_visualization(
     state,
     config: VisualizationConfig,
     timestamp: float = 0.0,
-    base_name: str = "simulation_state"
+    base_name: str = "simulation_state",
 ) -> List[str]:
     """シミュレーション状態の多視点可視化を生成
 
@@ -43,41 +43,39 @@ def create_multiview_visualization(
     )
 
     # 可視化設定の取得（config.yamlから）
-    viz_config = config.get_field_config('visualization', {})
-    
+    viz_config = config.get_field_config("visualization", {})
+
     # スライス設定の取得
-    slice_axes = viz_config.get('slices', {}).get('axes', ['xy'])
-    slice_positions = viz_config.get('slices', {}).get('positions', [0.5])
-    
+    slice_axes = viz_config.get("slices", {}).get("axes", ["xy"])
+    slice_positions = viz_config.get("slices", {}).get("positions", [0.5])
+
     print(f"デバッグ: スライス軸 = {slice_axes}, スライス位置 = {slice_positions}")
 
     # 可視化する物理量の設定
-    fields_config = viz_config.get('fields', {})
+    fields_config = viz_config.get("fields", {})
     physics_fields = []
 
     # 速度場の設定
-    if fields_config.get('velocity', {}).get('enabled', False):
-        physics_fields.append({
-            'name': 'velocity', 
-            'data': [comp.data for comp in state.velocity.components],
-            'plot_type': 'vector'
-        })
+    if fields_config.get("velocity", {}).get("enabled", False):
+        physics_fields.append(
+            {
+                "name": "velocity",
+                "data": [comp.data for comp in state.velocity.components],
+                "plot_type": "vector",
+            }
+        )
 
     # 圧力場の設定
-    if fields_config.get('pressure', {}).get('enabled', False):
-        physics_fields.append({
-            'name': 'pressure', 
-            'data': state.pressure.data,
-            'plot_type': 'scalar'
-        })
+    if fields_config.get("pressure", {}).get("enabled", False):
+        physics_fields.append(
+            {"name": "pressure", "data": state.pressure.data, "plot_type": "scalar"}
+        )
 
     # レベルセット場の設定
-    if fields_config.get('levelset', {}).get('enabled', False):
-        physics_fields.append({
-            'name': 'levelset', 
-            'data': state.levelset.data,
-            'plot_type': 'scalar'
-        })
+    if fields_config.get("levelset", {}).get("enabled", False):
+        physics_fields.append(
+            {"name": "levelset", "data": state.levelset.data, "plot_type": "scalar"}
+        )
 
     # 可視化の実行
     for field in physics_fields:
@@ -86,8 +84,7 @@ def create_multiview_visualization(
                 try:
                     # ViewConfigの作成
                     view_config = ViewConfig(
-                        slice_axes=[slice_axis],
-                        slice_positions=[slice_pos]
+                        slice_axes=[slice_axis], slice_positions=[slice_pos]
                     )
 
                     # ファイル名の生成
@@ -96,15 +93,17 @@ def create_multiview_visualization(
                         f"_{slice_axis}_slice_{slice_pos:.2f}_{timestamp:.3f}"
                     )
 
-                    print(f"デバッグ: 可視化 - フィールド: {field['name']}, "
-                          f"軸: {slice_axis}, 位置: {slice_pos}")
+                    print(
+                        f"デバッグ: 可視化 - フィールド: {field['name']}, "
+                        f"軸: {slice_axis}, 位置: {slice_pos}"
+                    )
 
                     # 可視化の実行
                     filepath = viz_context.visualize(
-                        field['data'], 
-                        name=filename, 
+                        field["data"],
+                        name=filename,
                         timestamp=timestamp,
-                        view=view_config
+                        view=view_config,
                     )
 
                     output_files.append(filepath)
@@ -112,16 +111,13 @@ def create_multiview_visualization(
                 except Exception as e:
                     print(f"可視化中にエラー発生: {e}")
                     import traceback
+
                     traceback.print_exc()
 
     return output_files
 
 
-def visualize_simulation_state(
-    state, 
-    config, 
-    timestamp: float = 0.0
-) -> List[str]:
+def visualize_simulation_state(state, config, timestamp: float = 0.0) -> List[str]:
     """シミュレーション状態を可視化
 
     Args:
@@ -136,8 +132,4 @@ def visualize_simulation_state(
     if isinstance(config, dict):
         config = VisualizationConfig.from_dict(config)
 
-    return create_multiview_visualization(
-        state, 
-        config, 
-        timestamp=timestamp
-    )
+    return create_multiview_visualization(state, config, timestamp=timestamp)

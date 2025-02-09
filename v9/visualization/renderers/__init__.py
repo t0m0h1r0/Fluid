@@ -7,7 +7,7 @@ from .vector3d import Vector3DRenderer
 
 __all__ = [
     "Scalar2DRenderer",
-    "Scalar3DRenderer", 
+    "Scalar3DRenderer",
     "Vector2DRenderer",
-    "Vector3DRenderer"
+    "Vector3DRenderer",
 ]

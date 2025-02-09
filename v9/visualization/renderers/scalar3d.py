@@ -18,10 +18,7 @@ class Scalar3DRenderer:
         self.config = config or {}
 
     def render(
-        self, 
-        data: Union[np.ndarray, int], 
-        ax: Optional[Axes] = None, 
-        **kwargs
+        self, data: Union[np.ndarray, int], ax: Optional[Axes] = None, **kwargs
     ) -> Tuple[plt.Figure, Dict[str, Any]]:
         """3Dスカラー場を描画
 
@@ -44,13 +41,13 @@ class Scalar3DRenderer:
         # 図とAxesの準備
         if ax is None:
             fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
+            ax = fig.add_subplot(111, projection="3d")
         else:
             fig = ax.figure
 
         # スライス位置の決定
-        slice_axis = kwargs.get('slice_axis', 2)  # デフォルトはz軸
-        slice_pos = kwargs.get('slice_pos', data.shape[slice_axis] // 2)
+        slice_axis = kwargs.get("slice_axis", 2)  # デフォルトはz軸
+        slice_pos = kwargs.get("slice_pos", data.shape[slice_axis] // 2)
 
         # スライスの抽出
         slices = [slice(None)] * 3
@@ -59,11 +56,11 @@ class Scalar3DRenderer:
 
         # メタデータの準備
         metadata = {
-            'data_range': {
-                'min': float(np.nanmin(data)),
-                'max': float(np.nanmax(data))
+            "data_range": {
+                "min": float(np.nanmin(data)),
+                "max": float(np.nanmax(data)),
             },
-            'display_type': ['scalar', 'slice']
+            "display_type": ["scalar", "slice"],
         }
 
         # グリッドの生成
@@ -81,24 +78,28 @@ class Scalar3DRenderer:
             X, Y, Z = X, Y, slice_pos * np.ones_like(X)
 
         # カラーマップと色の設定
-        cmap = kwargs.get('cmap', 'viridis')
-        
+        cmap = kwargs.get("cmap", "viridis")
+
         # データの正規化
-        normalized_data = (slice_data - slice_data.min()) / (slice_data.max() - slice_data.min())
-        
+        normalized_data = (slice_data - slice_data.min()) / (
+            slice_data.max() - slice_data.min()
+        )
+
         im = ax.plot_surface(
-            X, Y, Z, 
+            X,
+            Y,
+            Z,
             facecolors=plt.cm.get_cmap(cmap)(normalized_data),
-            alpha=kwargs.get('alpha', 0.7)
+            alpha=kwargs.get("alpha", 0.7),
         )
 
         # タイトルの追加
-        if 'title' in kwargs:
-            ax.set_title(kwargs['title'])
+        if "title" in kwargs:
+            ax.set_title(kwargs["title"])
 
         # 軸ラベルの設定
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
 
         return fig, metadata

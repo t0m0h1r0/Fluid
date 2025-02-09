@@ -116,7 +116,9 @@ class VisualizationConfig:
             filename = f"{name}.{self.format}"
         return self.output_dir / filename
 
-    def get_field_config(self, section: str, default: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def get_field_config(
+        self, section: str, default: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """指定されたセクションの設定を取得
 
         Args:
@@ -130,12 +132,12 @@ class VisualizationConfig:
         import os
 
         # コンフィグファイルの読み込み
-        config_path = os.path.join(os.getcwd(), 'config.yaml')
-        
+        config_path = os.path.join(os.getcwd(), "config.yaml")
+
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, "r") as f:
                 full_config = yaml.safe_load(f)
-                
+
             # 指定されたセクションの設定を取得
             section_config = full_config.get(section, {})
             return section_config
@@ -190,7 +192,9 @@ class Exporter:
         """
         self.config = config
 
-    def export(self, figure: Any, filepath: Path, metadata: Optional[Dict[str, Any]] = None) -> None:
+    def export(
+        self, figure: Any, filepath: Path, metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
         """描画結果を出力
 
         Args:
