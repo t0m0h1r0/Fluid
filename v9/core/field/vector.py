@@ -8,6 +8,7 @@ import numpy as np
 from .scalar import ScalarField
 from typing import Dict, Any
 
+
 class VectorField:
     """ベクトル場クラス
 
@@ -207,12 +208,12 @@ class VectorField:
         # コンポーネントの復元
         if len(state["components"]) != len(self.components):
             raise ValueError("コンポーネントの数が一致しません")
-        
+
         for i, comp_state in enumerate(state["components"]):
             self.components[i].load_state(comp_state)
-        
+
         # その他の属性の確認（必要に応じて）
         if tuple(state["shape"]) != self.shape:
             raise ValueError("形状が一致しません")
-        
+
         # dx値の確認は省略可（必要に応じて追加）

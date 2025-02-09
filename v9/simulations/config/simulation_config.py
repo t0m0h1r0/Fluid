@@ -7,7 +7,6 @@ YAMLファイルから設定を読み込み、適切なデータ構造に変換�
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Union
 import yaml
-from typing import Dict, Any
 from physics.properties import FluidProperties
 from pathlib import Path
 
@@ -119,22 +118,19 @@ class OutputConfig:
     show_colorbar: bool = True
     show_axes: bool = True
     show_grid: bool = False
-    
+
     # 可視化するフィールドの設定
     fields: Dict[str, Dict[str, Any]] = field(
         default_factory=lambda: {
             "velocity": {"enabled": False, "plot_types": ["vector"]},
             "pressure": {"enabled": True, "plot_types": ["scalar"]},
-            "levelset": {"enabled": True, "plot_types": ["interface"]}
+            "levelset": {"enabled": True, "plot_types": ["interface"]},
         }
     )
-    
+
     # スライス設定の追加
     slices: Dict[str, List[Union[str, float]]] = field(
-        default_factory=lambda: {
-            "axes": ["xy", "xz", "yz"],
-            "positions": [0.5]
-        }
+        default_factory=lambda: {"axes": ["xy", "xz", "yz"], "positions": [0.5]}
     )
 
     def __post_init__(self):
@@ -177,10 +173,17 @@ class SimulationConfig:
             for name, props in config_dict.get("phases", {}).items()
         }
         solver = SolverConfig(**config_dict.get("solver", {}))
-        time = TimeConfig(**config_dict.get("time", {
-            "max_time": config_dict.get("numerical", {}).get("max_time", 1.0),
-            "save_interval": config_dict.get("numerical", {}).get("save_interval", 0.1)
-        }))
+        time = TimeConfig(
+            **config_dict.get(
+                "time",
+                {
+                    "max_time": config_dict.get("numerical", {}).get("max_time", 1.0),
+                    "save_interval": config_dict.get("numerical", {}).get(
+                        "save_interval", 0.1
+                    ),
+                },
+            )
+        )
 
         # 初期条件の設定を変換
         ic_dict = config_dict.get("initial_conditions", {})
@@ -268,9 +271,9 @@ class SimulationConfig:
                 "fields": self.output.fields,
                 "slices": self.output.slices,
             }
-        
+
         return default or {}
-    
+
     def get_output_path(self, name: str, timestamp: Optional[float] = None) -> Path:
         """出力ファイルのパスを生成
 
@@ -294,7 +297,7 @@ class SimulationConfig:
             filename = f"{name}.{self.output.format}"
 
         return output_dir / filename
-    
+
     @property
     def dpi(self) -> int:
         """出力解像度（DPI）を取得"""

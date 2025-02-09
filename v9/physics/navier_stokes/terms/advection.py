@@ -140,11 +140,11 @@ class AdvectionTerm(NavierStokesTerm):
             return omega0 * p0 + omega1 * p1
 
     def compute(
-        self, 
-        velocity: VectorField, 
-        state: Optional[Any] = None, 
-        dt: Optional[float] = None, 
-        **kwargs
+        self,
+        velocity: VectorField,
+        state: Optional[Any] = None,
+        dt: Optional[float] = None,
+        **kwargs,
     ) -> List[np.ndarray]:
         """移流項の寄与を計算
 

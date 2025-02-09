@@ -27,11 +27,11 @@ class DiffusionTerm(NavierStokesTerm):
         return self._name
 
     def compute(
-        self, 
-        velocity: VectorField, 
-        state: Optional[Any] = None, 
-        dt: Optional[float] = None, 
-        **kwargs
+        self,
+        velocity: VectorField,
+        state: Optional[Any] = None,
+        dt: Optional[float] = None,
+        **kwargs,
     ) -> List[np.ndarray]:
         """粘性項の寄与を計算
 
