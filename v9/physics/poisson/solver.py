@@ -41,7 +41,7 @@ class PoissonSolver(IterativeSolver):
         Args:
             initial_solution: 初期推定解
             rhs: 右辺ベクトル
-            dx: グリッド間隔
+            dx: グリッド間隔（スカラーまたは配列）
             **kwargs: 追加のパラメータ
 
         Returns:
@@ -55,6 +55,12 @@ class PoissonSolver(IterativeSolver):
             # 右辺のセットアップ
             if rhs is None:
                 raise ValueError("右辺ベクトルが指定されていません")
+
+            # dx の正規化
+            if np.isscalar(dx):
+                dx = np.full(rhs.ndim, dx)
+            elif len(dx) != rhs.ndim:
+                raise ValueError(f"dxは{rhs.ndim}次元である必要があります")
 
             # 初期化処理
             self.initialize(**kwargs)
@@ -89,27 +95,32 @@ class PoissonSolver(IterativeSolver):
             raise
 
     def compute_residual(
-        self, solution: np.ndarray, rhs: np.ndarray, dx: float
+        self, solution: np.ndarray, rhs: np.ndarray, dx: np.ndarray
     ) -> float:
         """残差を計算
 
         Args:
             solution: 現在の解
             rhs: 右辺
-            dx: グリッド間隔
+            dx: グリッド間隔（スカラーまたは配列）
 
         Returns:
             L2ノルムで測った残差
         """
+        # dx の正規化
+        if np.isscalar(dx):
+            dx = np.full(solution.ndim, dx)
+        elif len(dx) != solution.ndim:
+            raise ValueError(f"dxは{solution.ndim}次元である必要があります")
+
         # ラプラシアンの計算
         laplacian = np.zeros_like(solution)
         for axis in range(solution.ndim):
             # 2次精度中心差分
-            laplacian += (
-                np.roll(solution, 1, axis=axis)
-                + np.roll(solution, -1, axis=axis)
-                - 2 * solution
-            ) / dx**2
+            # 各方向のグリッド間隔を考慮
+            forward = np.roll(solution, 1, axis=axis)
+            backward = np.roll(solution, -1, axis=axis)
+            laplacian += (forward + backward - 2 * solution) / (dx[axis]**2)
 
         # 残差の計算と境界条件の適用
         residual = laplacian - rhs
@@ -131,3 +142,7 @@ class PoissonSolver(IterativeSolver):
             **kwargs: 初期化パラメータ
         """
         super().initialize(**kwargs)
+
+    def iterate(self, solution: np.ndarray, rhs: np.ndarray, dx: np.ndarray):
+        """反復計算のデフォルト実装（サブクラスでオーバーライド）"""
+        raise NotImplementedError("サブクラスで実装する必要があります")

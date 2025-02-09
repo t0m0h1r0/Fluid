@@ -53,33 +53,49 @@ class SORSolver(PoissonSolver):
         self,
         solution: np.ndarray,
         rhs: np.ndarray,
-        dx: float,
+        dx: np.ndarray,
         **kwargs
     ) -> np.ndarray:
         """1回のSOR反復を実行"""
         result = solution.copy()
 
+        # dx配列の正規化と設定
+        if np.isscalar(dx):
+            dx = np.full(result.ndim, dx)
+        elif len(dx) != result.ndim:
+            raise ValueError(f"dx must have length {result.ndim}, got {len(dx)}")
+
+        # グリッド間隔の2乗を計算
+        dx_squared = np.prod(dx)**2
+
         if self.use_redblack:
             # 赤黒順序付けによる更新
             for color in [0, 1]:  # 0: 赤, 1: 黒
-                mask = np.zeros_like(result, dtype=bool)
-                for i in range(result.ndim):
-                    mask ^= np.arange(result.shape[i])[:, None, None] % 2 == color
+                # 赤黒マスクの生成
+                mask = np.ones_like(result, dtype=bool)
+                for axis in range(result.ndim):
+                    # 各軸で交互のインデックスを選択
+                    axis_indices = np.arange(result.shape[axis]) % 2 == color
+                    # ブロードキャスト可能な形に変換
+                    broadcast_shape = [1] * result.ndim
+                    broadcast_shape[axis] = -1
+                    axis_mask = axis_indices.reshape(broadcast_shape)
+                    # 論理積で絞り込み
+                    mask &= axis_mask
 
                 # 近傍点の和を計算
                 neighbors_sum = np.zeros_like(result)
                 for axis in range(result.ndim):
-                    neighbors_sum += np.roll(result, 1, axis=axis) + np.roll(
-                        result, -1, axis=axis
-                    )
+                    # 各軸で前後の点を取得
+                    forward = np.roll(result, 1, axis=axis)
+                    backward = np.roll(result, -1, axis=axis)
+                    neighbors_sum += forward + backward
 
                 # SOR更新
-                gauss_seidel = (dx * dx * rhs[mask] + neighbors_sum[mask]) / (
+                gauss_seidel = (dx_squared * rhs[mask] + neighbors_sum[mask]) / (
                     2 * result.ndim
                 )
-                result[mask] = (1 - self.omega) * result[
-                    mask
-                ] + self.omega * gauss_seidel
+                result[mask] = (1 - self.omega) * result[mask] + self.omega * gauss_seidel
 
         else:
             # 通常のSOR反復
@@ -87,7 +103,7 @@ class SORSolver(PoissonSolver):
                 neighbors_sum = np.roll(result, 1, axis=axis) + np.roll(
                     result, -1, axis=axis
                 )
-                gauss_seidel = (dx * dx * rhs + neighbors_sum) / (2 * result.ndim)
+                gauss_seidel = (dx_squared * rhs + neighbors_sum) / (2 * result.ndim)
                 result = (1 - self.omega) * result + self.omega * gauss_seidel
 
         # 境界条件の適用
