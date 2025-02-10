@@ -9,7 +9,7 @@ import numpy as np
 
 from core.field import VectorField, ScalarField
 from physics.levelset import LevelSetField
-from physics.properties import PropertiesManager
+from physics.levelset.properties import PropertiesManager
 from physics.poisson import PoissonSolver, SORSolver
 from ..core.base_solver import NavierStokesBase
 from ..core.interfaces import NavierStokesTerm, TimeIntegrator

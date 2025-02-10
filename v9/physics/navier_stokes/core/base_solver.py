@@ -9,7 +9,7 @@ from abc import abstractmethod
 
 from core.field import VectorField
 from physics.levelset import LevelSetField
-from physics.properties import PropertiesManager
+from physics.levelset.properties import PropertiesManager
 from .interfaces import NavierStokesSolver, NavierStokesTerm, TimeIntegrator
 
 

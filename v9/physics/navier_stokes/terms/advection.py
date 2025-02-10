@@ -9,7 +9,7 @@ import numpy as np
 
 from core.field import VectorField
 from physics.levelset import LevelSetField
-from physics.properties import PropertiesManager
+from physics.levelset.properties import PropertiesManager
 from .base import AdvectiveTerm
 
 
