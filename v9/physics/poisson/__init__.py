@@ -1,11 +1,22 @@
-"""Poisson方程式のソルバーを提供するモジュール
+"""Poisson方程式のソルバーパッケージ
 
 このパッケージは、Poisson方程式を解くための各種ソルバーを提供します。
 """
 
-# ソルバーのインポート
+from .base import (
+    PoissonSolverBase,
+    PoissonSolverConfig as PoissonConfig,
+    PoissonSolverTerm,
+)
 from .solver import PoissonSolver
-from .sor import SORSolver
+from .methods.sor import SORSolver
 
-# エクスポートするモジュール
-__all__ = ["PoissonSolver", "SORSolver"]
+__all__ = [
+    # ベースクラスとインターフェース
+    "PoissonSolverBase",
+    "PoissonConfig",
+    "PoissonSolverTerm",
+    # ソルバー
+    "PoissonSolver",
+    "SORSolver",
+]

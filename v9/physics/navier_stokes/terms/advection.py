@@ -4,34 +4,45 @@
 WENOスキームによる高精度な空間離散化を提供します。
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import numpy as np
+
 from core.field import VectorField
-from ..base import NavierStokesTerm
+from physics.levelset import LevelSetField
+from physics.properties import PropertiesManager
+from .base import AdvectiveTerm
 
 
-class AdvectionTerm(NavierStokesTerm):
-    """移流項クラス"""
+class AdvectionTerm(AdvectiveTerm):
+    """移流項クラス
 
-    def __init__(self, use_weno: bool = True, weno_order: int = 5):
+    WENOスキームを用いた高精度な移流項の計算を提供します。
+    """
+
+    def __init__(
+        self,
+        use_weno: bool = True,
+        weno_order: int = 5,
+        name: str = "Advection",
+        enabled: bool = True,
+        logger=None,
+    ):
         """移流項を初期化
 
         Args:
             use_weno: WENOスキームを使用するかどうか
             weno_order: WENOスキームの次数（3または5）
+            name: 項の名前
+            enabled: 項を有効にするかどうか
+            logger: ロガー
         """
-        self._name = "Advection"
+        super().__init__(name=name, enabled=enabled, logger=logger)
         self.use_weno = use_weno
         self.weno_order = weno_order
 
         # WENOスキームの係数を初期化
         if use_weno:
             self._init_weno_coefficients()
-
-    @property
-    def name(self) -> str:
-        """項の名前を取得"""
-        return self._name
 
     def _init_weno_coefficients(self):
         """WENOスキームの係数を初期化"""
@@ -56,6 +67,69 @@ class AdvectionTerm(NavierStokesTerm):
             ]
         else:
             raise ValueError(f"未対応のWENO次数です: {self.weno_order}")
+
+    def compute(
+        self,
+        velocity: VectorField,
+        levelset: LevelSetField,
+        properties: PropertiesManager,
+        **kwargs,
+    ) -> List[np.ndarray]:
+        """移流項の寄与を計算
+
+        Args:
+            velocity: 速度場
+            levelset: レベルセット場
+            properties: 物性値マネージャー
+            **kwargs: 追加のパラメータ
+
+        Returns:
+            各方向の速度成分への寄与のリスト
+        """
+        if not self.enabled:
+            return [np.zeros_like(v.data) for v in velocity.components]
+
+        result = []
+
+        if self.use_weno:
+            # WENOスキームによる空間離散化
+            for i, v_i in enumerate(velocity.components):
+                flux = np.zeros_like(v_i.data)
+                for j, v_j in enumerate(velocity.components):
+                    # 風上差分の方向を決定
+                    upwind = v_j.data < 0
+
+                    # 正の速度に対する flux
+                    v_plus = self._weno_reconstruction(v_i.data, j)
+                    # 負の速度に対する flux
+                    v_minus = self._weno_reconstruction(np.flip(v_i.data, j), j)
+                    v_minus = np.flip(v_minus, j)
+
+                    # 風上方向に応じてfluxを選択
+                    flux += v_j.data * np.where(upwind, v_minus, v_plus)
+
+                result.append(-flux)
+
+        else:
+            # 標準的な中心差分
+            for i, v_i in enumerate(velocity.components):
+                result.append(
+                    -sum(
+                        v_j.data * v_i.gradient(j)
+                        for j, v_j in enumerate(velocity.components)
+                    )
+                )
+
+        # 診断情報の更新
+        self._update_diagnostics(
+            "flux_max", float(max(np.max(np.abs(f)) for f in result))
+        )
+        self._update_diagnostics("scheme", "WENO" if self.use_weno else "central")
+        self._update_diagnostics(
+            "weno_order", self.weno_order if self.use_weno else None
+        )
+
+        return result
 
     def _weno_reconstruction(self, values: np.ndarray, axis: int) -> np.ndarray:
         """WENOスキームによる再構築
@@ -102,13 +176,11 @@ class AdvectionTerm(NavierStokesTerm):
                 + self.weno_coeffs[0][1] * v2
                 + self.weno_coeffs[0][2] * v3
             )
-
             p1 = (
                 self.weno_coeffs[1][0] * v2
                 + self.weno_coeffs[1][1] * v3
                 + self.weno_coeffs[1][2] * v4
             )
-
             p2 = (
                 self.weno_coeffs[2][0] * v3
                 + self.weno_coeffs[2][1] * v4
@@ -139,67 +211,20 @@ class AdvectionTerm(NavierStokesTerm):
 
             return omega0 * p0 + omega1 * p1
 
-    def compute(
-        self,
-        velocity: VectorField,
-        state: Optional[Any] = None,
-        dt: Optional[float] = None,
-        **kwargs,
-    ) -> List[np.ndarray]:
-        """移流項の寄与を計算
-
-        Args:
-            velocity: 現在の速度場
-            state: シミュレーション状態（オプション）
-            dt: 時間刻み幅（オプション）
-            **kwargs: 追加のパラメータ
-
-        Returns:
-            各方向の速度成分への寄与のリスト
-        """
-        result = []
-
-        if self.use_weno:
-            # WENOスキームによる空間離散化
-            for i, v_i in enumerate(velocity.components):
-                flux = np.zeros_like(v_i.data)
-                for j, v_j in enumerate(velocity.components):
-                    # 風上差分の方向を決定
-                    upwind = v_j.data < 0
-
-                    # 正の速度に対する flux
-                    v_plus = self._weno_reconstruction(v_i.data, j)
-                    # 負の速度に対する flux
-                    v_minus = self._weno_reconstruction(np.flip(v_i.data, j), j)
-                    v_minus = np.flip(v_minus, j)
-
-                    # 風上方向に応じてfluxを選択
-                    flux += v_j.data * np.where(upwind, v_minus, v_plus)
-
-                result.append(-flux)
-
-        else:
-            # 標準的な中心差分
-            for i, v_i in enumerate(velocity.components):
-                result.append(
-                    -sum(
-                        v_j.data * v_i.gradient(j)
-                        for j, v_j in enumerate(velocity.components)
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """項の診断情報を取得"""
+        diag = super().get_diagnostics()
+        diag.update(
+            {
+                "flux_norm": float(
+                    np.sqrt(
+                        sum(np.sum(f**2) for f in self._diagnostics.get("flux", []))
                     )
-                )
-
-        return result
-
-    def get_diagnostics(self, velocity: VectorField, **kwargs) -> Dict[str, Any]:
-        """移流項の診断情報を取得"""
-        # 移流量の計算
-        flux = self.compute(velocity, 1.0)
-        max_flux = max(np.max(np.abs(f)) for f in flux)
-        mean_flux = np.mean([np.mean(np.abs(f)) for f in flux])
-
-        return {
-            "scheme": "WENO" if self.use_weno else "central",
-            "weno_order": self.weno_order if self.use_weno else None,
-            "max_flux": float(max_flux),
-            "mean_flux": float(mean_flux),
-        }
+                ),
+                "weno": {
+                    "enabled": self.use_weno,
+                    "order": self.weno_order if self.use_weno else None,
+                },
+            }
+        )
+        return diag

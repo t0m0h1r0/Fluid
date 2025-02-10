@@ -5,9 +5,12 @@ Poisson方程式のソルバーを実装します。
 """
 
 import numpy as np
-from typing import Dict, Any, Optional, List
-from .solver import PoissonSolver
+from typing import Optional, List, Dict, Any, Union
+
 from core.boundary import BoundaryCondition
+from ..solver import PoissonSolver
+from ..config import PoissonSolverConfig
+from ..base import PoissonSolverTerm
 
 
 class SORSolver(PoissonSolver):
@@ -15,51 +18,71 @@ class SORSolver(PoissonSolver):
 
     def __init__(
         self,
-        omega: float = 1.5,
-        use_redblack: bool = True,
-        auto_tune: bool = True,
+        config: Optional[PoissonSolverConfig] = None,
         boundary_conditions: Optional[List[BoundaryCondition]] = None,
-        tolerance: float = 1e-6,
-        max_iterations: int = 1000,
-        logger=None,
+        terms: Optional[List[PoissonSolverTerm]] = None,
+        **kwargs,
     ):
         """SORソルバーを初期化
 
         Args:
-            omega: 緩和係数（1 < ω < 2）
-            use_redblack: 赤黒順序付けを使用するかどうか
-            auto_tune: 緩和係数を自動調整するかどうか
+            config: ソルバー設定
             boundary_conditions: 境界条件のリスト
-            tolerance: 収束判定の許容誤差
-            max_iterations: 最大反復回数
-            logger: ロガー（オプション）
+            terms: 追加の項
+            **kwargs: 追加のパラメータ
         """
-        super().__init__(
-            boundary_conditions=boundary_conditions,
-            tolerance=tolerance,
-            max_iterations=max_iterations,
-            logger=logger,
-        )
-        self.omega = omega
-        self.use_redblack = use_redblack
-        self.auto_tune = auto_tune
+        # デフォルト設定の取得
+        solver_config = config or PoissonSolverConfig()
+        solver_specific = solver_config.get_config_for_component("solver_specific")
 
-        # 自動調整用のパラメータ
+        # 緩和パラメータの取得
+        self.omega = kwargs.get(
+            "omega", solver_specific.get("relaxation_parameter", 1.5)
+        )
+
+        # 赤黒順序付けの設定
+        self.use_redblack = kwargs.get(
+            "use_redblack", solver_specific.get("use_redblack", True)
+        )
+
+        # 自動調整の設定
+        self.auto_tune = kwargs.get(
+            "auto_tune", solver_specific.get("auto_tune", False)
+        )
+
+        # スペクトル半径の追跡
         self._spectral_radius = None
         self._update_interval = 10
         self._previous_diff = None
 
+        # 親クラスの初期化
+        super().__init__(
+            config=solver_config,
+            boundary_conditions=boundary_conditions,
+            terms=terms,
+            **kwargs,
+        )
+
     def iterate(
-        self, solution: np.ndarray, rhs: np.ndarray, dx: np.ndarray, **kwargs
+        self, solution: np.ndarray, rhs: np.ndarray, dx: Union[float, np.ndarray]
     ) -> np.ndarray:
-        """1回のSOR反復を実行"""
+        """1回のSOR反復を実行
+
+        Args:
+            solution: 現在の解
+            rhs: 右辺
+            dx: グリッド間隔
+
+        Returns:
+            更新された解
+        """
         result = solution.copy()
 
         # dx配列の正規化と設定
         if np.isscalar(dx):
             dx = np.full(result.ndim, dx)
         elif len(dx) != result.ndim:
-            raise ValueError(f"dx must have length {result.ndim}, got {len(dx)}")
+            raise ValueError(f"dxは{result.ndim}次元である必要があります")
 
         # グリッド間隔の2乗を計算
         dx_squared = np.prod(dx) ** 2
@@ -111,16 +134,21 @@ class SORSolver(PoissonSolver):
                     result = bc.apply_all(result, i)
 
         # 必要に応じて緩和係数を調整
-        if self.auto_tune and self.iteration_count % self._update_interval == 0:
+        if self.auto_tune and self._iteration_count % self._update_interval == 0:
             self._update_omega(solution, result)
 
         return result
 
     def _update_omega(self, old_solution: np.ndarray, new_solution: np.ndarray):
-        """緩和係数を自動調整"""
+        """緩和係数を自動調整
+
+        Args:
+            old_solution: 前回の解
+            new_solution: 新しい解
+        """
         # 解の変化から反復行列のスペクトル半径を推定
         diff = new_solution - old_solution
-        if self.iteration_count > self._update_interval:
+        if self._iteration_count > self._update_interval:
             old_diff = self._previous_diff
             numerator = np.sum(diff * diff)
             denominator = np.sum(old_diff * old_diff)
@@ -143,18 +171,20 @@ class SORSolver(PoissonSolver):
         # 現在の差分を保存
         self._previous_diff = diff.copy()
 
-    def get_status(self) -> Dict[str, Any]:
-        """ソルバーの状態を取得"""
-        status = super().get_diagnostics()
-        status.update(
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """診断情報を取得
+
+        Returns:
+            診断情報の辞書
+        """
+        diag = super().get_diagnostics()
+        diag.update(
             {
                 "method": "SOR",
                 "omega": self.omega,
                 "spectral_radius": self._spectral_radius,
-                "redblack": self.use_redblack,
+                "redblack_ordering": self.use_redblack,
                 "auto_tune": self.auto_tune,
             }
         )
-        if self._logger:
-            self._logger.debug(f"SORソルバーの状態: {status}")
-        return status
+        return diag

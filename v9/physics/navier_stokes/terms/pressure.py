@@ -1,29 +1,38 @@
-"""Navier-Stokes方程式の圧力項を提供するモジュール
+"""圧力項を実装するモジュール
 
-このモジュールは、非圧縮性Navier-Stokes方程式の圧力項を実装します。
+このモジュールは、Navier-Stokes方程式の圧力項を実装します。
 圧力勾配項を適切に計算し、密度の不連続性も考慮します。
 """
 
 from typing import List, Dict, Any
 import numpy as np
 
-from core.field import VectorField
+from core.field import VectorField, ScalarField
 from physics.levelset import LevelSetField
 from physics.properties import PropertiesManager
-from .base import NavierStokesTerm
+from .base import TermBase
 
 
-class PressureTerm(NavierStokesTerm):
+class PressureTerm(TermBase):
     """圧力項クラス"""
 
-    def __init__(self):
-        """圧力項を初期化"""
-        self._name = "Pressure"
+    def __init__(
+        self,
+        use_conservative: bool = True,
+        name: str = "Pressure",
+        enabled: bool = True,
+        logger=None,
+    ):
+        """圧力項を初期化
 
-    @property
-    def name(self) -> str:
-        """項の名前を取得"""
-        return self._name
+        Args:
+            use_conservative: 保存形式で離散化するかどうか
+            name: 項の名前
+            enabled: 項を有効にするかどうか
+            logger: ロガー
+        """
+        super().__init__(name=name, enabled=enabled, logger=logger)
+        self.use_conservative = use_conservative
 
     def compute(
         self,
@@ -38,75 +47,137 @@ class PressureTerm(NavierStokesTerm):
             velocity: 速度場
             levelset: レベルセット場
             properties: 物性値マネージャー
-            kwargs:
-                pressure: 圧力場（必須）
+            **kwargs: 追加のパラメータ
+                - pressure: 圧力場（必須）
 
         Returns:
             各方向の速度成分への寄与のリスト
         """
+        if not self.enabled:
+            return [np.zeros_like(v.data) for v in velocity.components]
+
+        # 圧力場の取得
         pressure = kwargs.get("pressure")
         if pressure is None:
-            raise ValueError("Pressureが指定されていません")
+            raise ValueError("圧力場が指定されていません")
+        if not isinstance(pressure, ScalarField):
+            raise TypeError("pressureはScalarField型である必要があります")
 
         # 密度場の取得
-        density = properties.get_density(levelset)
+        density = properties.get_density(levelset).data
 
-        # 結果を格納するリスト
-        result = []
+        if self.use_conservative:
+            # 保存形式での離散化
+            # ∇・(p/ρ I)の形式で計算
+            result = self._compute_conservative(pressure, density, velocity.dx)
+        else:
+            # 非保存形式での離散化
+            # (1/ρ)∇pの形式で計算
+            result = self._compute_non_conservative(pressure, density, velocity.dx)
 
-        # 各方向の圧力勾配を計算
-        for i in range(velocity.ndim):
-            # 圧力勾配の計算
-            grad_p = np.gradient(pressure.data, velocity.dx, axis=i)
-
-            # 密度で割って加速度に変換
-            result.append(-grad_p / density.data)
+        # 診断情報の更新
+        self._update_diagnostics(pressure, density, result)
 
         return result
 
-    def get_diagnostics(
+    def _compute_conservative(
+        self, pressure: ScalarField, density: np.ndarray, dx: float
+    ) -> List[np.ndarray]:
+        """保存形式での圧力項の計算"""
+        result = []
+
+        for i in range(pressure.ndim):
+            # 圧力/密度の勾配を計算
+            p_over_rho = pressure.data / density
+            grad_p_rho = np.gradient(p_over_rho, dx, axis=i)
+
+            # 負の勾配を取る（運動方程式の右辺項として）
+            result.append(-grad_p_rho)
+
+        return result
+
+    def _compute_non_conservative(
+        self, pressure: ScalarField, density: np.ndarray, dx: float
+    ) -> List[np.ndarray]:
+        """非保存形式での圧力項の計算"""
+        result = []
+
+        for i in range(pressure.ndim):
+            # 圧力勾配を計算
+            grad_p = np.gradient(pressure.data, dx, axis=i)
+
+            # 密度で割って加速度に変換
+            result.append(-grad_p / density)
+
+        return result
+
+    def _update_diagnostics(
+        self,
+        pressure: ScalarField,
+        density: np.ndarray,
+        contributions: List[np.ndarray],
+    ):
+        """診断情報を更新"""
+        # 圧力勾配の大きさを計算
+        grad_p_mag = np.sqrt(sum(np.sum(c**2) for c in contributions))
+
+        # 圧力仕事を計算
+        pressure_work = np.sum(pressure.data * np.sum(contributions))
+
+        # 診断情報を更新
+        self._diagnostics.update(
+            {
+                "formulation": "conservative"
+                if self.use_conservative
+                else "non-conservative",
+                "pressure": {
+                    "min": float(np.min(pressure.data)),
+                    "max": float(np.max(pressure.data)),
+                    "mean": float(np.mean(pressure.data)),
+                    "gradient_magnitude": float(grad_p_mag),
+                },
+                "work": float(pressure_work),
+            }
+        )
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """項の診断情報を取得"""
+        diag = super().get_diagnostics()
+        diag.update(
+            {
+                "formulation": "conservative"
+                if self.use_conservative
+                else "non-conservative",
+                "pressure": self._diagnostics.get("pressure", {}),
+                "work": self._diagnostics.get("work", 0.0),
+            }
+        )
+        return diag
+
+    def compute_timestep(
         self,
         velocity: VectorField,
         levelset: LevelSetField,
         properties: PropertiesManager,
         **kwargs,
-    ) -> Dict[str, Any]:
-        """圧力項の診断情報を取得
+    ) -> float:
+        """圧力項に基づく時間刻み幅の制限を計算
 
-        Args:
-            velocity: 速度場
-            levelset: レベルセット場
-            properties: 物性値マネージャー
-            kwargs:
-                pressure: 圧力場（オプション）
-
-        Returns:
-            診断情報を含む辞書
+        音速に基づくCFL条件を実装。
+        ただし、非圧縮性流れでは通常この制限は使用しない。
         """
+        if not self.enabled:
+            return float("inf")
+
+        # 圧力場の取得
         pressure = kwargs.get("pressure")
         if pressure is None:
-            return {"type": "pressure", "pressure_available": False}
+            return float("inf")
 
-        # 圧力勾配の大きさを計算
-        grad_p = np.array(
-            [
-                np.gradient(pressure.data, velocity.dx, axis=i)
-                for i in range(velocity.ndim)
-            ]
-        )
-        grad_p_mag = np.sqrt(np.sum(grad_p**2, axis=0))
+        # 音速の見積もり（非圧縮性近似のため、大きな値を使用）
+        density = properties.get_density(levelset)
+        c = np.sqrt(np.max(pressure.data) / np.min(density.data))
 
-        # 有効な値のみを使用
-        valid_indices = np.isfinite(grad_p_mag)
-        max_grad_p = np.max(grad_p_mag[valid_indices]) if np.any(valid_indices) else 0.0
-
-        return {
-            "type": "pressure",
-            "pressure_available": True,
-            "max_pressure": float(np.max(pressure.data)),
-            "min_pressure": float(np.min(pressure.data)),
-            "max_pressure_gradient": float(max_grad_p),
-            "pressure_l2norm": float(
-                np.sqrt(np.sum(pressure.data**2) * velocity.dx**velocity.ndim)
-            ),
-        }
+        # CFL条件に基づく時間刻み幅の制限
+        dx = velocity.dx
+        return 0.5 * dx / c

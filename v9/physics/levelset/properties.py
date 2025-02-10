@@ -46,6 +46,7 @@ class PropertiesManager:
         phase1: FluidProperties,
         phase2: FluidProperties,
         interpolation_method: Literal["arithmetic", "harmonic"] = "arithmetic",
+        reference_density: Optional[float] = None,
     ):
         """物性値マネージャーを初期化
 
@@ -53,10 +54,16 @@ class PropertiesManager:
             phase1: 第1相の物性値（Level Set関数が正の領域）
             phase2: 第2相の物性値（Level Set関数が負の領域）
             interpolation_method: 物性値の補間方法
+            reference_density: 参照密度（未指定の場合は重い方の相の密度を使用）
         """
         self.phase1 = phase1
         self.phase2 = phase2
         self.interpolation_method = interpolation_method
+
+        # 参照密度の設定（未指定の場合は重い方の相の密度を使用）
+        self._reference_density = reference_density or max(
+            phase1.density, phase2.density
+        )
 
         # 表面張力係数の設定
         self.surface_tension = None
@@ -72,6 +79,14 @@ class PropertiesManager:
 
         # キャッシュの初期化
         self._cache: Dict[str, np.ndarray] = {}
+
+    def get_reference_density(self) -> float:
+        """参照密度を取得
+
+        Returns:
+            参照密度
+        """
+        return self._reference_density
 
     def get_density(self, phi: LevelSetField) -> np.ndarray:
         """密度場を計算
@@ -188,15 +203,16 @@ class PropertiesManager:
 
         return {
             "density": {
-                "min": np.min(density),
-                "max": np.max(density),
-                "mean": np.mean(density),
+                "min": float(np.min(density)),
+                "max": float(np.max(density)),
+                "mean": float(np.mean(density)),
                 "jump": self.get_property_jump("density"),
+                "reference": float(self._reference_density),
             },
             "viscosity": {
-                "min": np.min(viscosity),
-                "max": np.max(viscosity),
-                "mean": np.mean(viscosity),
+                "min": float(np.min(viscosity)),
+                "max": float(np.max(viscosity)),
+                "mean": float(np.mean(viscosity)),
                 "jump": self.get_property_jump("viscosity"),
             },
             "surface_tension": self.surface_tension,

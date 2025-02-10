@@ -1,16 +1,18 @@
 """Poisson方程式のソルバーを提供するモジュール
 
 このモジュールは、Poisson方程式 ∇²φ = f を解くための反復法ソルバーを実装します。
-ヤコビ法とガウス・ザイデル法を提供し、境界条件との整合性を保ちます。
 """
 
 import numpy as np
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Union
+
 from core.solver import IterativeSolver
 from core.boundary import BoundaryCondition
+from .base import PoissonSolverBase, PoissonSolverConfig, PoissonSolverTerm
+from .config import PoissonSolverConfig
 
 
-class PoissonSolver(IterativeSolver):
+class PoissonSolver(PoissonSolverBase, IterativeSolver):
     """Poisson方程式の基底ソルバークラス
 
     このクラスは、Poisson方程式を解くための基本機能を提供します。
@@ -18,42 +20,56 @@ class PoissonSolver(IterativeSolver):
     """
 
     def __init__(
-        self, boundary_conditions: Optional[List[BoundaryCondition]] = None, **kwargs
+        self,
+        config: Optional[PoissonSolverConfig] = None,
+        boundary_conditions: Optional[List[BoundaryCondition]] = None,
+        terms: Optional[List[PoissonSolverTerm]] = None,
+        **kwargs,
     ):
         """Poissonソルバーを初期化
 
         Args:
+            config: ソルバー設定
             boundary_conditions: 各方向の境界条件
+            terms: 追加の項
             **kwargs: 基底クラスに渡すパラメータ
         """
-        super().__init__(name="Poisson", **kwargs)
-        self.boundary_conditions = boundary_conditions
-        self._converged = False  # 収束フラグ
-        self._residual_history = []  # 残差の履歴
+        # デフォルト設定の処理
+        config = config or PoissonSolverConfig()
+        kwargs.setdefault("name", "Poisson")
+        kwargs.setdefault("tolerance", config.convergence.get("tolerance", 1e-6))
+        kwargs.setdefault(
+            "max_iterations", config.convergence.get("max_iterations", 1000)
+        )
 
-    @property
-    def converged(self) -> bool:
-        """収束状態を取得"""
-        return self._converged
+        # 基底クラスの初期化
+        PoissonSolverBase.__init__(
+            self,
+            config=config,
+            boundary_conditions=boundary_conditions,
+            logger=kwargs.get("logger"),
+        )
+        IterativeSolver.__init__(self, **kwargs)
 
-    @property
-    def residual_history(self) -> List[float]:
-        """残差の履歴を取得"""
-        return self._residual_history.copy()
+        # 追加の項
+        self.terms = terms or []
+
+        # 収束判定フラグ
+        self._converged = False
 
     def solve(
         self,
+        rhs: np.ndarray,
         initial_solution: Optional[np.ndarray] = None,
-        rhs: Optional[np.ndarray] = None,
-        dx: float = 1.0,
+        dx: Union[float, np.ndarray] = 1.0,
         **kwargs,
     ) -> np.ndarray:
-        """Poissonソルバーを実行
+        """Poisson方程式を解く
 
         Args:
-            initial_solution: 初期推定解
             rhs: 右辺ベクトル
-            dx: グリッド間隔（スカラーまたは配列）
+            initial_solution: 初期推定解
+            dx: グリッド間隔
             **kwargs: 追加のパラメータ
 
         Returns:
@@ -64,10 +80,6 @@ class PoissonSolver(IterativeSolver):
             if initial_solution is None:
                 initial_solution = np.zeros_like(rhs)
 
-            # 右辺のセットアップ
-            if rhs is None:
-                raise ValueError("右辺ベクトルが指定されていません")
-
             # dx の正規化
             if np.isscalar(dx):
                 dx = np.full(rhs.ndim, dx)
@@ -75,13 +87,15 @@ class PoissonSolver(IterativeSolver):
                 raise ValueError(f"dxは{rhs.ndim}次元である必要があります")
 
             # 初期化処理
-            self.initialize(**kwargs)
+            self.reset()
             self._converged = False
-            self._residual_history = []
 
             # 反復解法の実行
             solution = initial_solution.copy()
             residual = float("inf")  # 初期残差
+
+            diagnostics_config = self.config.get_config_for_component("diagnostics")
+            log_frequency = diagnostics_config.get("log_frequency", 10)
 
             while self._iteration_count < self.max_iterations:
                 # 1回の反復
@@ -94,29 +108,35 @@ class PoissonSolver(IterativeSolver):
                 # 反復回数の更新
                 self._iteration_count += 1
 
+                # ログ出力
+                if self._iteration_count % log_frequency == 0 and self.logger:
+                    self.logger.info(
+                        f"反復 {self._iteration_count}: 残差 = {residual:.3e}"
+                    )
+
                 # 収束判定
                 if self.check_convergence(residual):
                     self._converged = True
-                    return new_solution
+                    break
 
                 solution = new_solution
 
-            # 最大反復回数に到達
-            if self._logger:
-                self._logger.warning(
+            # 結果の後処理
+            if not self._converged and self.logger:
+                self.logger.warning(
                     f"最大反復回数に到達: 残差 = {residual:.3e}, "
                     f"相対残差 = {residual / self._residual_history[0]:.3e}"
                 )
+
             return solution
 
         except Exception as e:
-            # エラーハンドリング
-            if self._logger:
-                self._logger.warning(f"Poissonソルバーでエラー: {e}")
+            if self.logger:
+                self.logger.error(f"Poissonソルバー実行中にエラー: {e}")
             raise
 
     def compute_residual(
-        self, solution: np.ndarray, rhs: np.ndarray, dx: np.ndarray
+        self, solution: np.ndarray, rhs: np.ndarray, dx: Union[float, np.ndarray]
     ) -> float:
         """残差を計算
 
@@ -156,16 +176,66 @@ class PoissonSolver(IterativeSolver):
         residual_norm = np.sqrt(np.mean(residual**2))
         return max(residual_norm, 1e-15)  # 最小値を保証
 
-    def initialize(self, **kwargs) -> None:
-        """ソルバーの初期化
+    def iterate(
+        self, solution: np.ndarray, rhs: np.ndarray, dx: Union[float, np.ndarray]
+    ) -> np.ndarray:
+        """デフォルトの反復計算（サブクラスでオーバーライド）
 
         Args:
-            **kwargs: 初期化パラメータ
-        """
-        super().initialize(**kwargs)
-        self._converged = False
-        self._residual_history = []
+            solution: 現在の解
+            rhs: 右辺
+            dx: グリッド間隔
 
-    def iterate(self, solution: np.ndarray, rhs: np.ndarray, dx: np.ndarray):
-        """反復計算のデフォルト実装（サブクラスでオーバーライド）"""
-        raise NotImplementedError("サブクラスで実装する必要があります")
+        Raises:
+            NotImplementedError: サブクラスで実装する必要がある
+        """
+        raise NotImplementedError("具体的な反復法はサブクラスで実装する必要があります")
+
+    def check_convergence(self, residual: float) -> bool:
+        """収束判定
+
+        Args:
+            residual: 現在の残差
+
+        Returns:
+            収束したかどうか
+        """
+        # 収束判定設定の取得
+        convergence_config = self.config.get_config_for_component("convergence")
+        relative_tolerance = convergence_config.get("relative_tolerance", False)
+
+        # 初期残差の記録（最初の呼び出し時）
+        if not self._residual_history:
+            return False
+
+        # 絶対残差または相対残差による収束判定
+        if relative_tolerance:
+            # 相対残差
+            return (
+                residual / self._residual_history[0] < self.tolerance
+                and residual < self.tolerance
+            )
+        else:
+            # 絶対残差
+            return residual < self.tolerance
+
+    def get_status(self) -> Dict[str, Any]:
+        """ソルバーの状態を取得
+
+        Returns:
+            ソルバーの状態を表す辞書
+        """
+        status = super().get_status()
+        status.update(
+            {
+                "terms_count": len(self.terms),
+                "boundary_conditions_count": len(self.boundary_conditions),
+                "config": {
+                    "convergence": self.config.get_config_for_component("convergence"),
+                    "solver_specific": self.config.get_config_for_component(
+                        "solver_specific"
+                    ),
+                },
+            }
+        )
+        return status

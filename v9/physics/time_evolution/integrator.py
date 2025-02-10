@@ -4,14 +4,12 @@
 前進Euler法やRunge-Kutta法など、様々な時間積分手法を実装します。
 """
 
-from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Protocol, Union
 
 
-class TimeIntegratorBase(ABC):
-    """時間積分の基底クラス"""
+class TimeIntegratorBase(Protocol):
+    """時間積分のプロトコル"""
 
-    @abstractmethod
     def integrate(
         self, state: Any, dt: float, derivative_fn: Callable[[Any], Any], **kwargs
     ) -> Any:
@@ -26,14 +24,14 @@ class TimeIntegratorBase(ABC):
         Returns:
             更新された状態
         """
-        pass
+        ...
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""
-        return {}
+        ...
 
 
-class ForwardEuler(TimeIntegratorBase):
+class ForwardEuler:
     """前進Euler法による時間積分"""
 
     def integrate(
@@ -53,8 +51,12 @@ class ForwardEuler(TimeIntegratorBase):
         derivative = derivative_fn(state, **kwargs)
         return state + dt * derivative
 
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """診断情報を取得"""
+        return {"method": "Forward Euler", "order": 1, "error_estimate": 0.5}
 
-class RungeKutta4(TimeIntegratorBase):
+
+class RungeKutta4:
     """4次のRunge-Kutta法による時間積分"""
 
     def integrate(
@@ -78,12 +80,16 @@ class RungeKutta4(TimeIntegratorBase):
 
         return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """診断情報を取得"""
+        return {"method": "Runge-Kutta 4", "order": 4, "error_estimate": 1 / 30}
 
-def create_integrator(integrator_type: str) -> TimeIntegratorBase:
+
+def create_integrator(integrator_type: str) -> Union[ForwardEuler, RungeKutta4]:
     """時間積分器を生成
 
     Args:
-        integrator_type: 積分器の種類（"euler" または "rk4"）
+        integrator_type: 積分器の種類（"euler", "rk4"）
 
     Returns:
         生成された時間積分器
@@ -96,7 +102,7 @@ def create_integrator(integrator_type: str) -> TimeIntegratorBase:
         "rk4": RungeKutta4,
     }
 
-    if integrator_type not in integrators:
+    if integrator_type.lower() not in integrators:
         raise ValueError(f"未対応の積分器です: {integrator_type}")
 
-    return integrators[integrator_type]()
+    return integrators[integrator_type.lower()]()
