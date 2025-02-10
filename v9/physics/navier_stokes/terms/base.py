@@ -9,8 +9,7 @@ from typing import List, Dict, Any
 import numpy as np
 
 from core.field import VectorField
-from physics.levelset import LevelSetField
-from physics.levelset.properties import PropertiesManager
+from physics.levelset import LevelSetField, LevelSetPropertiesManager
 from ..core.interfaces import NavierStokesTerm
 
 
@@ -52,7 +51,7 @@ class TermBase(NavierStokesTerm, ABC):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> List[np.ndarray]:
         """項の寄与を計算
@@ -72,7 +71,7 @@ class TermBase(NavierStokesTerm, ABC):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> float:
         """項に基づく時間刻み幅の制限を計算
@@ -115,7 +114,7 @@ class ViscousTerm(TermBase, ABC):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> float:
         """粘性による時間刻み幅の制限を計算
@@ -141,7 +140,7 @@ class AdvectiveTerm(TermBase, ABC):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> float:
         """移流による時間刻み幅の制限を計算

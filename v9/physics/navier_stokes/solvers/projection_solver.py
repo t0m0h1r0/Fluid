@@ -8,8 +8,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from physics.levelset import LevelSetField
-from physics.levelset.properties import PropertiesManager
+from physics.levelset import LevelSetField, LevelSetPropertiesManager
 from physics.poisson import PoissonSolver, SORSolver
 from ..core.base_solver import NavierStokesBase
 from ..core.interfaces import NavierStokesTerm, TimeIntegrator
@@ -27,7 +26,7 @@ class ProjectionSolver(NavierStokesBase):
     def __init__(
         self,
         terms: List[NavierStokesTerm],
-        properties: Optional[PropertiesManager] = None,
+        properties: Optional[LevelSetPropertiesManager] = None,
         time_integrator: Optional[TimeIntegrator] = None,
         poisson_solver: Optional[PoissonSolver] = None,
         use_rotational: bool = False,
@@ -69,7 +68,7 @@ class ProjectionSolver(NavierStokesBase):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> VectorField:
         """速度場の時間微分を計算

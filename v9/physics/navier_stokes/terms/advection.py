@@ -8,8 +8,7 @@ from typing import List, Dict, Any
 import numpy as np
 
 from core.field import VectorField
-from physics.levelset import LevelSetField
-from physics.levelset.properties import PropertiesManager
+from physics.levelset import LevelSetField, LevelSetPropertiesManager
 from .base import AdvectiveTerm
 
 
@@ -72,7 +71,7 @@ class AdvectionTerm(AdvectiveTerm):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> List[np.ndarray]:
         """移流項の寄与を計算

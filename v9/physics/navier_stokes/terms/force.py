@@ -7,8 +7,7 @@ from typing import List, Dict, Any, Optional, Protocol
 import numpy as np
 
 from core.field import VectorField
-from physics.levelset import LevelSetField
-from physics.levelset.properties import PropertiesManager
+from physics.levelset import LevelSetField, LevelSetPropertiesManager
 from .base import TermBase
 
 
@@ -29,7 +28,7 @@ class ForceComponent(Protocol):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> List[np.ndarray]:
         """外力の寄与を計算"""
@@ -39,7 +38,7 @@ class ForceComponent(Protocol):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> Dict[str, Any]:
         """診断情報を取得"""
@@ -80,7 +79,7 @@ class GravityForce:
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> List[np.ndarray]:
         """重力項の寄与を計算"""
@@ -110,7 +109,7 @@ class GravityForce:
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> Dict[str, Any]:
         """診断情報を取得"""
@@ -156,7 +155,7 @@ class SurfaceTensionForce:
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> List[np.ndarray]:
         """表面張力項の寄与を計算"""
@@ -199,7 +198,7 @@ class SurfaceTensionForce:
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> Dict[str, Any]:
         """診断情報を取得"""
@@ -239,7 +238,7 @@ class ForceTerm(TermBase):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> List[np.ndarray]:
         """外力項の寄与を計算"""
@@ -273,7 +272,7 @@ class ForceTerm(TermBase):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
     ):
         """外力の診断情報を更新"""
         # 総力の大きさを計算

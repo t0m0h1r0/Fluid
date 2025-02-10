@@ -9,8 +9,7 @@ from typing import Optional, Dict, Any
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from physics.levelset import LevelSetField
-from physics.levelset.properties import PropertiesManager
+from physics.levelset import LevelSetField, LevelSetPropertiesManager
 
 
 @dataclass
@@ -23,7 +22,7 @@ class NavierStokesState:
     velocity: VectorField
     pressure: ScalarField
     levelset: Optional[LevelSetField] = None
-    properties: Optional[PropertiesManager] = None
+    properties: Optional[LevelSetPropertiesManager] = None
     time: float = 0.0
 
     def copy(self) -> "NavierStokesState":
@@ -80,7 +79,7 @@ class NavierStokesState:
         state_dict: Dict[str, Any],
         shape: tuple,
         dx: float,
-        properties: Optional[PropertiesManager] = None,
+        properties: Optional[LevelSetPropertiesManager] = None,
     ) -> "NavierStokesState":
         """保存された状態から復元
 

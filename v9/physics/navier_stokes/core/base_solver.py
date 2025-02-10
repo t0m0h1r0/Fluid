@@ -8,8 +8,7 @@ from typing import Dict, Any, List, Optional
 from abc import abstractmethod
 
 from core.field import VectorField
-from physics.levelset import LevelSetField
-from physics.levelset.properties import PropertiesManager
+from physics.levelset import LevelSetField, LevelSetPropertiesManager
 from .interfaces import NavierStokesSolver, NavierStokesTerm, TimeIntegrator
 
 
@@ -20,7 +19,7 @@ class NavierStokesBase(NavierStokesSolver):
         self,
         time_integrator: TimeIntegrator,
         terms: List[NavierStokesTerm],
-        properties: Optional[PropertiesManager] = None,
+        properties: Optional[LevelSetPropertiesManager] = None,
         logger=None,
     ):
         """基底クラスを初期化
@@ -67,7 +66,7 @@ class NavierStokesBase(NavierStokesSolver):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> VectorField:
         """速度場の時間微分を計算"""

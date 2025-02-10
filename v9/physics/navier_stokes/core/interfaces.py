@@ -9,8 +9,7 @@ from typing import Protocol, Dict, Any, List, Optional
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from physics.levelset import LevelSetField
-from physics.levelset.properties import PropertiesManager
+from physics.levelset import LevelSetField, LevelSetPropertiesManager
 
 
 class NSComponent(Protocol):
@@ -34,7 +33,7 @@ class NavierStokesTerm(NSComponent, Protocol):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> List[np.ndarray]:
         """項の寄与を計算"""
@@ -45,7 +44,7 @@ class NavierStokesTerm(NSComponent, Protocol):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> float:
         """項に基づく時間刻み幅の制限を計算"""
@@ -77,7 +76,7 @@ class PressureProjection(Protocol):
         pressure: ScalarField,
         dt: float,
         levelset: Optional[LevelSetField] = None,
-        properties: Optional[PropertiesManager] = None,
+        properties: Optional[LevelSetPropertiesManager] = None,
     ) -> tuple[VectorField, ScalarField]:
         """速度場を非圧縮に投影し、圧力を更新"""
         ...

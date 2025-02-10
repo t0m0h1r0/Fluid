@@ -8,8 +8,7 @@ from typing import List, Dict, Any
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from physics.levelset import LevelSetField
-from physics.levelset.properties import PropertiesManager
+from physics.levelset import LevelSetField, LevelSetPropertiesManager
 from .base import TermBase
 
 
@@ -38,7 +37,7 @@ class PressureTerm(TermBase):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> List[np.ndarray]:
         """圧力項の寄与を計算
@@ -158,7 +157,7 @@ class PressureTerm(TermBase):
         self,
         velocity: VectorField,
         levelset: LevelSetField,
-        properties: PropertiesManager,
+        properties: LevelSetPropertiesManager,
         **kwargs,
     ) -> float:
         """圧力項に基づく時間刻み幅の制限を計算

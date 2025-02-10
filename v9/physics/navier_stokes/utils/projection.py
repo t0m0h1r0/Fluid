@@ -8,8 +8,7 @@ from typing import Optional, Tuple
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from physics.levelset import LevelSetField
-from physics.levelset.properties import PropertiesManager
+from physics.levelset import LevelSetField, LevelSetPropertiesManager
 from physics.poisson import PoissonSolver
 from ..core.interfaces import PressureProjection
 
@@ -35,7 +34,7 @@ class ClassicProjection(PressureProjection):
         pressure: ScalarField,
         dt: float,
         levelset: Optional[LevelSetField] = None,
-        properties: Optional[PropertiesManager] = None,
+        properties: Optional[LevelSetPropertiesManager] = None,
     ) -> Tuple[VectorField, ScalarField]:
         """速度場を非圧縮に投影
 
@@ -106,7 +105,7 @@ class RotationalProjection(PressureProjection):
         pressure: ScalarField,
         dt: float,
         levelset: Optional[LevelSetField] = None,
-        properties: Optional[PropertiesManager] = None,
+        properties: Optional[LevelSetPropertiesManager] = None,
     ) -> Tuple[VectorField, ScalarField]:
         """速度場を非圧縮に投影
 
