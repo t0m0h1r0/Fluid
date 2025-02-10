@@ -14,7 +14,7 @@ from .config import SimulationConfig
 
 from physics.navier_stokes import NavierStokesSolver
 from physics.levelset import LevelSetSolver
-from physics.properties import PropertiesManager
+from physics.levelset.properties import PropertiesManager
 from core.field import VectorField, ScalarField
 from physics.levelset import LevelSetField
 from pathlib import Path

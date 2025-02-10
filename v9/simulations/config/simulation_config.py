@@ -7,7 +7,7 @@ YAMLファイルから設定を読み込み、適切なデータ構造に変換�
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Union
 import yaml
-from physics.properties import FluidProperties
+from physics.levelset.properties import FluidProperties
 from pathlib import Path
 
 
