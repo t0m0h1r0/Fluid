@@ -88,7 +88,7 @@ class TwoPhaseFlowSimulator:
         # 時間発展ソルバー
         self._time_solver = TimeEvolutionSolver(
             terms=[self._ns_solver, self._ls_solver],
-            time_integrator=self.config.solver.time_integrator
+            integrator_type=self.config.solver.time_integrator
         )
 
     def initialize(self, state: Optional[SimulationState] = None):
