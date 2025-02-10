@@ -151,7 +151,7 @@ class IterativeSolver(Solver):
         )
 
     def get_status(self) -> Dict[str, Any]:
-        """ソルバーの現在の状態を取得"""
+        """ソルバーの状態を取得"""
         status = super().get_status()
         status.update(
             {
