@@ -1,34 +1,29 @@
 """二相流シミュレーションパッケージ
 
-このパッケージは、Level Set法を用いた二相流シミュレーションの機能を提供します。
+リファクタリングされたphysics/パッケージに対応した更新版
 """
 
 from .simulation import TwoPhaseFlowSimulator
 from .state import SimulationState
-from .initializer import TwoPhaseFlowInitializer
-from .config.simulation_config import (
-    SimulationConfig,
-    DomainConfig,
-    PhysicsConfig,
-    PhaseConfig,
-    SolverConfig,
-    TimeConfig,
-    ObjectConfig,
-    InitialConditionConfig,
-    OutputConfig,
-)
+from .initializer import SimulationInitializer
+from .config import SimulationConfig, DomainConfig, PhysicsConfig, \
+    PhaseConfig, SolverConfig, TimeConfig, \
+    ObjectConfig, InitialConditionConfig, OutputConfig
 
 __all__ = [
+    # メインクラス
     "TwoPhaseFlowSimulator",
-    "SimulationState",
-    "TwoPhaseFlowInitializer",
+    "SimulationState", 
+    "SimulationInitializer",
+    
+    # 設定関連クラス
     "SimulationConfig",
     "DomainConfig",
-    "PhysicsConfig",
-    "PhaseConfig",
-    "SolverConfig",
-    "TimeConfig",
-    "ObjectConfig",
-    "InitialConditionConfig",
-    "OutputConfig",
+    "PhysicsConfig", 
+    "PhaseConfig", 
+    "SolverConfig", 
+    "TimeConfig", 
+    "ObjectConfig", 
+    "InitialConditionConfig", 
+    "OutputConfig"
 ]

@@ -1,27 +1,28 @@
-"""シミュレーション状態を保持するモジュール"""
+"""シミュレーション状態を保持するモジュール
+
+リファクタリングされたphysics/パッケージに対応した更新版
+"""
 
 from dataclasses import dataclass
 from typing import Optional
-
-from core.field import VectorField, ScalarField
-from physics.levelset import LevelSetField
-from physics.levelset.properties import PropertiesManager
 import numpy as np
+
+from physics.levelset import LevelSetField, LevelSetPropertiesManager
+from core.field import VectorField, ScalarField, ConservedField
 
 
 @dataclass
 class SimulationState:
     """シミュレーションの状態を保持するクラス
 
-    流れ場と界面の情報を保持し、シミュレーション全体の
-    状態管理を担当します。
+    流れ場と界面の情報を保持し、高度な状態管理を実現
     """
 
     velocity: VectorField
     levelset: LevelSetField
     pressure: ScalarField
     time: float = 0.0
-    properties: Optional[PropertiesManager] = None
+    properties: Optional[LevelSetPropertiesManager] = None
 
     def copy(self) -> "SimulationState":
         """状態の深いコピーを作成
@@ -34,7 +35,7 @@ class SimulationState:
             levelset=self.levelset.copy(),
             pressure=self.pressure.copy(),
             time=self.time,
-            properties=self.properties,  # PropertiesManagerは共有して問題ない
+            properties=self.properties
         )
 
     def get_phase_fields(self) -> dict:
@@ -46,13 +47,9 @@ class SimulationState:
         if self.properties is None:
             return {}
 
-        # 密度場と粘性係数場を取得
-        density = self.properties.get_density(self.levelset)
-        viscosity = self.properties.get_viscosity(self.levelset)
-
         return {
-            "density": density,
-            "viscosity": viscosity,
+            "density": self.properties.compute_density(self.levelset),
+            "viscosity": self.properties.compute_viscosity(self.levelset),
         }
 
     def get_energy(self) -> dict:
@@ -62,22 +59,39 @@ class SimulationState:
             エネルギー関連の値の辞書
         """
         # 運動エネルギー
-        kinetic_energy = 0.0
-        for component in self.velocity.components:
-            kinetic_energy += 0.5 * np.sum(component.data**2)
+        kinetic_energy = sum(
+            0.5 * np.sum(comp.data**2) 
+            for comp in self.velocity.components
+        )
 
         # 位置エネルギー（重力による）
+        potential_energy = 0.0
         if self.properties is not None:
-            density = self.properties.get_density(self.levelset)
+            density = self.properties.compute_density(self.levelset)
             g = 9.81  # 重力加速度
             z = np.linspace(0, 1, self.levelset.shape[2])
-            Z = np.tile(z, (self.levelset.shape[0], self.levelset.shape[1], 1))
-            potential_energy = np.sum(density * g * Z)
-        else:
-            potential_energy = 0.0
+            potential_energy = np.sum(density * g * z)
 
         return {
             "kinetic": float(kinetic_energy),
             "potential": float(potential_energy),
             "total": float(kinetic_energy + potential_energy),
+        }
+
+    def compute_conservation(self) -> dict:
+        """保存則の評価
+
+        Returns:
+            各物理量の保存則評価結果
+        """
+        conserved_vars = {
+            "mass": ConservedField(self.properties.compute_density(self.levelset)),
+            "momentum": ConservedField(
+                sum(v.data for v in self.velocity.components)
+            )
+        }
+
+        return {
+            var: field.conservation_error 
+            for var, field in conserved_vars.items()
         }
