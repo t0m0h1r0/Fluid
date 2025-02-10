@@ -9,7 +9,7 @@
             "name": "Python デバッガー: 現在のファイル",
             "type": "debugpy",
             "request": "launch",
-            "program": "main.py",
+            "program": "main2.py",
             "console": "integratedTerminal",
             "args": ["--config", "config.yaml"]
         }

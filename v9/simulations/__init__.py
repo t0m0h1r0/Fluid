@@ -3,7 +3,7 @@
 このパッケージは、Level Set法を用いた二相流シミュレーションの機能を提供します。
 """
 
-from .simulation import TwoPhaseFlowSimulation
+from .simulation import TwoPhaseFlowSimulator
 from .state import SimulationState
 from .initializer import TwoPhaseFlowInitializer
 from .config.simulation_config import (
@@ -19,7 +19,7 @@ from .config.simulation_config import (
 )
 
 __all__ = [
-    "TwoPhaseFlowSimulation",
+    "TwoPhaseFlowSimulator",
     "SimulationState",
     "TwoPhaseFlowInitializer",
     "SimulationConfig",

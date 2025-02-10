@@ -27,11 +27,11 @@ boundary_conditions:
     left: periodic
     right: periodic
   y: 
-    bottom: periodic
-    top: periodic
-  z: 
     front: periodic
     back: periodic
+  z: 
+    bottom: neumann
+    top: neumann
 
 # 初期条件
 initial_conditions:

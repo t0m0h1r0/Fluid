@@ -13,16 +13,11 @@
 │   │   ├── field.py
 │   │   ├── scalar.py
 │   │   └── vector.py
-│   ├── solver
-│   │   ├── __init__.py
-│   │   ├── base.py
-│   │   ├── iterative.py
-│   │   └── temporal.py
-│   └── time_evolution
+│   └── solver
 │       ├── __init__.py
 │       ├── base.py
-│       ├── integrator.py
-│       └── solver.py
+│       ├── iterative.py
+│       └── temporal.py
 ├── logger
 │   ├── __init__.py
 │   ├── config.py
@@ -34,18 +29,23 @@
 ├── physics
 │   ├── levelset
 │   │   ├── __init__.py
-│   │   ├── extend.py
+│   │   ├── base.py
+│   │   ├── config.py
 │   │   ├── field.py
+│   │   ├── properties.py
 │   │   ├── reinitialize.py
 │   │   ├── solver.py
 │   │   └── utils.py
 │   ├── navier_stokes
 │   │   ├── __init__.py
-│   │   ├── base.py
-│   │   ├── base_term.py
-│   │   ├── pressure_rhs.py
-│   │   ├── projection.py
-│   │   ├── solver.py
+│   │   ├── core
+│   │   │   ├── base_solver.py
+│   │   │   ├── interfaces.py
+│   │   │   └── state.py
+│   │   ├── solvers
+│   │   │   ├── __init__.py
+│   │   │   ├── basic_solver.py
+│   │   │   └── projection_solver.py
 │   │   ├── terms
 │   │   │   ├── __init__.py
 │   │   │   ├── advection.py
@@ -53,13 +53,31 @@
 │   │   │   ├── diffusion.py
 │   │   │   ├── force.py
 │   │   │   └── pressure.py
-│   │   └── timestepping.py
+│   │   └── utils
+│   │       ├── __init__.py
+│   │       ├── projection.py
+│   │       └── time_integration.py
 │   ├── poisson
 │   │   ├── __init__.py
-│   │   ├── solver.py
-│   │   └── sor.py
-│   └── properties.py
+│   │   ├── base.py
+│   │   ├── config.py
+│   │   ├── methods
+│   │   │   └── sor.py
+│   │   └── solver.py
+│   ├── time_evolution
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── integrator.py
+│   │   ├── methods
+│   │   │   ├── __init__.py
+│   │   │   ├── euler.py
+│   │   │   └── runge_kutta.py
+│   │   └── solver.py
+│   └── utils
 ├── results
+│   └── visualization
+│       └── logs
+│           └── simulation.log
 ├── simulations
 │   ├── __init__.py
 │   ├── config
@@ -89,4 +107,4 @@
     │   └── colormap.py
     └── visualizer.py
 
-19 directories, 71 files
+27 directories, 81 files
