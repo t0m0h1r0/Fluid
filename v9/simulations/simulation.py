@@ -4,8 +4,8 @@
 """
 
 from typing import Dict, Any, Tuple, Optional
-from datetime import datetime
 from pathlib import Path
+import numpy as np
 
 from physics.levelset import LevelSetPropertiesManager, LevelSetSolver
 from physics.navier_stokes import solvers, terms
@@ -113,32 +113,95 @@ class TwoPhaseFlowSimulator:
         """
         return self._time_solver.step_forward()
 
-    def save_checkpoint(self, filepath: Optional[str] = None):
-        """チェックポイントを保存
+    def save_checkpoint(self, filepath: str):
+        """シミュレーション状態をチェックポイントとして保存
 
         Args:
-            filepath: 保存先パス（指定されない場合は自動生成）
+            filepath: 保存先のファイルパス
         """
-        # デフォルトのチェックポイントパスを生成
-        if filepath is None:
-            output_dir = Path(self.config.output_dir) / "checkpoints"
-            output_dir.mkdir(parents=True, exist_ok=True)
+        # チェックポイントディレクトリを作成
+        output_dir = Path(filepath).parent
+        output_dir.mkdir(parents=True, exist_ok=True)
 
-            # タイムスタンプを使用したファイル名
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filepath = str(output_dir / f"checkpoint_{timestamp}.npz")
+        # 現在の状態を取得
+        state, diagnostics = self.get_state()
 
-        self._time_solver.save_checkpoint(filepath)
+        # NumPyを使用してチェックポイントを保存
+        np.savez(
+            filepath,
+            velocity_components=[v.data for v in state.velocity.components],
+            velocity_shape=state.velocity.shape,
+            velocity_dx=state.velocity.dx,
+            levelset_data=state.levelset.data,
+            levelset_shape=state.levelset.shape,
+            levelset_dx=state.levelset.dx,
+            pressure_data=state.pressure.data,
+            pressure_shape=state.pressure.shape,
+            pressure_dx=state.pressure.dx,
+            simulation_time=state.time,
+            # 追加のメタデータ
+            diagnostics=diagnostics,
+        )
 
         # ロギング
         if self.logger:
             self.logger.info(f"チェックポイントを保存: {filepath}")
 
     def load_checkpoint(self, filepath: str):
-        """チェックポイントから復元
+        """チェックポイントから状態を復元
 
         Args:
-            filepath: チェックポイントファイルのパス
+            filepath: 読み込むチェックポイントファイルのパス
+
+        Returns:
+            復元された状態
         """
-        checkpoint_state = self._time_solver.load_checkpoint(filepath)
-        self.initialize(checkpoint_state)
+        try:
+            # チェックポイントファイルを読み込み
+            with np.load(filepath, allow_pickle=True) as checkpoint:
+                # 速度場の復元
+                from core.field import VectorField
+
+                velocity = VectorField(
+                    tuple(checkpoint["velocity_shape"]), checkpoint["velocity_dx"]
+                )
+                for i, comp in enumerate(velocity.components):
+                    comp.data = checkpoint["velocity_components"][i]
+
+                # レベルセット場の復元
+                from physics.levelset import LevelSetField
+
+                levelset = LevelSetField(
+                    tuple(checkpoint["levelset_shape"]), checkpoint["levelset_dx"]
+                )
+                levelset.data = checkpoint["levelset_data"]
+
+                # 圧力場の復元
+                from core.field import ScalarField
+
+                pressure = ScalarField(
+                    tuple(checkpoint["pressure_shape"]), checkpoint["pressure_dx"]
+                )
+                pressure.data = checkpoint["pressure_data"]
+
+                # シミュレーション状態の復元
+                from .state import SimulationState
+
+                state = SimulationState(
+                    velocity=velocity,
+                    levelset=levelset,
+                    pressure=pressure,
+                    time=float(checkpoint["simulation_time"]),
+                    properties=self._properties,
+                )
+
+                # ロギング
+                if self.logger:
+                    self.logger.info(f"チェックポイントから復元: {filepath}")
+
+                return state
+
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"チェックポイントの読み込み中にエラー: {e}")
+            raise
