@@ -1,12 +1,7 @@
-"""Level Set法パッケージ
-
-このパッケージは、Level Set法による界面追跡のための機能を提供します。
-"""
-
-from .base import LevelSetTerm, LevelSetTermBase, LevelSetSolverBase
-from .properties import PhaseProperties, FluidPhaseProperties, LevelSetPropertiesManager
 from .field import LevelSetField, LevelSetParameters
-from .solver import LevelSetSolver
+from .method import LevelSetMethod
+from .initializer import LevelSetInitializer
+from .reinitializer import reinitialize_levelset
 from .utils import (
     heaviside,
     delta,
@@ -15,28 +10,21 @@ from .utils import (
     compute_area,
     extend_velocity,
 )
-from .reinitialize import reinitialize_levelset
+from .operations import LevelSetOperations
 
 __all__ = [
-    # 基底クラスとインターフェース
-    "LevelSetTerm",
-    "LevelSetTermBase",
-    "LevelSetSolverBase",
-    # プロパティ関連
-    "PhaseProperties",
-    "FluidPhaseProperties",
-    "LevelSetPropertiesManager",
-    # フィールドクラス
+    # クラス
     "LevelSetField",
     "LevelSetParameters",
-    # ソルバー
-    "LevelSetSolver",
-    # ユーティリティ関数
+    "LevelSetMethod",
+    "LevelSetInitializer",
+    "LevelSetOperations",
+    # 関数
+    "reinitialize_levelset",
     "heaviside",
     "delta",
     "compute_curvature",
     "compute_volume",
     "compute_area",
     "extend_velocity",
-    "reinitialize_levelset",
 ]
