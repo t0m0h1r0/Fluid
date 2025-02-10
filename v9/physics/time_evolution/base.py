@@ -101,10 +101,11 @@ class TimeEvolutionBase:
         """
         pass
 
-    def initialize(self, **kwargs) -> None:
+    def initialize(self, state: Any = None, **kwargs) -> None:
         """初期化処理
 
         Args:
+            state: 初期状態（オプション）
             **kwargs: 初期化に必要なパラメータ
         """
         # 時間と反復回数のリセット
