@@ -102,6 +102,19 @@ class TwoPhaseFlowSimulator:
             state = initializer.create_initial_state()
 
         self._time_solver.initialize(state)
+        self._current_state = state  # 現在の状態を保持
+
+    def get_state(self) -> Tuple[SimulationState, Dict[str, Any]]:
+        """現在のシミュレーション状態を取得
+
+        Returns:
+            現在の状態と診断情報のタプル
+        """
+        return self._current_state, {
+            "time": self._time_solver.time,
+            "dt": self._time_solver.dt,
+            "iteration": self._time_solver.iteration_count
+        }
 
     def step_forward(self) -> Tuple[SimulationState, Dict[str, Any]]:
         """1時間ステップを進める
