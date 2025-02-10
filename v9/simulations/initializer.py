@@ -19,9 +19,9 @@ class SimulationInitializer:
     """二相流シミュレーションの初期化クラス"""
 
     def __init__(
-        self, 
-        config: SimulationConfig, 
-        properties: Optional[LevelSetPropertiesManager] = None
+        self,
+        config: SimulationConfig,
+        properties: Optional[LevelSetPropertiesManager] = None,
     ):
         """初期化クラスを初期化
 
@@ -32,7 +32,7 @@ class SimulationInitializer:
         self.config = config
         self.properties = properties or LevelSetPropertiesManager(
             phase1=config.phases["water"].to_properties(),
-            phase2=config.phases["nitrogen"].to_properties()
+            phase2=config.phases["nitrogen"].to_properties(),
         )
 
     def create_initial_state(self) -> SimulationState:
@@ -55,14 +55,10 @@ class SimulationInitializer:
             velocity=velocity,
             levelset=levelset,
             pressure=pressure,
-            properties=self.properties
+            properties=self.properties,
         )
 
-    def _initialize_velocity(
-        self, 
-        shape: Tuple[int, ...], 
-        dx: float
-    ) -> VectorField:
+    def _initialize_velocity(self, shape: Tuple[int, ...], dx: float) -> VectorField:
         """速度場を初期化
 
         Args:
@@ -73,7 +69,7 @@ class SimulationInitializer:
             初期化された速度場
         """
         velocity = VectorField(shape, dx)
-        
+
         # 初期速度設定
         vel_config = self.config.initial_condition.velocity
         if vel_config.get("type", "zero") == "uniform":
@@ -84,11 +80,7 @@ class SimulationInitializer:
 
         return velocity
 
-    def _initialize_levelset(
-        self, 
-        shape: Tuple[int, ...], 
-        dx: float
-    ) -> LevelSetField:
+    def _initialize_levelset(self, shape: Tuple[int, ...], dx: float) -> LevelSetField:
         """レベルセット場を初期化
 
         Args:
@@ -99,9 +91,7 @@ class SimulationInitializer:
             初期化されたレベルセット場
         """
         levelset = LevelSetField(
-            shape, 
-            dx, 
-            params=LevelSetParameters(**self.config.solver.level_set)
+            shape, dx, params=LevelSetParameters(**self.config.solver.level_set)
         )
 
         # 背景水層の初期化
@@ -117,11 +107,7 @@ class SimulationInitializer:
 
         return levelset
 
-    def _initialize_object(
-        self, 
-        levelset: LevelSetField, 
-        obj: ObjectConfig
-    ):
+    def _initialize_object(self, levelset: LevelSetField, obj: ObjectConfig):
         """オブジェクトを初期化
 
         Args:
@@ -140,25 +126,19 @@ class SimulationInitializer:
 
             # 球の距離関数を計算
             dist = np.sqrt(
-                (X - center[0])**2 + 
-                (Y - center[1])**2 + 
-                (Z - center[2])**2
+                (X - center[0]) ** 2 + (Y - center[1]) ** 2 + (Z - center[2]) ** 2
             )
 
             # レベルセット場を更新
             phi_sphere = dist - radius
             phi_sphere *= -1 if obj.phase == "water" else 1
-            
+
             if obj.phase == "water":
                 levelset.data = np.minimum(levelset.data, phi_sphere)
             else:
                 levelset.data = np.maximum(levelset.data, phi_sphere)
 
-    def _initialize_pressure(
-        self, 
-        shape: Tuple[int, ...], 
-        dx: float
-    ) -> ScalarField:
+    def _initialize_pressure(self, shape: Tuple[int, ...], dx: float) -> ScalarField:
         """静水圧分布を初期化
 
         Args:
@@ -181,7 +161,7 @@ class SimulationInitializer:
         # 高さ方向に静水圧分布を設定
         z = np.linspace(0, 1, shape[2])
         Z = np.tile(z, (shape[0], shape[1], 1))
-        
+
         pressure.data = density * g * (1.0 - Z)
 
         return pressure

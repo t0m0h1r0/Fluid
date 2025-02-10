@@ -131,7 +131,9 @@ class SORSolver(PoissonSolver):
                 gauss_seidel = (dx_squared * rhs[mask] + neighbors_sum[mask]) / (
                     2 * result.ndim
                 )
-                result[mask] = (1 - self.omega) * result[mask] + self.omega * gauss_seidel
+                result[mask] = (1 - self.omega) * result[
+                    mask
+                ] + self.omega * gauss_seidel
 
         else:
             # 通常のSOR反復

@@ -13,6 +13,7 @@ from physics.levelset import FluidPhaseProperties
 @dataclass
 class DomainConfig:
     """計算領域の設定"""
+
     dimensions: List[int]
     size: List[float]
 
@@ -29,6 +30,7 @@ class DomainConfig:
 @dataclass
 class PhysicsConfig:
     """物理パラメータの設定"""
+
     gravity: float = 9.81
     surface_tension: float = 0.072
 
@@ -36,6 +38,7 @@ class PhysicsConfig:
 @dataclass
 class PhaseConfig:
     """各相の物性値設定"""
+
     density: float
     viscosity: float
     surface_tension: Optional[float] = None
@@ -45,13 +48,14 @@ class PhaseConfig:
         return FluidPhaseProperties(
             density=self.density,
             viscosity=self.viscosity,
-            surface_tension=self.surface_tension
+            surface_tension=self.surface_tension,
         )
 
 
 @dataclass
 class SolverConfig:
     """ソルバーの設定"""
+
     time_integrator: str = "rk4"
     use_weno: bool = True
     weno_order: int = 5
@@ -75,6 +79,7 @@ class SolverConfig:
 @dataclass
 class TimeConfig:
     """時間発展の設定"""
+
     max_time: float
     cfl: float = 0.5
     min_dt: float = 1e-6
@@ -85,6 +90,7 @@ class TimeConfig:
 @dataclass
 class ObjectConfig:
     """物体の設定"""
+
     type: str
     phase: str
     center: List[float]
@@ -94,6 +100,7 @@ class ObjectConfig:
 @dataclass
 class InitialConditionConfig:
     """初期条件の設定"""
+
     background_layer: Optional[float] = None
     objects: List[ObjectConfig] = field(default_factory=list)
     velocity: Dict[str, Any] = field(default_factory=lambda: {"type": "zero"})
@@ -102,6 +109,7 @@ class InitialConditionConfig:
 @dataclass
 class OutputConfig:
     """出力の設定"""
+
     directory: str = "results/visualization"
     output_dir: str = "results/visualization"
     format: str = "png"
@@ -110,7 +118,7 @@ class OutputConfig:
     show_colorbar: bool = True
     show_axes: bool = True
     show_grid: bool = False
-    
+
     fields: Dict[str, Dict[str, Any]] = field(
         default_factory=lambda: {
             "velocity": {"enabled": False, "plot_types": ["vector"]},
@@ -132,13 +140,19 @@ class OutputConfig:
 @dataclass
 class SimulationConfig:
     """シミュレーション全体の設定"""
+
     domain: DomainConfig
     physics: PhysicsConfig
     phases: Dict[str, PhaseConfig]
     solver: SolverConfig
     time: TimeConfig
     initial_condition: InitialConditionConfig
-    output: OutputConfig
+    output: OutputConfig = field(default_factory=OutputConfig)
+
+    @property
+    def output_dir(self) -> str:
+        """出力ディレクトリを取得"""
+        return self.output.directory
 
     @classmethod
     def from_yaml(cls, filepath: str) -> "SimulationConfig":
@@ -157,26 +171,29 @@ class SimulationConfig:
             domain=DomainConfig(**config_dict.get("domain", {})),
             physics=PhysicsConfig(**config_dict.get("physics", {})),
             phases={
-                name: PhaseConfig(**props) 
+                name: PhaseConfig(**props)
                 for name, props in config_dict.get("phases", {}).items()
             },
             solver=SolverConfig(**config_dict.get("solver", {})),
             time=TimeConfig(
                 max_time=config_dict.get("time", {}).get("max_time", 1.0),
-                save_interval=config_dict.get("time", {}).get("save_interval", 0.1)
+                save_interval=config_dict.get("time", {}).get("save_interval", 0.1),
             ),
             initial_condition=InitialConditionConfig(
                 background_layer=config_dict.get("initial_conditions", {})
-                    .get("background", {}).get("height_fraction"),
+                .get("background", {})
+                .get("height_fraction"),
                 objects=[
-                    ObjectConfig(**obj) 
-                    for obj in config_dict.get("initial_conditions", {})
-                        .get("objects", [])
+                    ObjectConfig(**obj)
+                    for obj in config_dict.get("initial_conditions", {}).get(
+                        "objects", []
+                    )
                 ],
-                velocity=config_dict.get("initial_conditions", {})
-                    .get("velocity", {"type": "zero"})
+                velocity=config_dict.get("initial_conditions", {}).get(
+                    "velocity", {"type": "zero"}
+                ),
             ),
-            output=OutputConfig(**config_dict.get("output", {}))
+            output=OutputConfig(**config_dict.get("output", {})),
         )
 
     def save(self, filepath: str):

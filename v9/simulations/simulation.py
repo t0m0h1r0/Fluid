@@ -4,6 +4,8 @@
 """
 
 from typing import Dict, Any, Tuple, Optional
+from datetime import datetime
+from pathlib import Path
 
 from physics.levelset import LevelSetPropertiesManager, LevelSetSolver
 from physics.navier_stokes import solvers, terms
@@ -22,11 +24,7 @@ class TwoPhaseFlowSimulator:
     高度な二相流シミュレーションを実現
     """
 
-    def __init__(
-        self, 
-        config: SimulationConfig, 
-        logger=None
-    ):
+    def __init__(self, config: SimulationConfig, logger=None):
         """シミュレーションを初期化
 
         Args:
@@ -50,18 +48,14 @@ class TwoPhaseFlowSimulator:
         # 移流項
         advection_term = terms.AdvectionTerm(
             use_weno=self.config.solver.use_weno,
-            weno_order=self.config.solver.weno_order
+            weno_order=self.config.solver.weno_order,
         )
 
         # 粘性項
-        diffusion_term = terms.DiffusionTerm(
-            use_conservative=True
-        )
+        diffusion_term = terms.DiffusionTerm(use_conservative=True)
 
         # 外力項（重力など）
-        gravity_force = terms.GravityForce(
-            gravity=self.config.physics.gravity
-        )
+        gravity_force = terms.GravityForce(gravity=self.config.physics.gravity)
         force_term = terms.ForceTerm(forces=[gravity_force])
 
         # 圧力項
@@ -69,26 +63,21 @@ class TwoPhaseFlowSimulator:
 
         # Navier-Stokesソルバーの設定
         self._ns_solver = solvers.ProjectionSolver(
-            terms=[
-                advection_term, 
-                diffusion_term, 
-                force_term, 
-                pressure_term
-            ],
+            terms=[advection_term, diffusion_term, force_term, pressure_term],
             properties=self._properties,
-            use_rotational=True
+            use_rotational=True,
         )
 
         # Level Setソルバーの設定
         self._ls_solver = LevelSetSolver(
             use_weno=self.config.solver.use_weno,
-            weno_order=self.config.solver.weno_order
+            weno_order=self.config.solver.weno_order,
         )
 
         # 時間発展ソルバー
         self._time_solver = TimeEvolutionSolver(
             terms=[self._ns_solver, self._ls_solver],
-            integrator_type=self.config.solver.time_integrator
+            integrator_type=self.config.solver.time_integrator,
         )
 
     def initialize(self, state: Optional[SimulationState] = None):
@@ -113,7 +102,7 @@ class TwoPhaseFlowSimulator:
         return self._current_state, {
             "time": self._time_solver.time,
             "dt": self._time_solver.dt,
-            "iteration": self._time_solver.iteration_count
+            "iteration": self._time_solver.iteration_count,
         }
 
     def step_forward(self) -> Tuple[SimulationState, Dict[str, Any]]:
@@ -124,13 +113,26 @@ class TwoPhaseFlowSimulator:
         """
         return self._time_solver.step_forward()
 
-    def save_checkpoint(self, filepath: str):
+    def save_checkpoint(self, filepath: Optional[str] = None):
         """チェックポイントを保存
 
         Args:
-            filepath: 保存先パス
+            filepath: 保存先パス（指定されない場合は自動生成）
         """
+        # デフォルトのチェックポイントパスを生成
+        if filepath is None:
+            output_dir = Path(self.config.output_dir) / "checkpoints"
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            # タイムスタンプを使用したファイル名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filepath = str(output_dir / f"checkpoint_{timestamp}.npz")
+
         self._time_solver.save_checkpoint(filepath)
+
+        # ロギング
+        if self.logger:
+            self.logger.info(f"チェックポイントを保存: {filepath}")
 
     def load_checkpoint(self, filepath: str):
         """チェックポイントから復元

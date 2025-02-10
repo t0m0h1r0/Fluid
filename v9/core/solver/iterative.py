@@ -16,12 +16,7 @@ class IterativeSolver(Solver):
     機能を提供します。
     """
 
-    def __init__(
-        self, 
-        name: str, 
-        omega: float = 1.0, 
-        **kwargs
-    ):
+    def __init__(self, name: str, omega: float = 1.0, **kwargs):
         """反復法ソルバーを初期化
 
         Args:

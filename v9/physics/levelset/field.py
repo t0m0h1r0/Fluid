@@ -66,19 +66,21 @@ class LevelSetField:
         """Level Set関数のデータを取得"""
         return self._data
 
-    @data.setter 
+    @data.setter
     def data(self, value: np.ndarray):
         """Level Set関数のデータを設定
 
         Args:
             value: 設定するデータ配列
-        
+
         Raises:
             ValueError: データの形状が不一致の場合
         """
         if isinstance(value, np.ndarray):
             if value.shape != self._data.shape:
-                raise ValueError(f"形状が一致しません: {value.shape} != {self._data.shape}")
+                raise ValueError(
+                    f"形状が一致しません: {value.shape} != {self._data.shape}"
+                )
             self._data = value.copy()
         else:
             self._data = np.asarray(value)

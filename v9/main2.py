@@ -24,7 +24,7 @@ def parse_args():
 def setup_logging(config: SimulationConfig, debug: bool) -> SimulationLogger:
     """ロギングを設定"""
     log_level = "debug" if debug else "info"
-    log_dir = Path(config.output.directory) / "logs"
+    log_dir = Path(config.output_dir) / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     return SimulationLogger("TwoPhaseFlow", LogConfig(level=log_level, log_dir=log_dir))
 
@@ -36,13 +36,13 @@ def initialize_simulation(
 ) -> TwoPhaseFlowSimulator:
     """シミュレーションを初期化"""
     # 出力ディレクトリの作成
-    output_dir = Path(config.output.directory)
+    output_dir = Path(config.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if checkpoint:
         logger.info(f"チェックポイントから再開: {checkpoint}")
         sim = TwoPhaseFlowSimulator(config, logger)
-        sim.load_checkpoint()
+        sim.load_checkpoint(str(checkpoint))
         return sim
     else:
         logger.info("新規シミュレーションを開始")
@@ -72,7 +72,12 @@ def main():
         # 初期状態の可視化と保存
         state, _ = sim.get_state()
         visualize_simulation_state(state, config, timestamp=0.0)
-        sim.save_checkpoint()
+
+        # 初期チェックポイントを保存（オプション）
+        output_dir = Path(config.output_dir) / "checkpoints"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        initial_checkpoint = output_dir / "initial_checkpoint.npz"
+        sim.save_checkpoint(str(initial_checkpoint))
 
         # シミュレーションパラメータ
         save_interval = config.time.save_interval
@@ -95,7 +100,14 @@ def main():
                     visualize_simulation_state(
                         state, config, timestamp=step_info["time"]
                     )
-                    sim.save_checkpoint()
+
+                    # チェックポイントを保存
+                    output_dir = Path(config.output_dir) / "checkpoints"
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    checkpoint_filename = f"checkpoint_{step_info['time']:.4f}.npz"
+                    checkpoint_path = output_dir / checkpoint_filename
+                    sim.save_checkpoint(str(checkpoint_path))
+
                     next_save_time += save_interval
 
                 # 進捗の出力

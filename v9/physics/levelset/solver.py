@@ -20,7 +20,7 @@ class LevelSetSolver(LevelSetSolverBase):
         config: Optional[Dict[str, Any]] = None,
         terms: Optional[List[LevelSetTerm]] = None,
         logger=None,
-        **kwargs  # 追加のキーワード引数を許可
+        **kwargs,  # 追加のキーワード引数を許可
     ):
         """ソルバーを初期化
 
@@ -34,15 +34,15 @@ class LevelSetSolver(LevelSetSolverBase):
         config = config or {}
 
         # キーワード引数から空間離散化パラメータを抽出
-        use_weno = kwargs.get('use_weno', config.get('discretization', {}).get('scheme', 'weno') == 'weno')
-        weno_order = kwargs.get('weno_order', config.get('discretization', {}).get('order', 5))
+        use_weno = kwargs.get(
+            "use_weno", config.get("discretization", {}).get("scheme", "weno") == "weno"
+        )
+        weno_order = kwargs.get(
+            "weno_order", config.get("discretization", {}).get("order", 5)
+        )
 
         # 基底クラスの初期化
-        super().__init__(
-            use_weno=use_weno,
-            weno_order=weno_order,
-            logger=logger
-        )
+        super().__init__(use_weno=use_weno, weno_order=weno_order, logger=logger)
 
         # 項の設定
         self.terms = terms or []

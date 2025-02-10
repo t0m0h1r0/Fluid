@@ -60,7 +60,7 @@ numerical:
     reinit_steps: 2
 
 # 可視化設定
-visualization:
+output:
   output_dir: "results/visualization"
   format: "png"  # 出力フォーマット
   dpi: 300       # 解像度

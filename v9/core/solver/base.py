@@ -22,7 +22,7 @@ class Solver(ABC):
         tolerance: float = 1e-6,
         max_iterations: int = 1000,
         logger=None,
-        **extra_kwargs  # 追加のキーワード引数を許可
+        **extra_kwargs,  # 追加のキーワード引数を許可
     ):
         """ソルバーを初期化
 

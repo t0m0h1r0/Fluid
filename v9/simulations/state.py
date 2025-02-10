@@ -35,7 +35,7 @@ class SimulationState:
             levelset=self.levelset.copy(),
             pressure=self.pressure.copy(),
             time=self.time,
-            properties=self.properties
+            properties=self.properties,
         )
 
     def get_phase_fields(self) -> dict:
@@ -60,8 +60,7 @@ class SimulationState:
         """
         # 運動エネルギー
         kinetic_energy = sum(
-            0.5 * np.sum(comp.data**2) 
-            for comp in self.velocity.components
+            0.5 * np.sum(comp.data**2) for comp in self.velocity.components
         )
 
         # 位置エネルギー（重力による）
@@ -86,12 +85,7 @@ class SimulationState:
         """
         conserved_vars = {
             "mass": ConservedField(self.properties.compute_density(self.levelset)),
-            "momentum": ConservedField(
-                sum(v.data for v in self.velocity.components)
-            )
+            "momentum": ConservedField(sum(v.data for v in self.velocity.components)),
         }
 
-        return {
-            var: field.conservation_error 
-            for var, field in conserved_vars.items()
-        }
+        return {var: field.conservation_error for var, field in conserved_vars.items()}
