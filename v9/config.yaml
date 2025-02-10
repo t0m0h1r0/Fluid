@@ -50,6 +50,7 @@ initial_conditions:
 
 # 数値スキーム
 numerical:
+  time_integrator: "rk4"  # または "euler"
   max_time: 2.0
   initial_dt: 0.001
   save_interval: 0.01

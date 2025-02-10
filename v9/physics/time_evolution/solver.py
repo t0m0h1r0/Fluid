@@ -15,23 +15,23 @@ class TimeEvolutionSolver(TimeEvolutionBase):
 
     def __init__(
         self,
-        config: Optional[TimeEvolutionConfig] = None,
         terms: Optional[List[TimeEvolutionTerm]] = None,
         integrator_type: str = "rk4",
         cfl: float = 0.5,
         min_dt: float = 1e-6,
         max_dt: float = 1.0,
+        config: Optional[TimeEvolutionConfig] = None,
         logger=None,
     ):
         """ソルバーを初期化
 
         Args:
-            config: 時間発展設定
             terms: 時間発展方程式の各項
             integrator_type: 時間積分器の種類
             cfl: CFL数
             min_dt: 最小時間刻み幅
             max_dt: 最大時間刻み幅
+            config: 時間発展設定
             logger: ロガー
         """
         super().__init__(config, logger)
@@ -118,7 +118,7 @@ class TimeEvolutionSolver(TimeEvolutionBase):
 
             # 時間積分の実行
             new_state = self.integrator.integrate(
-                state=state, dt=dt, derivative_fn=self.compute_derivative, **kwargs
+                dt=dt, derivative_fn=self.compute_derivative, state=state, **kwargs
             )
 
             # 反復回数と時刻の更新
