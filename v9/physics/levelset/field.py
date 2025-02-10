@@ -4,7 +4,7 @@
 """
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 import numpy as np
 
 from .utils import (
@@ -36,19 +36,24 @@ class LevelSetField:
 
     def __init__(
         self,
-        data: np.ndarray,
+        shape: Union[Tuple[int, ...], np.ndarray],
         dx: float = 1.0,
         params: Optional[LevelSetParameters] = None,
     ):
         """Level Set場を初期化
 
         Args:
-            data: Level Set関数のデータ
+            shape: グリッドの形状またはデータ配列
             dx: グリッド間隔
             params: Level Setパラメータ
         """
-        # データと設定の初期化
-        self._data = data.copy()
+        # shapeがタプルの場合は新しい配列を作成
+        if isinstance(shape, tuple):
+            self._data = np.zeros(shape)
+        # ndarrayの場合はコピーを作成
+        else:
+            self._data = shape.copy()
+
         self._dx = dx
         self.params = params or LevelSetParameters()
 
@@ -60,6 +65,23 @@ class LevelSetField:
     def data(self) -> np.ndarray:
         """Level Set関数のデータを取得"""
         return self._data
+
+    @data.setter 
+    def data(self, value: np.ndarray):
+        """Level Set関数のデータを設定
+
+        Args:
+            value: 設定するデータ配列
+        
+        Raises:
+            ValueError: データの形状が不一致の場合
+        """
+        if isinstance(value, np.ndarray):
+            if value.shape != self._data.shape:
+                raise ValueError(f"形状が一致しません: {value.shape} != {self._data.shape}")
+            self._data = value.copy()
+        else:
+            self._data = np.asarray(value)
 
     @property
     def shape(self) -> Tuple[int, ...]:
