@@ -4,9 +4,9 @@
 ための高精度な数値計算手法を実装します。
 """
 
+from typing import Optional
 import numpy as np
 from scipy.ndimage import gaussian_filter
-from typing import List, Optional
 
 from .field import LevelSetField
 from .utils import delta
@@ -34,22 +34,21 @@ def reinitialize_levelset(
     n_steps = n_steps or levelset.params.reinit_steps
 
     # 初期の符号を保存
-    result = levelset.copy()
-    original_sign = np.sign(result.data)
+    original_sign = np.sign(levelset.data)
 
     # 再初期化手法の選択
     if method == "fast_marching":
-        result.data = _fast_marching_reinit(
-            result.data,
-            result.dx,
+        new_data = _fast_marching_reinit(
+            levelset.data,
+            levelset.dx,
             dt=dt,
             n_steps=n_steps,
             epsilon=levelset.params.epsilon,
         )
     elif method == "pde":
-        result.data = _pde_reinit(
-            result.data,
-            result.dx,
+        new_data = _pde_reinit(
+            levelset.data,
+            levelset.dx,
             dt=dt,
             n_steps=n_steps,
             epsilon=levelset.params.epsilon,
@@ -58,9 +57,10 @@ def reinitialize_levelset(
         raise ValueError(f"未対応の再初期化手法: {method}")
 
     # 初期の符号を維持
-    result.data = np.copysign(result.data, original_sign)
+    new_data = np.copysign(new_data, original_sign)
 
-    return result
+    # 新しいLevel Set場を作成して返す
+    return LevelSetField(data=new_data, dx=levelset.dx, params=levelset.params)
 
 
 def _pde_reinit(
@@ -143,7 +143,7 @@ def _fast_marching_reinit(
 
 def _compute_signed_distance(
     point: np.ndarray, phi: np.ndarray, sign: np.ndarray, dx: float
-) -> List[float]:
+) -> np.ndarray:
     """指定された点の符号付き距離を計算
 
     Args:
@@ -153,7 +153,7 @@ def _compute_signed_distance(
         dx: グリッド間隔
 
     Returns:
-        近傍点からの符号付き距離のリスト
+        近傍点からの符号付き距離
     """
     distances = []
     ndim = phi.ndim
@@ -174,4 +174,4 @@ def _compute_signed_distance(
             signed_dist = sign[tuple(point)] * distance
             distances.append(signed_dist)
 
-    return distances if distances else [0.0]
+    return np.array(distances) if distances else np.array([0.0])

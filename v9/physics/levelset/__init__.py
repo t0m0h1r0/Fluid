@@ -4,7 +4,7 @@
 """
 
 from .base import LevelSetTerm, LevelSetTermBase, LevelSetSolverBase
-from .config import LevelSetConfig
+from .properties import PhaseProperties, FluidPhaseProperties, LevelSetPropertiesManager
 from .field import LevelSetField, LevelSetParameters
 from .solver import LevelSetSolver
 from .utils import (
@@ -14,8 +14,6 @@ from .utils import (
     compute_volume,
     compute_area,
     extend_velocity,
-    reinitialize,
-    validate_signed_distance_function,
 )
 from .reinitialize import reinitialize_levelset
 
@@ -24,8 +22,10 @@ __all__ = [
     "LevelSetTerm",
     "LevelSetTermBase",
     "LevelSetSolverBase",
-    # 設定クラス
-    "LevelSetConfig",
+    # プロパティ関連
+    "PhaseProperties",
+    "FluidPhaseProperties",
+    "LevelSetPropertiesManager",
     # フィールドクラス
     "LevelSetField",
     "LevelSetParameters",
@@ -38,7 +38,5 @@ __all__ = [
     "compute_volume",
     "compute_area",
     "extend_velocity",
-    "reinitialize",
-    "validate_signed_distance_function",
     "reinitialize_levelset",
 ]

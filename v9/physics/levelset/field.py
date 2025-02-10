@@ -3,11 +3,10 @@
 このモジュールは、Level Set法で使用される場のクラスを提供します。
 """
 
-import numpy as np
 from dataclasses import dataclass
-from typing import Optional, Dict, Union
-from core.field import ConservedField
-from .config import LevelSetConfig
+from typing import Optional, Tuple
+import numpy as np
+
 from .utils import (
     compute_volume,
     compute_area,
@@ -22,14 +21,14 @@ from .utils import (
 class LevelSetParameters:
     """Level Set法のパラメータ"""
 
-    epsilon: float = 1.0e-2
-    min_value: float = 1.0e-10
-    reinit_interval: int = 5
-    reinit_steps: int = 2
-    reinit_dt: float = 0.1
+    epsilon: float = 1.0e-2  # 界面の厚さ
+    min_value: float = 1.0e-10  # 最小値
+    reinit_interval: int = 5  # 再初期化の間隔
+    reinit_steps: int = 2  # 再初期化のステップ数
+    reinit_dt: float = 0.1  # 再初期化の時間刻み
 
 
-class LevelSetField(ConservedField):
+class LevelSetField:
     """Level Set場クラス
 
     Level Set関数を表現し、界面追跡のための基本的な操作を提供します。
@@ -37,32 +36,45 @@ class LevelSetField(ConservedField):
 
     def __init__(
         self,
-        shape: tuple,
+        data: np.ndarray,
         dx: float = 1.0,
-        config: Optional[LevelSetConfig] = None,
         params: Optional[LevelSetParameters] = None,
     ):
         """Level Set場を初期化
 
         Args:
-            shape: グリッドの形状
+            data: Level Set関数のデータ
             dx: グリッド間隔
-            config: Level Set設定
             params: Level Setパラメータ
         """
-        # パラメータを先に設定
-        self.config = config or LevelSetConfig()
+        # データと設定の初期化
+        self._data = data.copy()
+        self._dx = dx
         self.params = params or LevelSetParameters()
 
         # ステップ管理
         self._steps_since_reinit = 0
-        self._initial_volume = None
-
-        # 親クラスの初期化
-        super().__init__(shape, dx)
-
-        # 初期体積を記録
         self._initial_volume = self.compute_volume()
+
+    @property
+    def data(self) -> np.ndarray:
+        """Level Set関数のデータを取得"""
+        return self._data
+
+    @property
+    def shape(self) -> Tuple[int, ...]:
+        """グリッドの形状を取得"""
+        return self._data.shape
+
+    @property
+    def dx(self) -> float:
+        """グリッド間隔を取得"""
+        return self._dx
+
+    @property
+    def ndim(self) -> int:
+        """次元数を取得"""
+        return self._data.ndim
 
     def heaviside(self) -> np.ndarray:
         """Heaviside関数の値を計算
@@ -86,7 +98,7 @@ class LevelSetField(ConservedField):
         Returns:
             界面の曲率
         """
-        return compute_curvature(self._data, self.dx)
+        return compute_curvature(self._data, self._dx)
 
     def compute_volume(self) -> float:
         """体積を計算
@@ -94,7 +106,7 @@ class LevelSetField(ConservedField):
         Returns:
             計算された体積
         """
-        return compute_volume(self._data, self.dx, self.params.epsilon)
+        return compute_volume(self._data, self._dx)
 
     def compute_area(self) -> float:
         """界面の面積を計算
@@ -102,7 +114,7 @@ class LevelSetField(ConservedField):
         Returns:
             計算された面積
         """
-        return compute_area(self._data, self.dx, self.params.epsilon)
+        return compute_area(self._data, self._dx)
 
     def compute_interface_gradient(self) -> np.ndarray:
         """界面の法線ベクトルを計算
@@ -110,7 +122,18 @@ class LevelSetField(ConservedField):
         Returns:
             界面の法線ベクトル
         """
-        return compute_interface_gradient(self._data, self.dx)
+        return compute_interface_gradient(self._data, self._dx)
+
+    def gradient(self, axis: int) -> np.ndarray:
+        """指定軸方向の勾配を計算
+
+        Args:
+            axis: 勾配を計算する軸のインデックス
+
+        Returns:
+            計算された勾配
+        """
+        return np.gradient(self._data, self._dx, axis=axis)
 
     def need_reinit(self) -> bool:
         """再初期化が必要かどうかを判定
@@ -133,14 +156,14 @@ class LevelSetField(ConservedField):
             符号付き距離関数の条件を満たすかどうか
         """
         # 勾配の大きさが1に近いかチェック
-        grad = np.gradient(self._data, self.dx)
+        grad = np.gradient(self._data, self._dx)
         grad_norm = np.sqrt(sum(g**2 for g in grad))
 
         # 勾配の大きさが1にどれだけ近いか
         is_unit_gradient = np.abs(grad_norm - 1.0)
 
         # 界面の幅をチェック
-        interface_width = np.sum(self.delta() > 0) * self.dx**self.ndim
+        interface_width = np.sum(self.delta() > 0) * self._dx**self.ndim
 
         # 両条件を確認
         return np.mean(is_unit_gradient) < tolerance and interface_width < tolerance
@@ -149,57 +172,20 @@ class LevelSetField(ConservedField):
         """時間ステップを進める"""
         self._steps_since_reinit += 1
 
-    def get_values_at_interface(self, field: np.ndarray) -> np.ndarray:
-        """界面上での物理量の値を取得
-
-        Args:
-            field: 値を取得する物理量
+    def get_interface_points(self) -> np.ndarray:
+        """界面上の点を取得
 
         Returns:
-            界面上の値
+            界面上の点の座標
         """
-        return self.delta() * field
+        # Delta関数を使用して界面上の点を抽出
+        interface_mask = self.delta() > 0
+        return np.argwhere(interface_mask)
 
-    def get_diagnostics(self) -> Dict[str, Union[float, int]]:
-        """診断情報を取得
+    def copy(self) -> "LevelSetField":
+        """フィールドの深いコピーを作成
 
         Returns:
-            診断情報の辞書
+            コピーされたLevel Set場
         """
-        config_diagnostics = self.config.get_config_for_component("diagnostics")
-
-        diagnostics = {
-            "volume": None,
-            "area": None,
-            "volume_ratio": None,
-            "steps_since_reinit": self._steps_since_reinit,
-            "min_value": float(np.min(self._data)),
-            "max_value": float(np.max(self._data)),
-        }
-
-        if config_diagnostics.get("compute_volume", True):
-            diagnostics["volume"] = self.compute_volume()
-            diagnostics["volume_ratio"] = diagnostics["volume"] / (
-                self._initial_volume or 1.0
-            )
-
-        if config_diagnostics.get("compute_area", True):
-            diagnostics["area"] = self.compute_area()
-
-        return diagnostics
-
-    def __str__(self) -> str:
-        """文字列表現を取得
-
-        Returns:
-            Level Set場の文字列表現
-        """
-        diag = self.get_diagnostics()
-        return (
-            f"LevelSetField:\n"
-            f"  Volume: {diag.get('volume', 'N/A')}\n"
-            f"  Area: {diag.get('area', 'N/A')}\n"
-            f"  Volume Ratio: {diag.get('volume_ratio', 'N/A')}\n"
-            f"  Value Range: [{diag['min_value']}, {diag['max_value']}]\n"
-            f"  Steps Since Reinit: {diag['steps_since_reinit']}"
-        )
+        return LevelSetField(data=self._data.copy(), dx=self._dx, params=self.params)

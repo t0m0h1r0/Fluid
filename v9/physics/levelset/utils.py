@@ -3,52 +3,6 @@
 import numpy as np
 
 
-def compute_density(
-    phi: np.ndarray, rho1: float, rho2: float, epsilon: float = 1.0e-2
-) -> np.ndarray:
-    """密度場を計算
-
-    Args:
-        phi: Level Set関数
-        rho1: 第1相の密度
-        rho2: 第2相の密度
-        epsilon: 界面の厚さ
-
-    Returns:
-        密度場
-    """
-    H = heaviside(phi, epsilon)
-    return rho1 * H + rho2 * (1 - H)
-
-
-def compute_viscosity(
-    phi: np.ndarray,
-    mu1: float,
-    mu2: float,
-    epsilon: float = 1.0e-2,
-    use_harmonic: bool = True,
-) -> np.ndarray:
-    """粘性係数場を計算
-
-    Args:
-        phi: Level Set関数
-        mu1: 第1相の粘性係数
-        mu2: 第2相の粘性係数
-        epsilon: 界面の厚さ
-        use_harmonic: 調和平均を使用するかどうか
-
-    Returns:
-        粘性係数場
-    """
-    H = heaviside(phi, epsilon)
-    if use_harmonic:
-        # 調和平均（界面での応力の連続性に適している）
-        return 1.0 / (H / mu1 + (1 - H) / mu2)
-    else:
-        # 算術平均
-        return mu1 * H + mu2 * (1 - H)
-
-
 def heaviside(phi: np.ndarray, epsilon: float = 1.0e-2) -> np.ndarray:
     """正則化されたHeaviside関数
 
@@ -123,6 +77,27 @@ def compute_area(phi: np.ndarray, dx: float) -> float:
     return float(np.sum(delta(phi)) * dx**phi.ndim)
 
 
+def compute_interface_gradient(phi: np.ndarray, dx: float) -> np.ndarray:
+    """界面の法線ベクトルを計算
+
+    Args:
+        phi: Level Set関数
+        dx: グリッド間隔
+
+    Returns:
+        界面の法線ベクトル
+    """
+    # 勾配を計算
+    grad = np.array(np.gradient(phi, dx))
+
+    # 勾配の大きさを計算
+    grad_norm = np.sqrt(np.sum(grad**2, axis=0))
+    grad_norm = np.maximum(grad_norm, 1e-10)  # ゼロ除算を防ぐ
+
+    # 正規化された勾配（法線ベクトル）
+    return grad / grad_norm
+
+
 def extend_velocity(
     velocity: np.ndarray, phi: np.ndarray, dx: float, n_steps: int = 5
 ) -> np.ndarray:
@@ -141,7 +116,7 @@ def extend_velocity(
     dt = 0.5 * dx  # 仮想時間の時間刻み幅
 
     for _ in range(n_steps):
-        # 法線方向を計算
+        # 法線ベクトルを計算
         grad = np.array(np.gradient(phi, dx))
         grad_norm = np.sqrt(np.sum(grad**2, axis=0))
         grad_norm = np.maximum(grad_norm, 1e-10)
