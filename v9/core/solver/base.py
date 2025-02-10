@@ -22,6 +22,7 @@ class Solver(ABC):
         tolerance: float = 1e-6,
         max_iterations: int = 1000,
         logger=None,
+        **extra_kwargs  # 追加のキーワード引数を許可
     ):
         """ソルバーを初期化
 
@@ -30,6 +31,7 @@ class Solver(ABC):
             tolerance: 収束判定の許容誤差
             max_iterations: 最大反復回数
             logger: ロガー（オプション）
+            **extra_kwargs: 追加のキーワード引数（柔軟性のため）
         """
         self.name = name
         self._tolerance = tolerance
@@ -39,6 +41,10 @@ class Solver(ABC):
         self._start_time = None
         self._end_time = None
         self._logger = logger
+
+        # 追加のキーワード引数を属性として保存（必要に応じて）
+        for key, value in extra_kwargs.items():
+            setattr(self, f"_{key}", value)
 
     @property
     def tolerance(self) -> float:

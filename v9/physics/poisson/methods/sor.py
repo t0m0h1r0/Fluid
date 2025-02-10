@@ -7,9 +7,9 @@ Poisson方程式のソルバーを実装します。
 import numpy as np
 from typing import Optional, List, Dict, Any, Union
 
+from physics.poisson.solver import PoissonSolver
+from physics.poisson.config import PoissonSolverConfig
 from core.boundary import BoundaryCondition
-from ..solver import PoissonSolver
-from ..config import PoissonSolverConfig
 from ..base import PoissonSolverTerm
 
 
@@ -63,6 +63,23 @@ class SORSolver(PoissonSolver):
             **kwargs,
         )
 
+    def initialize(self, **kwargs):
+        """ソルバーを初期化
+
+        Args:
+            **kwargs: 初期化に必要なパラメータ
+        """
+        # 基本的な初期化処理
+        self.reset()  # 基底クラスのリセットメソッド
+
+        # オプションでより詳細な初期化が必要な場合はここに追加可能
+        if self.logger:
+            self.logger.info("SORソルバーを初期化")
+
+        # スペクトル半径などの追跡変数もリセット
+        self._spectral_radius = None
+        self._previous_diff = None
+
     def iterate(
         self, solution: np.ndarray, rhs: np.ndarray, dx: Union[float, np.ndarray]
     ) -> np.ndarray:
@@ -70,7 +87,7 @@ class SORSolver(PoissonSolver):
 
         Args:
             solution: 現在の解
-            rhs: 右辺
+            rhs: 右辺ベクトル
             dx: グリッド間隔
 
         Returns:
@@ -114,9 +131,7 @@ class SORSolver(PoissonSolver):
                 gauss_seidel = (dx_squared * rhs[mask] + neighbors_sum[mask]) / (
                     2 * result.ndim
                 )
-                result[mask] = (1 - self.omega) * result[
-                    mask
-                ] + self.omega * gauss_seidel
+                result[mask] = (1 - self.omega) * result[mask] + self.omega * gauss_seidel
 
         else:
             # 通常のSOR反復

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Union
 import yaml
 
-from physics.levelset.properties import FluidProperties
+from physics.levelset import FluidPhaseProperties
 
 
 @dataclass
@@ -40,9 +40,9 @@ class PhaseConfig:
     viscosity: float
     surface_tension: Optional[float] = None
 
-    def to_properties(self) -> FluidProperties:
+    def to_properties(self) -> FluidPhaseProperties:
         """FluidPropertiesインスタンスに変換"""
-        return FluidProperties(
+        return FluidPhaseProperties(
             density=self.density,
             viscosity=self.viscosity,
             surface_tension=self.surface_tension

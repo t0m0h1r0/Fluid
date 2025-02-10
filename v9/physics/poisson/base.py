@@ -68,33 +68,30 @@ class PoissonSolverBase(ABC):
     def solve(
         self, rhs: np.ndarray, initial_solution: Optional[np.ndarray] = None, **kwargs
     ) -> np.ndarray:
-        """Poisson方程式を解く
-
-        Args:
-            rhs: 右辺ベクトル
-            initial_solution: 初期推定解
-            **kwargs: 追加のパラメータ
-
-        Returns:
-            計算された解
-        """
+        """Poisson方程式を解く"""
         pass
 
     @abstractmethod
     def compute_residual(
         self, solution: np.ndarray, rhs: np.ndarray, dx: Union[float, np.ndarray]
     ) -> float:
-        """残差を計算
-
-        Args:
-            solution: 現在の解
-            rhs: 右辺
-            dx: グリッド間隔
-
-        Returns:
-            残差
-        """
+        """残差を計算"""
         pass
+
+    def initialize(self, **kwargs):
+        """ソルバーを初期化
+
+        デフォルトの実装では基本的な状態をリセット
+        サブクラスでオーバーライド可能
+        """
+        # 計算状態のリセット
+        self._iteration_count = 0
+        self._residual_history = []
+        self._converged = False
+
+        # ロギング
+        if self.logger:
+            self.logger.info(f"{self.__class__.__name__}ソルバーを初期化")
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """ソルバーの診断情報を取得
