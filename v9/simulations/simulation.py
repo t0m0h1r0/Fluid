@@ -14,8 +14,8 @@ from typing import Dict, Any, Optional, Tuple, List
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from numerics.time_evolution.euler import ForwardEuler as TimeIntegrator
-#from numerics.time_evolution.runge_kutta import RungeKutta4 as TimeIntegrator
+from numerics.time_evolution import ForwardEuler as TimeIntegrator
+# from numerics.time_evolution import RungeKutta4 as TimeIntegrator
 
 from physics.levelset import LevelSetField, LevelSetMethod
 from physics.navier_stokes import NavierStokesSolver
