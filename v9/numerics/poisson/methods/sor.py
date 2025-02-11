@@ -7,10 +7,10 @@ Poisson方程式のソルバーを実装します。
 import numpy as np
 from typing import Optional, List, Dict, Any, Union
 
-from physics.poisson.solver import PoissonSolver
-from physics.poisson.config import PoissonSolverConfig
+from numerics.poisson import PoissonSolver
 from core.boundary import BoundaryCondition
 from ..base import PoissonSolverTerm
+from ..config import PoissonSolverConfig
 
 
 class SORSolver(PoissonSolver):

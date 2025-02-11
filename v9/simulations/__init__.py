@@ -2,11 +2,10 @@ from .simulation import TwoPhaseFlowSimulator
 from .state import SimulationState
 from .initializer import SimulationInitializer
 from .config import (
-    SimulationConfig,
     DomainConfig,
     PhaseConfig,
-    SolverConfig,
-    OutputConfig,
+    InterfaceConfig,
+    SimulationConfig,
 )
 
 __all__ = [
@@ -16,6 +15,6 @@ __all__ = [
     "SimulationConfig",
     "DomainConfig",
     "PhaseConfig",
-    "SolverConfig",
-    "OutputConfig",
+    "InterfaceConfig",
+    "SimulationConfig",
 ]

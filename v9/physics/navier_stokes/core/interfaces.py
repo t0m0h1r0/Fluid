@@ -22,14 +22,6 @@ class NavierStokesTerm(Protocol):
     def get_diagnostics(self) -> Dict[str, Any]: ...
 
 
-class TimeIntegrator(Protocol, Generic[StateType]):
-    """時間発展スキームのプロトコル"""
-
-    def step(
-        self, state: StateType, dt: float, compute_derivative: Any, **kwargs
-    ) -> StateType: ...
-
-
 class NavierStokesSolver(Protocol, Generic[StateType]):
     """Navier-Stokesソルバーのプロトコル"""
 

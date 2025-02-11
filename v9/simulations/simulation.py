@@ -1,4 +1,6 @@
-from physics import LevelSetMethod, NavierStokesSolver, TimeIntegrator
+from physics.levelset import LevelSetMethod
+from physics.navier_stokes.core import NavierStokesSolver
+from numerics.time_evolution.euler import ForwardEuler as TimeIntegrator
 from .config import SimulationConfig
 from .state import SimulationState
 from .initializer import SimulationInitializer
