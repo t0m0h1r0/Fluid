@@ -3,6 +3,7 @@ import numpy as np
 from .field import LevelSetField
 from .reinitializer import reinitialize_levelset
 from .utils import extend_velocity
+from core.field import VectorField
 
 
 class LevelSetMethod:
@@ -64,3 +65,23 @@ class LevelSetMethod:
     ) -> np.ndarray:
         """界面に沿って速度場を延長"""
         return extend_velocity(velocity, levelset.data, levelset.dx)
+
+    def run(self, levelset: LevelSetField, velocity: VectorField) -> np.ndarray:
+        """Level Set関数の時間微分を計算
+
+        Args:
+            levelset: Level Set場
+            velocity: 速度場（界面の移流に使用）
+
+        Returns:
+            Level Set関数の時間微分
+        """
+        # 連続の式に基づく時間発展方程式の計算
+        # -(u⋅∇φ) を計算
+        derivative = np.zeros_like(levelset.data)
+        
+        for i, u_i in enumerate(velocity.components):
+            # 各方向の速度成分と空間微分の積を加算
+            derivative -= u_i.data * levelset.gradient(i)
+
+        return derivative
