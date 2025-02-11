@@ -14,14 +14,14 @@ from typing import Dict, Any, Optional, Tuple, List
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from numerics.time_evolution import ForwardEuler as TimeIntegrator
-# from numerics.time_evolution import RungeKutta4 as TimeIntegrator
+from numerics.time_evolution.euler import ForwardEuler
 
 from physics.levelset import LevelSetField, LevelSetMethod
 from physics.navier_stokes import NavierStokesSolver
 from physics.pressure import PressurePoissonSolver
 from physics.continuity import ContinuityEquation
-from physics.navier_stokes.terms import GravityForce, SurfaceTensionForce
+from physics.navier_stokes.terms import GravityForce
+from physics.surface_tension import compute_surface_tension_force
 
 from simulations.config import SimulationConfig
 from simulations.state import SimulationState
@@ -31,18 +31,27 @@ from simulations.initializer import SimulationInitializer
 class TwoPhaseFlowSimulator:
     """二相流シミュレーションの統合的なソルバー"""
 
-    def __init__(self, config: SimulationConfig):
+    def __init__(
+        self, config: SimulationConfig
+    ):
         """
         シミュレータを初期化
 
         Args:
             config: シミュレーション設定
-            time_integrator: 時間発展スキーム（デフォルトは前進オイラー法）
         """
         self.config = config
 
+        # 表面張力係数の計算
+        surface_tension_coefficient = 0.0
+        if len(config.physics.phases) >= 2:
+            surface_tension_coefficient = abs(
+                config.physics.phases[0].surface_tension - 
+                config.physics.phases[1].surface_tension
+            )
+
         # デフォルトの時間積分器
-        self._time_solver = TimeIntegrator(
+        self._time_solver = ForwardEuler(
             cfl=config.numerical.cfl,
             min_dt=config.numerical.min_dt,
             max_dt=config.numerical.max_dt,
@@ -56,12 +65,12 @@ class TwoPhaseFlowSimulator:
 
         # 外力項
         self._gravity_force = GravityForce(gravity=config.physics.gravity)
-        self._surface_tension_force = SurfaceTensionForce(
-            surface_tension=config.physics.surface_tension
-        )
+        self._surface_tension_coefficient = surface_tension_coefficient
 
         # 現在の状態
         self._current_state = None
+        # オプションの診断情報記憶領域
+        self._diagnostics = {}
 
     def compute_material_properties(
         self, levelset: LevelSetField
@@ -87,13 +96,16 @@ class TwoPhaseFlowSimulator:
         return {"density": density, "viscosity": viscosity, "interface": interface}
 
     def compute_external_forces(
-        self, velocity: VectorField, density: ScalarField, levelset: LevelSetField
+        self,
+        velocity: VectorField,
+        density: ScalarField,
+        levelset: LevelSetField,
     ) -> VectorField:
         """
         外力（重力と表面張力）を計算
 
         Args:
-            velocity: 速度場
+            velocity: 速度場（使用しない）
             density: 密度場
             levelset: レベルセット関数
 
@@ -101,17 +113,26 @@ class TwoPhaseFlowSimulator:
             外力場のベクトル
         """
         # 重力項の計算
-        gravity_forces = self._gravity_force.compute(velocity, density)
+        gravity_forces = self._gravity_force.compute(density=density)
 
         # 表面張力項の計算
-        surface_tension_forces = self._surface_tension_force.compute(velocity, levelset)
+        surface_tension_forces, surface_tension_diagnostics = compute_surface_tension_force(
+            levelset, 
+            surface_tension_coefficient=self._surface_tension_coefficient
+        )
+        surface_tension_forces = [
+            comp.data for comp in surface_tension_forces.components
+        ]
 
         # 外力を統合
-        external_forces = VectorField(velocity.shape, velocity.dx)
+        external_forces = VectorField(density.shape, density.dx)
         external_forces.components = [
-            ScalarField(velocity.shape, velocity.dx, initial_value=grav + surf)
+            ScalarField(density.shape, density.dx, initial_value=grav + surf)
             for grav, surf in zip(gravity_forces, surface_tension_forces)
         ]
+
+        # オプションで診断情報を保存
+        self._diagnostics['surface_tension'] = surface_tension_diagnostics
 
         return external_forces
 
@@ -238,7 +259,9 @@ class TwoPhaseFlowSimulator:
         return self._current_state, self._current_state.get_diagnostics()
 
     def step_forward(
-        self, state: Optional[SimulationState] = None, dt: Optional[float] = None
+        self, 
+        state: Optional[SimulationState] = None, 
+        dt: Optional[float] = None
     ) -> Tuple[SimulationState, Dict[str, Any]]:
         """
         シミュレーションを1ステップ進める
@@ -318,6 +341,7 @@ class TwoPhaseFlowSimulator:
             "velocity_derivative": velocity_derivative,
             "levelset_derivative": levelset_derivative,
             "material_properties": material_properties,
+            **self._diagnostics  # 外力などの追加の診断情報
         }
 
         # 現在の状態を更新
