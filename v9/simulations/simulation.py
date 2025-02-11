@@ -2,7 +2,7 @@
 
 from physics.levelset import LevelSetMethod
 from physics.navier_stokes.solvers.projection import PressureProjectionSolver
-from numerics.time_evolution.euler import ForwardEuler as TimeIntegrator
+from numerics.time_evolution.euler import ForwardEuler
 from .config import SimulationConfig
 from .state import SimulationState
 from .initializer import SimulationInitializer
@@ -15,6 +15,7 @@ from physics.navier_stokes.terms import (
     SurfaceTensionForce,
 )
 from numerics.poisson import PoissonConfig
+from typing import Optional, Dict, Any
 
 
 class TwoPhaseFlowSimulator:
@@ -34,6 +35,11 @@ class TwoPhaseFlowSimulator:
         poisson_config.convergence["tolerance"] = 1e-5
         poisson_config.convergence["max_iterations"] = 1000
 
+        # 時間積分器の設定
+        self._time_solver = ForwardEuler(
+            cfl=config.numerical.cfl or 0.5,
+        )
+
         # Navier-Stokes方程式の各項を設定
         self.terms = [
             AdvectionTerm(use_weno=True),
@@ -45,7 +51,6 @@ class TwoPhaseFlowSimulator:
 
         # 加速度項と時間積分器
         self.acceleration_term = AccelerationTerm()
-        self.time_integrator = TimeIntegrator()
 
         # Level Set法と圧力投影法のソルバー
         self.levelset_method = LevelSetMethod()
@@ -57,17 +62,15 @@ class TwoPhaseFlowSimulator:
 
     def _get_viscosity(self) -> float:
         """流体の粘性係数を取得"""
-        # 設定ファイルから取得、デフォルト値は水の動粘性係数
         phases = self.config.phases
         return min(phase.viscosity for phase in phases.values())
 
     def _get_density(self) -> float:
         """流体の参照密度を取得"""
-        # 設定ファイルから取得、デフォルト値は水の密度
         phases = self.config.phases
         return min(phase.density for phase in phases.values())
 
-    def initialize(self, state: SimulationState = None):
+    def initialize(self, state: Optional[SimulationState] = None):
         """
         シミュレーションを初期化
 
@@ -118,13 +121,39 @@ class TwoPhaseFlowSimulator:
 
         return self._state, {"time": self._state.time}
 
-    def step_forward(self, dt: float = None, state: SimulationState = None):
+    def compute_timestep(self, state: Optional[SimulationState] = None, **kwargs) -> float:
+        """
+        時間刻み幅を計算
+
+        Args:
+            state: 現在の状態（Noneの場合は現在のシミュレーション状態を使用）
+            **kwargs: 追加のパラメータ
+
+        Returns:
+            計算された時間刻み幅
+        """
+        if not self._initialized:
+            raise RuntimeError("シミュレーションが初期化されていません")
+
+        # 状態の設定
+        current_state = state or self._state
+
+        # 各項から時間刻み幅の上限を取得
+        dt_terms = [
+            term.compute_timestep(current_state.velocity) for term in self.terms
+        ]
+        
+        # CFL条件に基づいた時間刻み幅
+        return min(dt_terms)
+
+    def step_forward(self, dt: Optional[float] = None, state: Optional[SimulationState] = None, **kwargs) -> Dict[str, Any]:
         """
         シミュレーションを1ステップ進める
 
         Args:
             dt: 時間刻み幅（Noneの場合は自動計算）
             state: 初期状態（Noneの場合は現在の状態を使用）
+            **kwargs: 追加のパラメータ
 
         Returns:
             更新された状態と診断情報
@@ -137,17 +166,13 @@ class TwoPhaseFlowSimulator:
 
         # 時間刻み幅の計算
         if dt is None:
-            # 各項から時間刻み幅の上限を取得
-            dt_terms = [
-                term.compute_timestep(current_state.velocity) for term in self.terms
-            ]
-            dt = min(dt_terms)
+            dt = self.compute_timestep(current_state)
 
         # Level Set関数の移流
         levelset_derivative = self.levelset_method.run(
             current_state.levelset, current_state.velocity
         )
-        new_levelset_data = self.time_integrator.run(
+        new_levelset_data = self._time_solver.integrate(
             current_state.levelset.data, dt, derivative_fn=lambda x: levelset_derivative
         )
         new_levelset = current_state.levelset.__class__(
@@ -171,7 +196,7 @@ class TwoPhaseFlowSimulator:
         for i, (v, a) in enumerate(
             zip(current_state.velocity.components, acceleration)
         ):
-            new_v_data = self.time_integrator.run(v.data, dt, derivative_fn=lambda x: a)
+            new_v_data = self._time_solver.integrate(v.data, dt, derivative_fn=lambda x: a)
             new_velocity_comps.append(new_v_data)
 
         new_velocity = current_state.velocity.__class__(

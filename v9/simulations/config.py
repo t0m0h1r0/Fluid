@@ -95,16 +95,18 @@ class LevelSetConfig:
 
 @dataclass
 class NumericalConfig:
-    """数値計算の設定を保持するクラス"""
+    """数値計算の設定クラス"""
 
     time_integrator: str = "euler"
     max_time: float = 2.0
     initial_dt: float = 0.001
     save_interval: float = 0.01
     cfl: float = 0.5
+    min_dt: float = 1.0e-6  # 追加
+    max_dt: float = 1.0     # 追加
     level_set: LevelSetConfig = field(default_factory=LevelSetConfig)
 
-    def validate(self) -> None:
+    def validate(self):
         """設定値の妥当性を検証"""
         if self.time_integrator not in ["euler", "rk4"]:
             raise ValueError("time_integratorはeulerまたはrk4である必要があります")
@@ -116,6 +118,10 @@ class NumericalConfig:
             raise ValueError("save_intervalは正の値である必要があります")
         if not 0 < self.cfl <= 1:
             raise ValueError("cflは0から1の間である必要があります")
+        if self.min_dt <= 0:  # 追加
+            raise ValueError("min_dtは正の値である必要があります")
+        if self.max_dt <= self.min_dt:  # 追加
+            raise ValueError("max_dtはmin_dtより大きい必要があります")
         self.level_set.validate()
 
 

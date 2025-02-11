@@ -55,6 +55,9 @@ numerical:
   max_time: 2.0
   initial_dt: 0.001
   save_interval: 0.01
+  cfl: 0.5
+  min_dt: 1.0e-6
+  max_dt: 1.0
 
   level_set:
     epsilon: 1.0e-2
