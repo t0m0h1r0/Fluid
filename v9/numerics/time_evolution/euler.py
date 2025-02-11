@@ -1,4 +1,5 @@
 from typing import Callable, TypeVar, Dict, Any
+from core.field import VectorField, ScalarField
 from .base import TimeIntegrator
 
 T = TypeVar('T')
@@ -18,16 +19,20 @@ class ForwardEuler(TimeIntegrator[T]):
         Returns:
             更新された状態
         """
+        # 時間微分を計算
         derivative = derivative_fn(state)
         
-        # 状態の各属性を更新
-        if hasattr(state, 'velocity'):
-            state.velocity = [v + dt * dv for v, dv in zip(state.velocity.components, derivative)]
+        # 状態の各成分を更新
+        # velocity成分の更新
+        for i, (comp, deriv_comp) in enumerate(zip(state.velocity.components, derivative.velocity.components)):
+            comp.data += dt * deriv_comp.data
         
-        if hasattr(state, 'levelset'):
-            state.levelset.data += dt * derivative
-
+        # levelset成分の更新
+        state.levelset.data += dt * derivative.levelset.data
+        
+        # 時刻の更新
         state.time += dt
+        
         return state
 
     def get_order(self) -> int:
