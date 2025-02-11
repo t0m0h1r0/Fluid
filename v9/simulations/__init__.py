@@ -3,7 +3,7 @@ from .state import SimulationState
 from .initializer import SimulationInitializer
 from .config import (
     DomainConfig,
-    PhaseConfig,
+    PhysicsConfig,
     InterfaceConfig,
     SimulationConfig,
 )
@@ -14,7 +14,7 @@ __all__ = [
     "SimulationInitializer",
     "SimulationConfig",
     "DomainConfig",
-    "PhaseConfig",
+    "PhysicsConfig",
     "InterfaceConfig",
     "SimulationConfig",
 ]

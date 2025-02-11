@@ -78,7 +78,9 @@ class SimulationInitializer:
             interface_objects.append(scaled_obj)
 
         # Level Set初期化子を使用
-        initializer = LevelSetInitializer(dx=dx)
+        initializer = LevelSetInitializer(
+            dx=dx, background_phase=background_config["phase"]
+        )
         return initializer.initialize(shape=shape, objects=interface_objects)
 
     def _scale_interface_object(self, obj: dict, domain_size: list) -> InterfaceObject:

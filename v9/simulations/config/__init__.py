@@ -2,7 +2,7 @@
 
 from .base import BaseConfig, Phase, BoundaryType, load_config_safely
 from .interfaces import ConfigValidator, ConfigLoader, ConfigSerializer
-from .physics import PhaseConfig, DomainConfig
+from .physics import PhysicsConfig, DomainConfig
 from .numerical import NumericalConfig
 from .boundary import BoundaryConfig
 from .interface import InterfaceConfig, InitialConditionConfig
@@ -18,7 +18,7 @@ class SimulationConfig(BaseConfig):
     """シミュレーション全体の設定を保持するクラス"""
 
     domain: DomainConfig = field(default_factory=DomainConfig)
-    phases: Dict[str, PhaseConfig] = field(default_factory=dict)
+    physics: PhysicsConfig = field(default_factory=PhysicsConfig)
     boundary_conditions: BoundaryConfig = field(default_factory=BoundaryConfig)
     initial_conditions: InitialConditionConfig = field(
         default_factory=InitialConditionConfig
@@ -30,10 +30,7 @@ class SimulationConfig(BaseConfig):
     def validate(self) -> None:
         """全体の設定値の妥当性を検証"""
         self.domain.validate()
-
-        for phase in self.phases.values():
-            phase.validate()
-
+        self.physics.validate()
         self.boundary_conditions.validate()
         self.initial_conditions.validate()
         self.numerical.validate()
@@ -49,10 +46,7 @@ class SimulationConfig(BaseConfig):
 
         return SimulationConfig(
             domain=DomainConfig.from_dict(merged_config.get("domain", {})),
-            phases={
-                name: PhaseConfig.from_dict(props)
-                for name, props in merged_config.get("phases", {}).items()
-            },
+            physics=PhysicsConfig.from_dict(merged_config.get("physics", {})),
             boundary_conditions=BoundaryConfig.from_dict(
                 merged_config.get("boundary_conditions", {})
             ),
@@ -71,7 +65,7 @@ class SimulationConfig(BaseConfig):
         """設定を辞書形式にシリアライズ"""
         return {
             "domain": self.domain.to_dict(),
-            "phases": {name: phase.to_dict() for name, phase in self.phases.items()},
+            "physics": self.physics.to_dict(),
             "boundary_conditions": self.boundary_conditions.to_dict(),
             "initial_conditions": self.initial_conditions.to_dict(),
             "numerical": self.numerical.to_dict(),
@@ -107,7 +101,7 @@ __all__ = [
     "Phase",
     "BoundaryType",
     # 個別の設定クラス
-    "PhaseConfig",
+    "PhysicsConfig",
     "DomainConfig",
     "NumericalConfig",
     "BoundaryConfig",

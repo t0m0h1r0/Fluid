@@ -45,11 +45,15 @@ class TwoPhaseFlowSimulator:
             cfl=cfl,
         )
 
+        # 参照とする粘性・密度を取得
+        reference_viscosity = self._get_reference_viscosity()
+        reference_density = self._get_reference_density()
+
         # Navier-Stokes方程式の各項を設定
         self.terms = [
             AdvectionTerm(use_weno=True),
-            DiffusionTerm(viscosity=self._get_viscosity()),
-            PressureTerm(density=self._get_density()),
+            DiffusionTerm(viscosity=reference_viscosity),
+            PressureTerm(density=reference_density),
             GravityForce(),
             SurfaceTensionForce(),
         ]
@@ -65,15 +69,15 @@ class TwoPhaseFlowSimulator:
         self._state = None
         self._initialized = False
 
-    def _get_viscosity(self) -> float:
-        """流体の粘性係数を取得"""
-        phases = self.config.phases
-        return min(phase.viscosity for phase in phases.values())
+    def _get_reference_viscosity(self) -> float:
+        """参照粘性係数を取得"""
+        # 最も小さい粘性を基準とする
+        return min(phase.viscosity for phase in self.config.physics.phases)
 
-    def _get_density(self) -> float:
-        """流体の参照密度を取得"""
-        phases = self.config.phases
-        return min(phase.density for phase in phases.values())
+    def _get_reference_density(self) -> float:
+        """参照密度を取得"""
+        # 最も小さい密度を基準とする
+        return min(phase.density for phase in self.config.physics.phases)
 
     def initialize(self, state: Optional[SimulationState] = None):
         """

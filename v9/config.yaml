@@ -5,16 +5,16 @@ physics:
   gravity: 9.81  # 重力加速度 [m/s²]
   surface_tension: 0.072  # 表面張力係数 [N/m]
 
-# 相の物性値
-phases:
-  water:
-    density: 1000.0  # 密度 [kg/m³]
-    viscosity: 1.0e-3  # 動粘性係数 [Pa·s]
-    surface_tension: 0.07  # 表面張力係数 [N/m]
-  nitrogen:
-    density: 1.25  # 密度 [kg/m³]
-    viscosity: 1.81e-5  # 動粘性係数 [Pa·s]
-    surface_tension: 0.0  # 表面張力係数 [N/m]
+  # 相の物性値
+  phases:
+    - phase: water
+      density: 1000.0  # 密度 [kg/m³]
+      viscosity: 1.0e-3  # 動粘性係数 [Pa·s]
+      surface_tension: 0.07  # 表面張力係数 [N/m]
+    - phase: nitrogen
+      density: 1.25  # 密度 [kg/m³]
+      viscosity: 1.81e-5  # 動粘性係数 [Pa·s]
+      surface_tension: 0.0  # 表面張力係数 [N/m]
 
 # 計算領域の設定
 domain:
