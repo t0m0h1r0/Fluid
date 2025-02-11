@@ -5,6 +5,7 @@ from .runge_kutta import RungeKutta4
 
 T = TypeVar("T")
 
+
 def create_integrator(method: str = "rk4", **kwargs) -> TimeIntegrator[T]:
     """時間積分器を生成
 

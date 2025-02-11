@@ -4,39 +4,28 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Protocol, Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any, Union
 import numpy as np
 
 from core.boundary import BoundaryCondition
+from .config import PoissonSolverConfig  # 修正: config から import
 
 
-class PoissonSolverConfig(Protocol):
-    """Poissonソルバーの設定プロトコル"""
-
-    def validate(self) -> None:
-        """設定値の妥当性を検証"""
-        ...
-
-    def get_config_for_component(self, component: str) -> Dict[str, Any]:
-        """特定のコンポーネントの設定を取得"""
-        ...
-
-
-class PoissonSolverTerm(Protocol):
+class PoissonSolverTerm:
     """Poisson方程式の項のプロトコル"""
 
     @property
     def name(self) -> str:
         """項の名前"""
-        ...
+        return ""
 
     def compute(self, solution: np.ndarray, **kwargs) -> np.ndarray:
         """項の寄与を計算"""
-        ...
+        return np.zeros_like(solution)
 
     def get_diagnostics(self, solution: np.ndarray, **kwargs) -> Dict[str, Any]:
         """診断情報を取得"""
-        ...
+        return {}
 
 
 class PoissonSolverBase(ABC):
@@ -55,7 +44,7 @@ class PoissonSolverBase(ABC):
             boundary_conditions: 境界条件
             logger: ロガー
         """
-        self.config = config
+        self.config = config or PoissonSolverConfig()
         self.boundary_conditions = boundary_conditions or []
         self.logger = logger
 

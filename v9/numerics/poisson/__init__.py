@@ -5,17 +5,17 @@
 
 from .base import (
     PoissonSolverBase,
-    PoissonSolverConfig as PoissonConfig,
     PoissonSolverTerm,
 )
+from .config import PoissonSolverConfig as PoissonConfig
 from .solver import PoissonSolver
 from .methods.sor import SORSolver
 
 __all__ = [
     # ベースクラスとインターフェース
     "PoissonSolverBase",
-    "PoissonConfig",
     "PoissonSolverTerm",
+    "PoissonConfig",
     # ソルバー
     "PoissonSolver",
     "SORSolver",

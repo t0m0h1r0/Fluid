@@ -22,7 +22,7 @@
 - 界面での物理量の補間が重要
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import numpy as np
 
 from core.field import VectorField, ScalarField
@@ -36,11 +36,14 @@ class PressureProjectionSolver:
     二相流のナビエ・ストークス方程式を解くための圧力投影法
     """
 
-    def __init__(self, solver_config: PoissonConfig = None):
+    def __init__(self, solver_config: Optional[PoissonConfig] = None):
         """
         Args:
             solver_config: ポアソンソルバーの設定
         """
+        # デフォルトのコンフィグを使用
+        solver_config = solver_config or PoissonConfig()
+
         # ポアソンソルバーの初期化
         self._poisson_solver = PoissonSolver(solver_config)
 

@@ -1,8 +1,3 @@
-"""Poisson方程式ソルバーの設定を管理するモジュール
-
-このモジュールは、Poisson方程式の数値計算パラメータを定義・管理します。
-"""
-
 from dataclasses import dataclass, field
 from typing import Dict, Any
 import yaml
