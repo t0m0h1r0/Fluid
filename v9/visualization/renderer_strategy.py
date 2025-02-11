@@ -1,10 +1,9 @@
 """可視化戦略の実装"""
 
 from typing import Any, Optional, Dict
-from .core.base import ViewConfig
+from .core.base import ViewConfig, VisualizationConfig
 from .interfaces import MultiFieldVisualizationStrategy
 from .visualizer import Visualizer
-
 
 class Renderer2DVisualizationStrategy(MultiFieldVisualizationStrategy):
     """2Dレンダラーを使用した可視化戦略"""
@@ -15,7 +14,14 @@ class Renderer2DVisualizationStrategy(MultiFieldVisualizationStrategy):
         Args:
             config: 可視化設定
         """
-        self.visualizer = Visualizer(config)
+        # SimulationConfigからVisualizationConfigを作成
+        if isinstance(config, dict):
+            visualization_config = VisualizationConfig.from_dict(config)
+        else:
+            # outputセクションをVisualizationConfigに変換
+            visualization_config = VisualizationConfig.from_dict(config.output.__dict__)
+
+        self.visualizer = Visualizer(visualization_config)
 
     def visualize(
         self,
@@ -89,7 +95,14 @@ class Renderer3DVisualizationStrategy(MultiFieldVisualizationStrategy):
         Args:
             config: 可視化設定
         """
-        self.visualizer = Visualizer(config)
+        # SimulationConfigからVisualizationConfigを作成
+        if isinstance(config, dict):
+            visualization_config = VisualizationConfig.from_dict(config)
+        else:
+            # outputセクションをVisualizationConfigに変換
+            visualization_config = VisualizationConfig.from_dict(config.output.__dict__)
+
+        self.visualizer = Visualizer(visualization_config)
 
     def visualize(
         self,
