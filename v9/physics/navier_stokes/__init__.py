@@ -20,7 +20,6 @@ __all__ = [
     "PressureTerm",
     "GravityForce",
     "SurfaceTensionForce",
-    
     # ソルバー
     "PressureProjectionSolver",
 ]

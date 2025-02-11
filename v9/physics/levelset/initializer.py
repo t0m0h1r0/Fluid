@@ -10,6 +10,7 @@ from .field import LevelSetField, LevelSetParameters
 
 class Phase(Enum):
     """流体の相を表す列挙型"""
+
     PHASE_1 = 1  # 第1相（例：水）
     PHASE_2 = 2  # 第2相（例：空気）
 
@@ -17,6 +18,7 @@ class Phase(Enum):
 @dataclass
 class InterfaceObject:
     """界面オブジェクトを表すデータクラス"""
+
     phase: Phase
     object_type: str  # "background", "layer", "sphere"
     height: Optional[float] = None  # レイヤー用
@@ -29,7 +31,7 @@ class LevelSetInitializer:
 
     def __init__(self, dx: float, epsilon: float = None):
         """初期化子を構築
-        
+
         Args:
             dx: グリッド間隔
             epsilon: 界面の厚さ（指定がない場合はdxから自動設定）
@@ -38,12 +40,10 @@ class LevelSetInitializer:
         self.epsilon = epsilon or (1.5 * dx)
 
     def initialize(
-        self,
-        shape: Tuple[int, ...],
-        objects: List[InterfaceObject]
+        self, shape: Tuple[int, ...], objects: List[InterfaceObject]
     ) -> LevelSetField:
         """Level Set関数を初期化
-        
+
         Args:
             shape: グリッドの形状
             objects: 界面オブジェクトのリスト
@@ -53,9 +53,7 @@ class LevelSetInitializer:
         """
         # Level Setパラメータの設定
         params = LevelSetParameters(
-            epsilon=self.epsilon,
-            reinit_interval=5,
-            reinit_steps=2
+            epsilon=self.epsilon, reinit_interval=5, reinit_steps=2
         )
 
         # Level Set場の作成
@@ -91,20 +89,19 @@ class LevelSetInitializer:
 
         # 座標グリッドを作成
         coords = np.meshgrid(
-            *[np.arange(n) * self.dx for n in levelset.shape],
-            indexing='ij'
+            *[np.arange(n) * self.dx for n in levelset.shape], indexing="ij"
         )
-        
+
         # 高さ方向の座標（最後の次元）
         z = coords[-1]
-        
+
         # 符号付き距離関数を計算
         phi = obj.height - z
-        
+
         # 相に応じて符号を反転
         if obj.phase == Phase.PHASE_2:
             phi = -phi
-            
+
         # Level Set関数を更新（CSG演算）
         levelset.data = np.minimum(levelset.data, phi)
 
@@ -115,23 +112,21 @@ class LevelSetInitializer:
 
         # 座標グリッドを作成
         coords = np.meshgrid(
-            *[np.arange(n) * self.dx for n in levelset.shape],
-            indexing='ij'
+            *[np.arange(n) * self.dx for n in levelset.shape], indexing="ij"
         )
-        
+
         # 球の中心からの距離を計算
         squared_distance = sum(
-            (coord - center) ** 2 
-            for coord, center in zip(coords, obj.center)
+            (coord - center) ** 2 for coord, center in zip(coords, obj.center)
         )
         distance = np.sqrt(squared_distance)
-        
+
         # 符号付き距離関数を計算
         phi = obj.radius - distance
-        
+
         # 相に応じて符号を反転
         if obj.phase == Phase.PHASE_2:
             phi = -phi
-            
+
         # Level Set関数を更新（CSG演算）
         levelset.data = np.minimum(levelset.data, phi)

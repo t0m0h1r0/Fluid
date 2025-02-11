@@ -1,8 +1,5 @@
 """シミュレーションの初期化を担当するモジュール"""
 
-from typing import Dict, List
-import numpy as np
-
 from .config import SimulationConfig
 from .state import SimulationState
 from physics.levelset import LevelSetField
@@ -46,10 +43,7 @@ class SimulationInitializer:
         pressure = ScalarField(shape)
 
         return SimulationState(
-            time=0.0,
-            velocity=velocity,
-            levelset=levelset,
-            pressure=pressure
+            time=0.0, velocity=velocity, levelset=levelset, pressure=pressure
         )
 
     def _initialize_levelset(self, shape: tuple, dx: float) -> LevelSetField:
@@ -61,7 +55,7 @@ class SimulationInitializer:
                 object_type=interface.object_type,
                 height=interface.height,
                 center=interface.center,
-                radius=interface.radius
+                radius=interface.radius,
             )
             for interface in self.config.interfaces
         ]

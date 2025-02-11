@@ -3,10 +3,7 @@
 このパッケージは、Navier-Stokes方程式に関する基本的なプロトコルとインターフェースを定義します。
 """
 
-from .interfaces import (
-    NavierStokesTerm,
-    NavierStokesSolver
-)
+from .interfaces import NavierStokesTerm, NavierStokesSolver
 
 __all__ = [
     "NavierStokesTerm",

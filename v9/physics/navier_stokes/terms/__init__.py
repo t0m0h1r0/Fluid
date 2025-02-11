@@ -14,13 +14,11 @@ from .acceleration import AccelerationTerm
 __all__ = [
     # 基底クラス
     "BaseNavierStokesTerm",
-    
     # 具体的な項の実装
     "AdvectionTerm",
     "DiffusionTerm",
     "PressureTerm",
     "AccelerationTerm",
-    
     # 外力関連
     "GravityForce",
     "SurfaceTensionForce",

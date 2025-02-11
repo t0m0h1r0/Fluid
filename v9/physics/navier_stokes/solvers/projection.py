@@ -14,7 +14,7 @@
 ∇⋅(∂(ρu)/∂t + ∇⋅(ρu⊗u)) = -∇²p + ∇⋅(∇⋅τ) + ∇⋅(ρg) + ∇⋅Fσ
 
 粘性の不均一性を考慮した最終的な形:
-∇²p = ∇⋅(∂(ρu)/∂t + ∇⋅(ρu⊗u)) - ∇⋅(ρg) - ∇⋅Fσ 
+∇²p = ∇⋅(∂(ρu)/∂t + ∇⋅(ρu⊗u)) - ∇⋅(ρg) - ∇⋅Fσ
        + ∇⋅((∇μ)⋅∇u) - ∇⋅(∇⋅[μ(∇u + (∇u)T)])
 
 特に二相流では:
@@ -32,30 +32,27 @@ from numerics.poisson import PoissonSolver, PoissonConfig
 class PressureProjectionSolver:
     """
     圧力投影法による速度場の発散除去
-    
+
     二相流のナビエ・ストークス方程式を解くための圧力投影法
     """
 
-    def __init__(
-        self, 
-        solver_config: PoissonConfig = None
-    ):
+    def __init__(self, solver_config: PoissonConfig = None):
         """
         Args:
             solver_config: ポアソンソルバーの設定
         """
         # ポアソンソルバーの初期化
         self._poisson_solver = PoissonSolver(solver_config)
-        
+
         # 診断情報
         self._diagnostics = {}
 
     def compute_rhs(
         self,
-        velocity: VectorField, 
+        velocity: VectorField,
         density: ScalarField,
         viscosity: ScalarField,
-        dt: float
+        dt: float,
     ) -> np.ndarray:
         """
         圧力ポアソン方程式の右辺を計算
@@ -70,14 +67,10 @@ class PressureProjectionSolver:
             右辺項の配列
         """
         # 密度と速度の発散を計算
-        div_rho_u = self._compute_density_velocity_divergence(
-            velocity, density, dt
-        )
+        div_rho_u = self._compute_density_velocity_divergence(velocity, density, dt)
 
         # 粘性の不均一性を考慮した粘性項を計算
-        viscosity_term = self._compute_viscosity_term(
-            velocity, viscosity
-        )
+        viscosity_term = self._compute_viscosity_term(velocity, viscosity)
 
         # 右辺を計算: -div(ρu)/dt + 粘性項
         rhs = -div_rho_u / dt + viscosity_term
@@ -85,10 +78,7 @@ class PressureProjectionSolver:
         return rhs
 
     def _compute_density_velocity_divergence(
-        self, 
-        velocity: VectorField, 
-        density: ScalarField, 
-        dt: float
+        self, velocity: VectorField, density: ScalarField, dt: float
     ) -> np.ndarray:
         """密度と速度の発散を計算"""
         dx = velocity.dx
@@ -103,9 +93,7 @@ class PressureProjectionSolver:
         return result
 
     def _compute_viscosity_term(
-        self, 
-        velocity: VectorField, 
-        viscosity: ScalarField
+        self, velocity: VectorField, viscosity: ScalarField
     ) -> np.ndarray:
         """粘性の不均一性を考慮した粘性項を計算"""
         dx = velocity.dx
@@ -120,16 +108,14 @@ class PressureProjectionSolver:
         for i in range(velocity.ndim):
             # μ∇²u項
             laplacian_u = np.gradient(
-                np.gradient(velocity.components[i].data, dx, axis=i), 
-                dx, 
-                axis=i
+                np.gradient(velocity.components[i].data, dx, axis=i), dx, axis=i
             )
             mu_laplacian_u = viscosity.data * laplacian_u
 
             # (∇μ)⋅∇u項
             grad_dot_u = sum(
-                viscosity_gradient[j] * 
-                np.gradient(velocity.components[i].data, dx, axis=j)
+                viscosity_gradient[j]
+                * np.gradient(velocity.components[i].data, dx, axis=j)
                 for j in range(velocity.ndim)
             )
 
@@ -137,11 +123,7 @@ class PressureProjectionSolver:
 
         return result
 
-    def solve_pressure(
-        self,
-        rhs: np.ndarray,
-        velocity: VectorField
-    ) -> ScalarField:
+    def solve_pressure(self, rhs: np.ndarray, velocity: VectorField) -> ScalarField:
         """
         圧力ポアソン方程式を解く
 
@@ -157,16 +139,12 @@ class PressureProjectionSolver:
         pressure.data = self._poisson_solver.solve(rhs)
 
         # 診断情報の更新
-        self._diagnostics.update(
-            self._poisson_solver.get_status()
-        )
+        self._diagnostics.update(self._poisson_solver.get_status())
 
         return pressure
 
     def project_velocity(
-        self,
-        velocity: VectorField,
-        pressure: ScalarField
+        self, velocity: VectorField, pressure: ScalarField
     ) -> VectorField:
         """
         圧力勾配を用いて速度場を修正（発散除去）

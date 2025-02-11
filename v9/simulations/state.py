@@ -5,7 +5,7 @@
 """
 
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import numpy as np
 
 from core.field import VectorField, ScalarField
@@ -15,9 +15,10 @@ from physics.levelset import LevelSetField
 @dataclass
 class SimulationState:
     """シミュレーションの状態を保持するクラス
-    
+
     物理量の場や時刻情報を保持し、状態の保存・読み込みも担当します。
     """
+
     time: float
     velocity: VectorField
     levelset: LevelSetField
@@ -33,16 +34,14 @@ class SimulationState:
         """状態の妥当性を検証"""
         if self.time < 0:
             raise ValueError("時刻は非負である必要があります")
-        
+
         shapes = {
             "velocity": self.velocity.shape,
             "levelset": self.levelset.shape,
-            "pressure": self.pressure.shape
+            "pressure": self.pressure.shape,
         }
         if len(set(shapes.values())) > 1:
-            raise ValueError(
-                f"場の形状が一致しません: {shapes}"
-            )
+            raise ValueError(f"場の形状が一致しません: {shapes}")
 
     def get_density(self) -> ScalarField:
         """密度場を計算"""
@@ -62,11 +61,13 @@ class SimulationState:
         """診断情報を取得"""
         return {
             "time": self.time,
-            "velocity_max": float(np.max([np.abs(v.data).max() for v in self.velocity.components])),
+            "velocity_max": float(
+                np.max([np.abs(v.data).max() for v in self.velocity.components])
+            ),
             "pressure_max": float(np.abs(self.pressure.data).max()),
             "levelset_min": float(self.levelset.data.min()),
             "levelset_max": float(self.levelset.data.max()),
-            **self.diagnostics
+            **self.diagnostics,
         }
 
     def save_state(self, filepath: str) -> None:
@@ -81,11 +82,11 @@ class SimulationState:
             velocity_data=[v.data for v in self.velocity.components],
             levelset_data=self.levelset.data,
             pressure_data=self.pressure.data,
-            diagnostics=self.diagnostics
+            diagnostics=self.diagnostics,
         )
 
     @classmethod
-    def load_state(cls, filepath: str) -> 'SimulationState':
+    def load_state(cls, filepath: str) -> "SimulationState":
         """ファイルから状態を読み込み
 
         Args:
@@ -95,7 +96,7 @@ class SimulationState:
             読み込まれたシミュレーション状態
         """
         data = np.load(filepath)
-        
+
         # 速度場の再構築
         velocity_shape = data["velocity_data"][0].shape
         velocity = VectorField(velocity_shape)
@@ -115,5 +116,5 @@ class SimulationState:
             velocity=velocity,
             levelset=levelset,
             pressure=pressure,
-            diagnostics=data["diagnostics"].item()
+            diagnostics=data["diagnostics"].item(),
         )

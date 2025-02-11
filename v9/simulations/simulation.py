@@ -3,6 +3,7 @@ from .config import SimulationConfig
 from .state import SimulationState
 from .initializer import SimulationInitializer
 
+
 class TwoPhaseFlowSimulator:
     def __init__(self, config: SimulationConfig):
         self.config = config
@@ -10,19 +11,19 @@ class TwoPhaseFlowSimulator:
         self.levelset_method = LevelSetMethod()
         self.navier_stokes_solver = NavierStokesSolver()
 
-    def initialize(self):  
+    def initialize(self):
         initializer = SimulationInitializer(self.config)
         self.state = initializer.create_initial_state()
-        
+
     def run(self, max_iterations):
         for _ in range(max_iterations):
             self.state = self._step_forward()
             self._output_state()
-            
+
     def _step_forward(self):
         levelset = self.state.levelset
         velocity = self.state.velocity
-        
+
         density = self.levelset_method.to_density(levelset)
         viscosity = self.levelset_method.to_viscosity(levelset)
         levelset_deriv = self.levelset_method.run(levelset)
@@ -39,14 +40,14 @@ class TwoPhaseFlowSimulator:
             data=levelset.data, derivative=levelset_deriv, dt=dt
         )
         new_velocity = self.time_integrator.run(
-            data=velocity, derivative=velocity_deriv, dt=dt  
+            data=velocity, derivative=velocity_deriv, dt=dt
         )
 
         return SimulationState(
             time=self.state.time + dt,
             velocity=new_velocity,
             levelset=new_levelset,
-            pressure=pressure,  
+            pressure=pressure,
         )
 
     def _compute_dt(self):
@@ -54,5 +55,5 @@ class TwoPhaseFlowSimulator:
         return 0.01
 
     def _output_state(self):
-        # 現在の状態を出力 
+        # 現在の状態を出力
         pass

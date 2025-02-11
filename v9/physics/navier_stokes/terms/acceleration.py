@@ -25,18 +25,14 @@ class AccelerationTerm(BaseNavierStokesTerm):
     Navier-Stokes方程式の右辺を統合して速度場の時間微分を計算
     """
 
-    def __init__(
-        self, 
-        name: str = "Acceleration", 
-        enabled: bool = True
-    ):
+    def __init__(self, name: str = "Acceleration", enabled: bool = True):
         """
         Args:
             name: 項の名前
             enabled: 項を有効にするかどうか
         """
         super().__init__(name, enabled)
-        
+
         # 各項のインスタンスを事前に作成
         self._advection_term = AdvectionTerm()
         self._pressure_term = PressureTerm()
@@ -45,11 +41,11 @@ class AccelerationTerm(BaseNavierStokesTerm):
 
     def compute(
         self,
-        velocity: VectorField, 
+        velocity: VectorField,
         density: ScalarField,
         viscosity: ScalarField,
         pressure: ScalarField,
-        **kwargs
+        **kwargs,
     ) -> List[np.ndarray]:
         """
         速度場の時間微分（加速度）を計算
@@ -83,11 +79,11 @@ class AccelerationTerm(BaseNavierStokesTerm):
 
         # 診断情報の更新
         self._diagnostics = {
-            'advection': self._advection_term.get_diagnostics(),
-            'pressure': self._pressure_term.get_diagnostics(),
-            'diffusion': self._diffusion_term.get_diagnostics(),
-            'gravity': self._gravity_term.get_diagnostics(),
-            'max_acceleration': float(max(np.max(np.abs(a)) for a in acceleration))
+            "advection": self._advection_term.get_diagnostics(),
+            "pressure": self._pressure_term.get_diagnostics(),
+            "diffusion": self._diffusion_term.get_diagnostics(),
+            "gravity": self._gravity_term.get_diagnostics(),
+            "max_acceleration": float(max(np.max(np.abs(a)) for a in acceleration)),
         }
 
         return acceleration
