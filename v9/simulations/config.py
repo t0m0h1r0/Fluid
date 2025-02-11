@@ -2,15 +2,10 @@
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
-from enum import Enum, auto
+from enum import Enum
 import yaml
 
-
-class Phase(Enum):
-    """流体の相を表す列挙型"""
-
-    WATER = auto()
-    NITROGEN = auto()
+from physics.levelset.initializer import Phase  # インポートを追加
 
 
 class BoundaryType(Enum):
@@ -73,56 +68,6 @@ class BoundaryConfig:
             for boundary_type in direction.values():
                 if boundary_type not in valid_types:
                     raise ValueError(f"無効な境界条件: {boundary_type}")
-
-
-@dataclass
-class LevelSetConfig:
-    """レベルセット法の設定を保持するクラス"""
-
-    epsilon: float = 1.0e-2  # 界面の厚さ
-    reinit_interval: int = 5  # 再初期化の間隔
-    reinit_steps: int = 2  # 再初期化のステップ数
-
-    def validate(self) -> None:
-        """設定値の妥当性を検証"""
-        if self.epsilon <= 0:
-            raise ValueError("epsilonは正の値である必要があります")
-        if self.reinit_interval <= 0:
-            raise ValueError("reinit_intervalは正の値である必要があります")
-        if self.reinit_steps <= 0:
-            raise ValueError("reinit_stepsは正の値である必要があります")
-
-
-@dataclass
-class NumericalConfig:
-    """数値計算の設定クラス"""
-
-    time_integrator: str = "euler"
-    max_time: float = 2.0
-    initial_dt: float = 0.001
-    save_interval: float = 0.01
-    cfl: float = 0.5
-    min_dt: float = 1.0e-6  # 追加
-    max_dt: float = 1.0  # 追加
-    level_set: LevelSetConfig = field(default_factory=LevelSetConfig)
-
-    def validate(self):
-        """設定値の妥当性を検証"""
-        if self.time_integrator not in ["euler", "rk4"]:
-            raise ValueError("time_integratorはeulerまたはrk4である必要があります")
-        if self.max_time <= 0:
-            raise ValueError("max_timeは正の値である必要があります")
-        if self.initial_dt <= 0:
-            raise ValueError("initial_dtは正の値である必要があります")
-        if self.save_interval <= 0:
-            raise ValueError("save_intervalは正の値である必要があります")
-        if not 0 < self.cfl <= 1:
-            raise ValueError("cflは0から1の間である必要があります")
-        if self.min_dt <= 0:  # 追加
-            raise ValueError("min_dtは正の値である必要があります")
-        if self.max_dt <= self.min_dt:  # 追加
-            raise ValueError("max_dtはmin_dtより大きい必要があります")
-        self.level_set.validate()
 
 
 @dataclass
@@ -223,10 +168,8 @@ class SimulationConfig:
     phases: Dict[str, PhaseConfig]
     boundary_conditions: BoundaryConfig
     initial_conditions: InitialConditionConfig
-    numerical: NumericalConfig = field(default_factory=NumericalConfig)
+    numerical: Optional[Dict[str, Any]] = field(default_factory=dict)
     output: OutputConfig = field(default_factory=OutputConfig)
-
-    # インターフェース設定を追加
     interfaces: List[InterfaceConfig] = field(default_factory=list)
 
     def validate(self) -> None:
@@ -236,7 +179,6 @@ class SimulationConfig:
             phase.validate()
         self.boundary_conditions.validate()
         self.initial_conditions.validate()
-        self.numerical.validate()
         self.output.validate()
 
         # インターフェースの検証を追加
@@ -248,6 +190,9 @@ class SimulationConfig:
         """YAMLファイルから設定を読み込む"""
         with open(filepath, "r") as f:
             config_dict = yaml.safe_load(f)
+
+        # Phase enumとYAMLの文字列のマッピング
+        phase_mapping = {"water": Phase.PHASE_1, "nitrogen": Phase.PHASE_2}
 
         # 必要な設定を読み込む
         domain = DomainConfig(
@@ -268,14 +213,14 @@ class SimulationConfig:
 
         # background の InterfaceConfig を作成
         background_interface = InterfaceConfig(
-            phase=Phase[background_config["phase"].upper()],
+            phase=phase_mapping[background_config["phase"]],
             object_type="background",
         )
 
         # interfaces リストの先頭に background を追加
         interfaces = [background_interface] + [
             InterfaceConfig(
-                phase=Phase[obj["phase"].upper()],
+                phase=phase_mapping[obj["phase"]],
                 object_type=obj["type"],
                 height=obj.get("height", None),
                 center=obj.get("center", None),
@@ -285,12 +230,7 @@ class SimulationConfig:
         ]
 
         # 追加の設定
-        numerical = NumericalConfig(**config_dict.get("numerical", {}))
-        if "level_set" in config_dict.get("numerical", {}):
-            numerical.level_set = LevelSetConfig(
-                **config_dict["numerical"]["level_set"]
-            )
-
+        numerical = config_dict.get("numerical", {})
         output = OutputConfig(**config_dict.get("output", {}))
 
         # SimulationConfigの生成

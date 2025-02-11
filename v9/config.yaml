@@ -65,7 +65,6 @@ numerical:
     reinit_steps: 2
 
 # 可視化設定
-# 可視化設定
 output:
   output_dir: "results/visualization"
   format: "png"  # 出力フォーマット
@@ -87,14 +86,14 @@ output:
   # 可視化する物理量を選択（全てtrueに変更）
   fields:
     velocity:
-      enabled: true   # 速度場を可視化
+      enabled: false   # 速度場を可視化
       plot_types: ["vector", "magnitude"]
       scale: 1.0
       density: 20
       color: "black"
       alpha: 0.7
     pressure:
-      enabled: true   # 圧力場を可視化
+      enabled: false   # 圧力場を可視化
       plot_types: ["scalar", "contour"]
       levels: 20
       alpha: 0.5

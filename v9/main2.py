@@ -68,6 +68,7 @@ def main():
         # 初期状態の可視化と保存
         state, _ = sim.get_state()
         visualize_simulation_state(state, config, timestamp=0.0)
+        return
 
         # 初期チェックポイントを保存
         output_dir = Path(config.output.output_dir) / "checkpoints"

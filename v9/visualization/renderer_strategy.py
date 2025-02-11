@@ -5,6 +5,7 @@ from .core.base import ViewConfig, VisualizationConfig
 from .interfaces import MultiFieldVisualizationStrategy
 from .visualizer import Visualizer
 
+
 class Renderer2DVisualizationStrategy(MultiFieldVisualizationStrategy):
     """2Dレンダラーを使用した可視化戦略"""
 
