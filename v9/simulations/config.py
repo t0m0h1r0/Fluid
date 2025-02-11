@@ -262,8 +262,17 @@ class SimulationConfig:
 
         initial_conditions = InitialConditionConfig(**config_dict["initial_conditions"])
 
-        # インターフェースの読み込み
-        interfaces = [
+        # background の情報を取得
+        background_config = initial_conditions.background
+
+        # background の InterfaceConfig を作成
+        background_interface = InterfaceConfig(
+            phase=Phase[background_config["phase"].upper()],
+            object_type="background",
+        )
+
+        # interfaces リストの先頭に background を追加
+        interfaces = [background_interface] + [
             InterfaceConfig(
                 phase=Phase[obj["phase"].upper()],
                 object_type=obj["type"],
