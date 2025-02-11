@@ -32,7 +32,7 @@ class SimulationInitializer:
         # グリッドの形状とスケーリングを計算
         shape = tuple(self.config.domain.dimensions)
         domain_size = self.config.domain.size
-        dx = [size / (dim-1) for size, dim in zip(domain_size, shape)]
+        dx = [size / (dim - 1) for size, dim in zip(domain_size, shape)]
 
         # グリッド間隔は最小値を使用（CFL条件のため）
         min_dx = min(dx)

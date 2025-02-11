@@ -1,4 +1,6 @@
 from typing import Callable, TypeVar, Dict, Any
+import numpy as np
+from simulations.state import SimulationState
 from .base import TimeIntegrator
 
 T = TypeVar("T")
@@ -11,30 +13,39 @@ class ForwardEuler(TimeIntegrator[T]):
         """前進オイラー法で状態を更新
 
         Args:
-            state: 現在の状態
+            state: 現在の状態（NumPy配列またはSimulationState）
             dt: 時間刻み幅
             derivative_fn: 時間微分を計算する関数
 
         Returns:
             更新された状態
         """
-        # 時間微分を計算
-        derivative = derivative_fn(state)
+        if isinstance(state, np.ndarray):
+            # NumPy配列の場合は単純な時間積分
+            derivative = derivative_fn(state)
+            return state + dt * derivative
 
-        # 状態の各成分を更新
-        # velocity成分の更新
-        for i, (comp, deriv_comp) in enumerate(
-            zip(state.velocity.components, derivative.velocity.components)
-        ):
-            comp.data += dt * deriv_comp.data
+        elif isinstance(state, SimulationState):
+            # SimulationStateの場合は各成分を個別に更新
+            # 時間微分を計算
+            derivative = derivative_fn(state)
 
-        # levelset成分の更新
-        state.levelset.data += dt * derivative.levelset.data
+            # velocity成分の更新
+            for i, (comp, deriv_comp) in enumerate(
+                zip(state.velocity.components, derivative.velocity.components)
+            ):
+                comp.data += dt * deriv_comp.data
 
-        # 時刻の更新
-        state.time += dt
+            # levelset成分の更新
+            state.levelset.data += dt * derivative.levelset.data
 
-        return state
+            # 時刻の更新
+            state.time += dt
+
+            return state
+
+        else:
+            raise TypeError(f"Unsupported state type: {type(state)}")
 
     def get_order(self) -> int:
         """積分スキームの次数を返す"""

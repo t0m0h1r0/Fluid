@@ -38,7 +38,7 @@ class SORSolver(PoissonSolver):
 
         # デフォルトのSOR関連パラメータ
         solver_specific = solver_config.get_config_for_component("solver_specific")
-        
+
         # 緩和係数の取得（デフォルト1.5）
         self.omega = kwargs.get(
             "omega", solver_specific.get("relaxation_parameter", 1.5)
@@ -78,15 +78,14 @@ class SORSolver(PoissonSolver):
         # 各次元についてSOR更新
         for axis in range(solution.ndim):
             # 各軸方向の近傍点からの寄与を計算
-            neighbors_sum = (
-                np.roll(result, 1, axis=axis) + 
-                np.roll(result, -1, axis=axis)
+            neighbors_sum = np.roll(result, 1, axis=axis) + np.roll(
+                result, -1, axis=axis
             )
 
             # SOR更新の計算
-            correction = (
-                rhs + (neighbors_sum) / (2 * solution.ndim)
-            ) / (2 / dx[axis]**2 + 1e-10)
+            correction = (rhs + (neighbors_sum) / (2 * solution.ndim)) / (
+                2 / dx[axis] ** 2 + 1e-10
+            )
 
             # 緩和パラメータの適用
             result = (1 - self.omega) * result + self.omega * correction
@@ -107,8 +106,10 @@ class SORSolver(PoissonSolver):
             診断情報の辞書
         """
         diag = super().get_diagnostics()
-        diag.update({
-            "method": "SOR",
-            "omega": self.omega,
-        })
+        diag.update(
+            {
+                "method": "SOR",
+                "omega": self.omega,
+            }
+        )
         return diag

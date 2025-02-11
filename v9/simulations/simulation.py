@@ -30,9 +30,7 @@ from simulations.initializer import SimulationInitializer
 class TwoPhaseFlowSimulator:
     """二相流シミュレーションの統合的なソルバー"""
 
-    def __init__(
-        self, config: SimulationConfig
-    ):
+    def __init__(self, config: SimulationConfig):
         """
         シミュレータを初期化
 
@@ -239,9 +237,7 @@ class TwoPhaseFlowSimulator:
         return self._current_state, self._current_state.get_diagnostics()
 
     def step_forward(
-        self, 
-        state: Optional[SimulationState] = None, 
-        dt: Optional[float] = None
+        self, state: Optional[SimulationState] = None, dt: Optional[float] = None
     ) -> Tuple[SimulationState, Dict[str, Any]]:
         """
         シミュレーションを1ステップ進める
