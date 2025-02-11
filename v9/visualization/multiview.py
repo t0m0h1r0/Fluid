@@ -16,30 +16,16 @@ def create_multiview_visualization(
     timestamp: float = 0.0,
     base_name: str = "simulation_state",
 ) -> List[str]:
-    """シミュレーション状態の多視点可視化を生成
-
-    Args:
-        state: シミュレーション状態
-        config: 可視化設定
-        timestamp: 現在の時刻
-        base_name: 出力ファイル名のベース
-
-    Returns:
-        生成された可視化ファイルのパス一覧
-    """
+    """シミュレーション状態の多視点可視化を生成"""
     # 出力ディレクトリの作成
-    # configがSimulationConfigの場合
     if hasattr(config, "output_dir"):
         output_dir = Path(config.output_dir)
-    # configが辞書の場合
     elif isinstance(config, dict):
         output_dir = Path(config.get("output_dir", "results/visualization"))
     else:
         output_dir = Path("results/visualization")
 
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    # 出力ファイルのパスを格納するリスト
     output_files = []
 
     # 可視化戦略の選択（次元数に基づく）
@@ -49,24 +35,29 @@ def create_multiview_visualization(
         VisualizationFactory.create_strategy(strategy_type, config)
     )
 
-    # 可視化設定の取得
+    # 可視化設定とフィールド設定の取得を修正
     if isinstance(config, dict):
         viz_config = config.get("visualization", {})
+        fields_config = viz_config.get("fields", {})
+        slice_config = viz_config.get("slices", {})
     elif hasattr(config, "output"):
-        viz_config = getattr(config.output, "fields", {})
+        viz_config = config.output
+        fields_config = viz_config.fields
+        slice_config = getattr(viz_config, "slices", {})
     else:
         viz_config = {}
+        fields_config = {}
+        slice_config = {}
 
     # スライス設定の取得
-    slice_axes = viz_config.get("slices", {}).get("axes", ["xy"])
-    slice_positions = viz_config.get("slices", {}).get("positions", [0.5])
+    slice_axes = slice_config.get("axes", ["xy"])
+    slice_positions = slice_config.get("positions", [0.5])
 
     # 可視化する物理量の設定
-    fields_config = viz_config.get("fields", {})
     physics_fields = []
 
     # 速度場の設定
-    if fields_config.get("velocity", {}).get("enabled", False):
+    if fields_config.get("velocity", {}).get("enabled", True):
         physics_fields.append(
             {
                 "name": "velocity",
@@ -76,16 +67,28 @@ def create_multiview_visualization(
         )
 
     # 圧力場の設定
-    if fields_config.get("pressure", {}).get("enabled", False):
+    if fields_config.get("pressure", {}).get("enabled", True):
         physics_fields.append(
             {"name": "pressure", "data": state.pressure.data, "plot_type": "scalar"}
         )
 
     # レベルセット場の設定
-    if fields_config.get("levelset", {}).get("enabled", False):
+    if fields_config.get("levelset", {}).get("enabled", True):
         physics_fields.append(
             {"name": "levelset", "data": state.levelset.data, "plot_type": "scalar"}
         )
+
+    # physics_fieldsが空の場合のデフォルト設定
+    if not physics_fields:
+        physics_fields = [
+            {
+                "name": "velocity",
+                "data": [comp.data for comp in state.velocity.components],
+                "plot_type": "vector",
+            },
+            {"name": "pressure", "data": state.pressure.data, "plot_type": "scalar"},
+            {"name": "levelset", "data": state.levelset.data, "plot_type": "scalar"},
+        ]
 
     # 可視化の実行
     for field in physics_fields:
