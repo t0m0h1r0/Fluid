@@ -41,6 +41,13 @@ class LevelSetField:
         """Level Set関数のデータを取得"""
         return self._data
 
+    @data.setter
+    def data(self, value: npt.NDArray):
+        """Level Set関数のデータを設定"""
+        if value.shape != self._data.shape:
+            raise ValueError(f"無効な形状: {value.shape} != {self._data.shape}")
+        self._data = value
+
     @property
     def shape(self) -> Tuple[int, ...]:
         """グリッドの形状を取得"""
