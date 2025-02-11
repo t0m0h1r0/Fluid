@@ -106,7 +106,7 @@ output:
 
 # デバッグ設定
 debug:
-  level: "info"
+  level: "ERROR"
   save_fields: true
   check_divergence: true
   plot_residuals: true

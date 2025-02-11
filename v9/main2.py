@@ -105,12 +105,6 @@ class SimulationManager:
             # シミュレーションのメインループ
             next_save_time = save_interval
 
-            print(
-                f"シミュレーション開始:\n"
-                f"  最大時間: {max_time} [s]\n"
-                f"  保存間隔: {save_interval} [s]"
-            )
-
             while current_state.time < max_time:
                 try:
                     # 時間発展の実行
@@ -130,12 +124,6 @@ class SimulationManager:
                         self.simulator.save_checkpoint(str(checkpoint_path))
 
                         next_save_time += save_interval
-
-                    # 進捗の出力
-                    print(
-                        f"Time: {current_state.time:.3f}/{max_time:.1f}, "
-                        f"Diagnostics: {step_info}"
-                    )
 
                 except Exception as step_error:
                     print(
