@@ -17,10 +17,10 @@ class ScalarField(Field):
     """
 
     def __init__(
-        self, 
-        shape: Tuple[int, ...], 
-        dx: float = 1.0, 
-        initial_value: Union[float, np.ndarray] = 0.0
+        self,
+        shape: Tuple[int, ...],
+        dx: float = 1.0,
+        initial_value: Union[float, np.ndarray] = 0.0,
     ):
         """スカラー場を初期化
 
@@ -33,7 +33,9 @@ class ScalarField(Field):
         if isinstance(initial_value, np.ndarray):
             # 配列の場合は直接代入
             if initial_value.shape != shape:
-                raise ValueError(f"Initial value shape {initial_value.shape} does not match field shape {shape}")
+                raise ValueError(
+                    f"Initial value shape {initial_value.shape} does not match field shape {shape}"
+                )
             self._data = initial_value.copy()
         elif isinstance(initial_value, (int, float)):
             # スカラー値の場合は配列全体に設定
@@ -128,6 +130,7 @@ class ScalarField(Field):
             sigma: ガウシアンフィルタの標準偏差
         """
         from scipy.ndimage import gaussian_filter
+
         self._data = gaussian_filter(self._data, sigma)
 
     def __add__(self, other):

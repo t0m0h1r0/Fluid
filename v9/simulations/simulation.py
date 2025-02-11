@@ -121,7 +121,9 @@ class TwoPhaseFlowSimulator:
 
         return self._state, {"time": self._state.time}
 
-    def compute_timestep(self, state: Optional[SimulationState] = None, **kwargs) -> float:
+    def compute_timestep(
+        self, state: Optional[SimulationState] = None, **kwargs
+    ) -> float:
         """
         時間刻み幅を計算
 
@@ -142,11 +144,16 @@ class TwoPhaseFlowSimulator:
         dt_terms = [
             term.compute_timestep(current_state.velocity) for term in self.terms
         ]
-        
+
         # CFL条件に基づいた時間刻み幅
         return min(dt_terms)
 
-    def step_forward(self, dt: Optional[float] = None, state: Optional[SimulationState] = None, **kwargs) -> Dict[str, Any]:
+    def step_forward(
+        self,
+        dt: Optional[float] = None,
+        state: Optional[SimulationState] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
         """
         シミュレーションを1ステップ進める
 
@@ -196,7 +203,9 @@ class TwoPhaseFlowSimulator:
         for i, (v, a) in enumerate(
             zip(current_state.velocity.components, acceleration)
         ):
-            new_v_data = self._time_solver.integrate(v.data, dt, derivative_fn=lambda x: a)
+            new_v_data = self._time_solver.integrate(
+                v.data, dt, derivative_fn=lambda x: a
+            )
             new_velocity_comps.append(new_v_data)
 
         new_velocity = current_state.velocity.__class__(

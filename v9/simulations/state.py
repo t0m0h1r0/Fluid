@@ -122,7 +122,7 @@ class SimulationState:
 
     def compute_derivative(self) -> "SimulationState":
         """状態の時間微分を計算
-        
+
         Returns:
             時間微分を表す新しい状態
         """
@@ -153,7 +153,7 @@ class SimulationState:
 
         derivative_state.levelset.data = levelset_derivative
         derivative_state.velocity.components = [
-            ScalarField(v.shape, v.dx, initial_value=a) 
+            ScalarField(v.shape, v.dx, initial_value=a)
             for v, a in zip(self.velocity.components, acceleration)
         ]
 

@@ -103,7 +103,7 @@ class NumericalConfig:
     save_interval: float = 0.01
     cfl: float = 0.5
     min_dt: float = 1.0e-6  # 追加
-    max_dt: float = 1.0     # 追加
+    max_dt: float = 1.0  # 追加
     level_set: LevelSetConfig = field(default_factory=LevelSetConfig)
 
     def validate(self):

@@ -43,7 +43,9 @@ class VectorField:
             ValueError: コンポーネントの数が不正な場合
         """
         if len(value) != len(self._components):
-            raise ValueError(f"コンポーネント数が一致しません: {len(value)} != {len(self._components)}")
+            raise ValueError(
+                f"コンポーネント数が一致しません: {len(value)} != {len(self._components)}"
+            )
         if not all(isinstance(v, ScalarField) for v in value):
             raise ValueError("すべての要素がScalarFieldである必要があります")
         if not all(v.shape == self.shape for v in value):

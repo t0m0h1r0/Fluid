@@ -1,13 +1,14 @@
 from abc import ABC, abstractmethod
 from typing import Callable, TypeVar, Generic, Dict, Any, Optional
 
-T = TypeVar('T')
+T = TypeVar("T")
+
 
 class TimeIntegrator(ABC, Generic[T]):
     """時間積分のための抽象基底クラス"""
 
     def __init__(
-        self, 
+        self,
         stability_limit: float = float("inf"),
         cfl: float = 0.5,  # CFL条件のための係数を追加
         min_dt: float = 1e-6,  # 最小時間刻み幅を追加
@@ -66,26 +67,26 @@ class TimeIntegrator(ABC, Generic[T]):
         Returns:
             時間発展の結果を含む辞書
         """
+
         # デリバティブを計算する関数を定義
         def derivative_fn(current_state: T) -> T:
-            if hasattr(current_state, 'compute_derivative'):
+            if hasattr(current_state, "compute_derivative"):
                 return current_state.compute_derivative()
             else:
-                raise NotImplementedError("状態オブジェクトにcompute_derivativeメソッドが必要です")
+                raise NotImplementedError(
+                    "状態オブジェクトにcompute_derivativeメソッドが必要です"
+                )
 
         # 時間積分を実行
         new_state = self.integrate(state, dt, derivative_fn)
 
         # 診断情報の収集
         diagnostics = {
-            "time": new_state.time, 
+            "time": new_state.time,
             "dt": dt,
         }
 
-        return {
-            "state": new_state,
-            "diagnostics": diagnostics
-        }
+        return {"state": new_state, "diagnostics": diagnostics}
 
     def check_stability(self, dt: float, state_derivative: T) -> bool:
         """安定性条件をチェック"""
@@ -112,14 +113,14 @@ class TimeIntegrator(ABC, Generic[T]):
             計算された時間刻み幅
         """
         # CFLに基づく時間刻み幅の計算
-        if state is not None and hasattr(state, 'velocity'):
+        if state is not None and hasattr(state, "velocity"):
             velocity = state.velocity
             max_velocity = max(abs(v.data).max() for v in velocity.components)
             dx = velocity.dx
             dt = self._cfl * dx / (max_velocity + 1e-10)
-            
+
             # 時間刻み幅を制限
             dt = max(min(dt, self._max_dt), self._min_dt)
             return dt
-        
+
         return self._max_dt  # デフォルトの時間刻み幅
