@@ -36,10 +36,11 @@ boundary_conditions:
 # 初期条件
 initial_conditions:
   background:
-    phase: water
-    height_fraction: 0.80
-
+    phase: nitrogen
   objects:
+    - type: layer
+      phase: water
+      height_fraction: 0.80  # 0から1の間の値を使用
     - type: sphere
       phase: nitrogen
       center: [0.5, 0.5, 0.4]

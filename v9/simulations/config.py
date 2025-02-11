@@ -125,18 +125,25 @@ class InterfaceConfig:
 
     phase: Phase
     object_type: str  # "background", "layer", "sphere"
-    height_fraction: Optional[float] = None  # レイヤー用
+    height: Optional[float] = None  # レイヤー用 - 既存の height_fraction の代わり
+    height_fraction: Optional[float] = None  # 非推奨として残す
     center: Optional[List[float]] = None  # 球体用
     radius: Optional[float] = None  # 球体用
 
     def validate(self) -> None:
         """設定値の妥当性を検証"""
         if self.object_type == "background":
-            if any([self.height_fraction, self.center, self.radius]):
+            if any([self.height, self.height_fraction, self.center, self.radius]):
                 raise ValueError("背景相には高さ、中心、半径は指定できません")
         elif self.object_type == "layer":
-            if not self.height_fraction or not 0 <= self.height_fraction <= 1:
-                raise ValueError("レイヤーには0から1の間の高さが必要です")
+            # 高さは height か height_fraction のどちらかを使用可能
+            height_specified = (self.height is not None) or (self.height_fraction is not None)
+            if not height_specified:
+                raise ValueError("レイヤーには高さが必要です")
+            if self.height is not None and not 0 <= self.height <= 1:
+                raise ValueError("高さは0から1の間である必要があります")
+            if self.height_fraction is not None and not 0 <= self.height_fraction <= 1:
+                raise ValueError("高さの割合は0から1の間である必要があります")
             if any([self.center, self.radius]):
                 raise ValueError("レイヤーには高さのみ指定してください")
         elif self.object_type == "sphere":
@@ -154,9 +161,9 @@ class InterfaceConfig:
 class InitialConditionConfig:
     """初期条件の設定を保持するクラス"""
 
-    background: Dict[str, Any]  # 背景相の設定
-    objects: List[Dict[str, Any]]  # 界面オブジェクトのリスト
     velocity: Dict[str, str]  # 初期速度場の設定
+    background: Dict[str, Any]  # 背景相の設定
+    objects: List[Dict[str, Any]] = field(default_factory=list)  # 界面オブジェクトのリスト
 
     def validate(self) -> None:
         """設定値の妥当性を検証"""
@@ -164,6 +171,12 @@ class InitialConditionConfig:
             raise ValueError("背景相には相の指定が必要です")
         if "type" not in self.velocity:
             raise ValueError("初期速度場の種類の指定が必要です")
+
+    def get(self, key: str, default=None):
+        """辞書のようなアクセスを可能にするメソッド"""
+        if hasattr(self, key):
+            return getattr(self, key)
+        return default
 
 
 @dataclass
