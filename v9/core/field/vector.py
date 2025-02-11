@@ -32,6 +32,24 @@ class VectorField:
         """ベクトル場の各成分を取得"""
         return self._components
 
+    @components.setter
+    def components(self, value: List[ScalarField]):
+        """ベクトル場の各成分を設定
+
+        Args:
+            value: 設定するスカラー場のリスト
+
+        Raises:
+            ValueError: コンポーネントの数が不正な場合
+        """
+        if len(value) != len(self._components):
+            raise ValueError(f"コンポーネント数が一致しません: {len(value)} != {len(self._components)}")
+        if not all(isinstance(v, ScalarField) for v in value):
+            raise ValueError("すべての要素がScalarFieldである必要があります")
+        if not all(v.shape == self.shape for v in value):
+            raise ValueError("すべてのコンポーネントは同じ形状である必要があります")
+        self._components = value
+
     @property
     def shape(self) -> Tuple[int, ...]:
         """場の形状を取得"""

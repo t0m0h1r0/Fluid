@@ -3,7 +3,7 @@
 このモジュールは、スカラー量（圧力、温度など）を表現するための場のクラスを定義します。
 """
 
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 import numpy as np
 from .field import Field
 from typing import Dict, Any
@@ -17,18 +17,30 @@ class ScalarField(Field):
     """
 
     def __init__(
-        self, shape: Tuple[int, ...], dx: float = 1.0, initial_value: float = 0.0
+        self, 
+        shape: Tuple[int, ...], 
+        dx: float = 1.0, 
+        initial_value: Union[float, np.ndarray] = 0.0
     ):
         """スカラー場を初期化
 
         Args:
             shape: グリッドの形状
             dx: グリッド間隔
-            initial_value: 初期値
+            initial_value: 初期値（スカラーまたは配列）
         """
         super().__init__(shape, dx)
-        if initial_value != 0.0:
-            self._data.fill(initial_value)
+        if isinstance(initial_value, np.ndarray):
+            # 配列の場合は直接代入
+            if initial_value.shape != shape:
+                raise ValueError(f"Initial value shape {initial_value.shape} does not match field shape {shape}")
+            self._data = initial_value.copy()
+        elif isinstance(initial_value, (int, float)):
+            # スカラー値の場合は配列全体に設定
+            if initial_value != 0.0:  # 0.0の場合は既にzeros()で初期化済み
+                self._data.fill(initial_value)
+        else:
+            raise TypeError(f"Unsupported initial_value type: {type(initial_value)}")
 
     def interpolate(self, points: np.ndarray) -> np.ndarray:
         """任意の点での値を線形補間
@@ -116,7 +128,6 @@ class ScalarField(Field):
             sigma: ガウシアンフィルタの標準偏差
         """
         from scipy.ndimage import gaussian_filter
-
         self._data = gaussian_filter(self._data, sigma)
 
     def __add__(self, other):
