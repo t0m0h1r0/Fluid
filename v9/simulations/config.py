@@ -125,25 +125,18 @@ class InterfaceConfig:
 
     phase: Phase
     object_type: str  # "background", "layer", "sphere"
-    height: Optional[float] = None  # レイヤー用 - 既存の height_fraction の代わり
-    height_fraction: Optional[float] = None  # 非推奨として残す
+    height: Optional[float] = None  # レイヤー用
     center: Optional[List[float]] = None  # 球体用
     radius: Optional[float] = None  # 球体用
 
     def validate(self) -> None:
         """設定値の妥当性を検証"""
         if self.object_type == "background":
-            if any([self.height, self.height_fraction, self.center, self.radius]):
+            if any([self.height, self.center, self.radius]):
                 raise ValueError("背景相には高さ、中心、半径は指定できません")
         elif self.object_type == "layer":
-            # 高さは height か height_fraction のどちらかを使用可能
-            height_specified = (self.height is not None) or (self.height_fraction is not None)
-            if not height_specified:
-                raise ValueError("レイヤーには高さが必要です")
-            if self.height is not None and not 0 <= self.height <= 1:
-                raise ValueError("高さは0から1の間である必要があります")
-            if self.height_fraction is not None and not 0 <= self.height_fraction <= 1:
-                raise ValueError("高さの割合は0から1の間である必要があります")
+            if self.height is not None and not 0 <= self.height:
+                raise ValueError("高さは正である必要があります")
             if any([self.center, self.radius]):
                 raise ValueError("レイヤーには高さのみ指定してください")
         elif self.object_type == "sphere":
@@ -151,7 +144,7 @@ class InterfaceConfig:
                 raise ValueError("球体には3次元の中心座標が必要です")
             if not self.radius or self.radius <= 0:
                 raise ValueError("球体には正の半径が必要です")
-            if self.height_fraction is not None:
+            if self.height is not None:
                 raise ValueError("球体には高さは指定できません")
         else:
             raise ValueError(f"未対応のオブジェクトタイプ: {self.object_type}")
@@ -276,7 +269,7 @@ class SimulationConfig:
             InterfaceConfig(
                 phase=Phase[obj["phase"].upper()],
                 object_type=obj["type"],
-                height_fraction=obj.get("height", None),
+                height=obj.get("height", None),
                 center=obj.get("center", None),
                 radius=obj.get("radius", None),
             )
