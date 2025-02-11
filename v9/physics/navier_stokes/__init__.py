@@ -1,13 +1,21 @@
-from .terms.advection import AdvectionTerm
-from .terms.diffusion import DiffusionTerm
-from .terms.force import GravityForce, SurfaceTensionForce
-from .terms.pressure import PressureTerm
+from .terms import (
+    AdvectionTerm,
+    DiffusionTerm,
+    PressureTerm,
+    AccelerationTerm,
+    GravityForce,
+    SurfaceTensionForce,
+)
+from .solver import NavierStokesSolver
 
 __all__ = [
     # 項の実装
     "AdvectionTerm",
     "DiffusionTerm",
     "PressureTerm",
+    "AccelerationTerm",
     "GravityForce",
     "SurfaceTensionForce",
+    # ソルバー
+    "NavierStokesSolver",
 ]

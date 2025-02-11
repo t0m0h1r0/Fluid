@@ -1,0 +1,133 @@
+from typing import List, Dict, Any, Optional
+import numpy as np
+
+from core.field import VectorField, ScalarField
+from physics.navier_stokes.terms import (
+    AdvectionTerm,
+    DiffusionTerm,
+    PressureTerm,
+    AccelerationTerm,
+    GravityForce,
+    SurfaceTensionForce,
+)
+
+
+class NavierStokesSolver:
+    """Navier-Stokes方程式のシンプルな解法
+
+    入力された速度場、密度場、粘性場、圧力場から速度の時間微分を計算する。
+    """
+
+    def __init__(
+        self,
+        advection_scheme: str = "central",
+        enable_surface_tension: bool = True,
+        enable_gravity: bool = True,
+    ):
+        """
+        ソルバーを初期化
+
+        Args:
+            advection_scheme: 移流項のスキーム
+            enable_surface_tension: 表面張力の有効化
+            enable_gravity: 重力の有効化
+        """
+        # 各項の初期化
+        self.advection_term = AdvectionTerm(use_weno=advection_scheme == "weno")
+        self.diffusion_term = DiffusionTerm()
+        self.pressure_term = PressureTerm()
+        self.acceleration_term = AccelerationTerm()
+
+        # 外力項の初期化（オプション）
+        self.force_terms = []
+        if enable_gravity:
+            self.force_terms.append(GravityForce())
+        if enable_surface_tension:
+            self.force_terms.append(SurfaceTensionForce())
+
+    def compute_velocity_derivative(
+        self,
+        velocity: VectorField,
+        density: ScalarField,
+        viscosity: ScalarField,
+        pressure: ScalarField,
+        levelset: Optional[ScalarField] = None,
+        **kwargs,
+    ) -> List[np.ndarray]:
+        """
+        速度の時間微分を計算
+
+        Args:
+            velocity: 速度場
+            density: 密度場
+            viscosity: 粘性場
+            pressure: 圧力場
+            levelset: レベルセット関数（オプション）
+            **kwargs: 追加のパラメータ
+
+        Returns:
+            各方向の速度成分の時間微分
+        """
+        # 各項の計算
+        advection = self.advection_term.compute(velocity)
+        diffusion = self.diffusion_term.compute(velocity)
+        pressure_grad = self.pressure_term.compute(velocity, pressure)
+
+        # 外力項の計算
+        force_terms = []
+        for force in self.force_terms:
+            if force.__class__ == SurfaceTensionForce and levelset is not None:
+                force_term = force.compute(velocity, levelset)
+            elif force.__class__ == GravityForce:
+                force_term = force.compute(velocity, density)
+            else:
+                continue
+            force_terms.extend(force_term)
+
+        # 速度の時間微分を統合
+        velocity_derivative = [
+            -adv + diff - press_grad + f
+            for adv, diff, press_grad, f in zip(
+                advection,
+                diffusion,
+                pressure_grad,
+                [force_terms[i] for i in range(velocity.ndim)],
+            )
+        ]
+
+        return velocity_derivative
+
+    def compute_timestep(
+        self, velocity: VectorField, density: ScalarField, pressure: ScalarField
+    ) -> float:
+        """
+        安定な時間刻み幅を計算
+
+        Args:
+            velocity: 速度場
+            density: 密度場
+            pressure: 圧力場
+
+        Returns:
+            最大許容時間刻み幅
+        """
+        timesteps = [
+            self.advection_term.compute_timestep(velocity),
+            self.diffusion_term.compute_timestep(velocity),
+            self.pressure_term.compute_timestep(velocity, pressure),
+        ]
+        return min(timesteps)
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """
+        診断情報を取得
+
+        Returns:
+            ソルバーの診断情報
+        """
+        return {
+            "advection": self.advection_term.get_diagnostics(),
+            "diffusion": self.diffusion_term.get_diagnostics(),
+            "pressure": self.pressure_term.get_diagnostics(),
+            "force_terms": [term.get_diagnostics() for term in self.force_terms],
+        }

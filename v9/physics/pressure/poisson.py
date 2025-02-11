@@ -65,9 +65,7 @@ class PressurePoissonSolver:
         if initial_pressure is not None:
             pressure.data = initial_pressure.data.copy()
 
-        pressure.data = self._poisson_solver.solve(
-            rhs, initial_solution=pressure.data
-        )
+        pressure.data = self._poisson_solver.solve(rhs, initial_solution=pressure.data)
 
         return pressure, self._diagnostics
 
@@ -125,9 +123,7 @@ class PressurePoissonSolver:
         for i in range(velocity.ndim):
             vel_grad = []
             for j in range(velocity.ndim):
-                vel_grad.append(
-                    np.gradient(velocity.components[i].data, dx, axis=j)
-                )
+                vel_grad.append(np.gradient(velocity.components[i].data, dx, axis=j))
 
             for j in range(velocity.ndim):
                 result += np.gradient(nu_grad[j] * vel_grad[j], dx, axis=i)
