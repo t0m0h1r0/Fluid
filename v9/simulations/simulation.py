@@ -1,83 +1,272 @@
-"""シミュレーションの全体的な管理を担当するモジュール"""
+"""
+二相流シミュレーションのための高度な実装
 
-from physics.levelset import LevelSetMethod
-from physics.navier_stokes.solvers.projection import PressureProjectionSolver
+このモジュールは、以下の物理過程を統合的に扱います：
+1. レベルセット関数からの物性値計算
+2. 外力（表面張力・重力）の計算
+3. 圧力ポアソン方程式の解法
+4. Navier-Stokes方程式の解法
+5. 連続の方程式（レベルセット関数の移流）
+6. 時間発展スキーム（前進オイラー法）
+"""
+
+from typing import Dict, Any, Optional, Tuple, List
+import numpy as np
+
+from core.field import VectorField, ScalarField
+from core.solver import TemporalSolver
 from numerics.time_evolution.euler import ForwardEuler
+
+from physics.levelset import LevelSetField, LevelSetMethod
+from physics.navier_stokes import NavierStokesSolver
+from physics.pressure import PressurePoissonSolver
+from physics.continuity import ContinuityEquation
+from physics.navier_stokes.terms import GravityForce, SurfaceTensionForce
+
 from .config import SimulationConfig
 from .state import SimulationState
 from .initializer import SimulationInitializer
-from physics.navier_stokes.terms import (
-    AdvectionTerm,
-    DiffusionTerm,
-    PressureTerm,
-    AccelerationTerm,
-    GravityForce,
-    SurfaceTensionForce,
-)
-from numerics.poisson import PoissonConfig
-from typing import Optional, Dict, Any, Union, Tuple
 
 
 class TwoPhaseFlowSimulator:
-    """二相流シミュレーションを管理するクラス"""
+    """二相流シミュレーションの統合的なソルバー"""
 
-    def __init__(self, config: Union[SimulationConfig, Dict[str, Any]]):
+    def __init__(
+        self, config: SimulationConfig, time_integrator: Optional[TemporalSolver] = None
+    ):
         """
-        シミュレーションを初期化
+        シミュレータを初期化
 
         Args:
             config: シミュレーション設定
+            time_integrator: 時間発展スキーム（デフォルトは前進オイラー法）
         """
-        # config が辞書の場合、SimulationConfigに変換
-        if isinstance(config, dict):
-            config = SimulationConfig.from_dict(config)
-
         self.config = config
 
-        # ポアソンソルバーの設定
-        poisson_config = PoissonConfig()
-        poisson_config.convergence["tolerance"] = 1e-5
-        poisson_config.convergence["max_iterations"] = 1000
-
-        # 時間積分器の設定
-        cfl = config.numerical.get("cfl", 0.5)
-        self._time_solver = ForwardEuler(
-            cfl=cfl,
+        # デフォルトの時間積分器
+        self._time_solver = time_integrator or ForwardEuler(
+            cfl=config.numerical.cfl,
+            min_dt=config.numerical.min_dt,
+            max_dt=config.numerical.max_dt,
         )
 
-        # 参照とする粘性・密度を取得
-        reference_viscosity = self._get_reference_viscosity()
-        reference_density = self._get_reference_density()
+        # 物理モデルのソルバー
+        self._levelset_method = LevelSetMethod()
+        self._continuity_solver = ContinuityEquation()
+        self._navier_stokes_solver = NavierStokesSolver()
+        self._pressure_solver = PressurePoissonSolver()
 
-        # Navier-Stokes方程式の各項を設定
-        self.terms = [
-            AdvectionTerm(use_weno=True),
-            DiffusionTerm(viscosity=reference_viscosity),
-            PressureTerm(density=reference_density),
-            GravityForce(),
-            SurfaceTensionForce(),
+        # 外力項
+        self._gravity_force = GravityForce(gravity=config.physics.gravity)
+        self._surface_tension_force = SurfaceTensionForce(
+            surface_tension=config.physics.surface_tension
+        )
+
+    def compute_material_properties(
+        self, levelset: LevelSetField
+    ) -> Dict[str, ScalarField]:
+        """
+        レベルセット関数から物性値を計算
+
+        Args:
+            levelset: レベルセット関数
+
+        Returns:
+            密度場、粘性場、界面関数を含む辞書
+        """
+        density = ScalarField(levelset.shape, levelset.dx)
+        viscosity = ScalarField(levelset.shape, levelset.dx)
+        interface = ScalarField(levelset.shape, levelset.dx)
+
+        # レベルセット関数から物性値を計算
+        density.data = levelset.heaviside()
+        viscosity.data = levelset.heaviside()
+        interface.data = levelset.delta()
+
+        return {"density": density, "viscosity": viscosity, "interface": interface}
+
+    def compute_external_forces(
+        self, velocity: VectorField, density: ScalarField, levelset: LevelSetField
+    ) -> VectorField:
+        """
+        外力（重力と表面張力）を計算
+
+        Args:
+            velocity: 速度場
+            density: 密度場
+            levelset: レベルセット関数
+
+        Returns:
+            外力場のベクトル
+        """
+        # 重力項の計算
+        gravity_forces = self._gravity_force.compute(velocity, density)
+
+        # 表面張力項の計算
+        surface_tension_forces = self._surface_tension_force.compute(velocity, levelset)
+
+        # 外力を統合
+        external_forces = VectorField(velocity.shape, velocity.dx)
+        external_forces.components = [
+            ScalarField(velocity.shape, velocity.dx, initial_value=grav + surf)
+            for grav, surf in zip(gravity_forces, surface_tension_forces)
         ]
 
-        # 加速度項と時間積分器
-        self.acceleration_term = AccelerationTerm()
+        return external_forces
 
-        # Level Set法と圧力投影法のソルバー
-        self.levelset_method = LevelSetMethod()
-        self.navier_stokes_solver = PressureProjectionSolver(poisson_config)
+    def solve_pressure(
+        self,
+        velocity: VectorField,
+        density: ScalarField,
+        viscosity: ScalarField,
+        dt: float,
+    ) -> ScalarField:
+        """
+        圧力ポアソン方程式を解く
 
-        # シミュレーション状態の初期化用フラグ
-        self._state = None
-        self._initialized = False
+        Args:
+            velocity: 速度場
+            density: 密度場
+            viscosity: 粘性場
+            dt: 時間刻み幅
 
-    def _get_reference_viscosity(self) -> float:
-        """参照粘性係数を取得"""
-        # 最も小さい粘性を基準とする
-        return min(phase.viscosity for phase in self.config.physics.phases)
+        Returns:
+            計算された圧力場
+        """
+        pressure, _ = self._pressure_solver.solve(
+            velocity=velocity, density=density, viscosity=viscosity, dt=dt
+        )
+        return pressure
 
-    def _get_reference_density(self) -> float:
-        """参照密度を取得"""
-        # 最も小さい密度を基準とする
-        return min(phase.density for phase in self.config.physics.phases)
+    def compute_velocity_derivative(
+        self,
+        velocity: VectorField,
+        density: ScalarField,
+        viscosity: ScalarField,
+        pressure: ScalarField,
+        external_forces: VectorField,
+    ) -> List[np.ndarray]:
+        """
+        速度の時間微分を計算
+
+        Args:
+            velocity: 速度場
+            density: 密度場
+            viscosity: 粘性場
+            pressure: 圧力場
+            external_forces: 外力場
+
+        Returns:
+            速度の各成分の時間微分
+        """
+        # Navier-Stokes方程式から速度の時間微分を計算
+        velocity_derivative = self._navier_stokes_solver.compute_velocity_derivative(
+            velocity=velocity,
+            density=density,
+            viscosity=viscosity,
+            pressure=pressure,
+            levelset=None,  # オプション: レベルセット関数
+        )
+
+        return velocity_derivative
+
+    def compute_levelset_derivative(
+        self, levelset: LevelSetField, velocity: VectorField
+    ) -> np.ndarray:
+        """
+        レベルセット関数の時間微分を計算
+
+        Args:
+            levelset: レベルセット関数
+            velocity: 速度場
+
+        Returns:
+            レベルセット関数の時間微分
+        """
+        # 連続の方程式からレベルセット関数の時間微分を計算
+        levelset_derivative = self._continuity_solver.compute_derivative(
+            levelset=levelset, velocity=velocity
+        )
+        return levelset_derivative
+
+    def step_forward(
+        self, state: SimulationState, dt: Optional[float] = None
+    ) -> Tuple[SimulationState, Dict[str, Any]]:
+        """
+        シミュレーションを1ステップ進める
+
+        Args:
+            state: 現在のシミュレーション状態
+            dt: 時間刻み幅（Noneの場合は自動計算）
+
+        Returns:
+            更新された状態と診断情報
+        """
+        # 時間刻み幅の計算
+        if dt is None:
+            dt = self._time_solver.compute_timestep(state=state)
+
+        # 1. レベルセット関数から物性値を計算
+        material_properties = self.compute_material_properties(state.levelset)
+        density = material_properties["density"]
+        viscosity = material_properties["viscosity"]
+
+        # 2. 外力の計算
+        external_forces = self.compute_external_forces(
+            state.velocity, density, state.levelset
+        )
+
+        # 3. 圧力場の計算
+        pressure = self.solve_pressure(state.velocity, density, viscosity, dt)
+
+        # 4. 速度の時間微分を計算
+        velocity_derivative = self.compute_velocity_derivative(
+            state.velocity, density, viscosity, pressure, external_forces
+        )
+
+        # 5. レベルセット関数の時間微分を計算
+        levelset_derivative = self.compute_levelset_derivative(
+            state.levelset, state.velocity
+        )
+
+        # 6. 速度場の時間発展
+        new_velocity_comps = [
+            self._time_solver.integrate(v.data, dt, derivative_fn=lambda x: v_deriv)
+            for v, v_deriv in zip(state.velocity.components, velocity_derivative)
+        ]
+        new_velocity = VectorField(state.velocity.shape, state.velocity.dx)
+        for i, comp in enumerate(new_velocity_comps):
+            new_velocity.components[i].data = comp
+
+        # 7. レベルセット関数の時間発展
+        new_levelset_data = self._time_solver.integrate(
+            state.levelset.data, dt, derivative_fn=lambda x: levelset_derivative
+        )
+        new_levelset = LevelSetField(
+            shape=state.levelset.shape,
+            dx=state.levelset.dx,
+            params=state.levelset.params,
+        )
+        new_levelset.data = new_levelset_data
+
+        # 新しいシミュレーション状態の作成
+        new_state = SimulationState(
+            time=state.time + dt,
+            velocity=new_velocity,
+            levelset=new_levelset,
+            pressure=pressure,
+        )
+
+        # 診断情報の作成
+        diagnostics = {
+            "time": new_state.time,
+            "dt": dt,
+            "velocity_derivative": velocity_derivative,
+            "levelset_derivative": levelset_derivative,
+            "material_properties": material_properties,
+        }
+
+        return new_state, diagnostics
 
     def initialize(self, state: Optional[SimulationState] = None):
         """
@@ -87,171 +276,28 @@ class TwoPhaseFlowSimulator:
             state: 初期状態（オプション）
         """
         if state is None:
-            # 初期状態の生成
             initializer = SimulationInitializer(self.config)
             state = initializer.create_initial_state()
 
-        self._state = state
-        self._initialized = True
-
-    def load_checkpoint(self, filepath: str) -> SimulationState:
-        """
-        チェックポイントファイルから状態を読み込み
-
-        Args:
-            filepath: チェックポイントファイルのパス
-
-        Returns:
-            読み込まれた状態
-        """
-        return SimulationState.load_state(filepath)
+        self._current_state = state
 
     def save_checkpoint(self, filepath: str):
         """
-        現在の状態をチェックポイントファイルに保存
+        現在の状態をチェックポイントとして保存
 
         Args:
             filepath: 保存先のファイルパス
         """
-        if self._state is None:
-            raise RuntimeError("シミュレーション状態が初期化されていません")
+        self._current_state.save_state(filepath)
 
-        self._state.save_state(filepath)
-
-    def get_state(self) -> Tuple[SimulationState, Dict[str, Any]]:
+    def load_checkpoint(self, filepath: str) -> SimulationState:
         """
-        現在のシミュレーション状態を取得
-
-        Returns:
-            (現在の状態, 追加情報の辞書)のタプル
-        """
-        if not self._initialized:
-            raise RuntimeError("シミュレーションが初期化されていません")
-
-        return self._state, {"time": self._state.time}
-
-    def compute_timestep(
-        self, state: Optional[SimulationState] = None, **kwargs
-    ) -> float:
-        """
-        時間刻み幅を計算
+        チェックポイントから状態を読み込み
 
         Args:
-            state: 現在の状態（Noneの場合は現在のシミュレーション状態を使用）
-            **kwargs: 追加のパラメータ
+            filepath: 読み込むチェックポイントファイルのパス
 
         Returns:
-            計算された時間刻み幅
+            読み込まれたシミュレーション状態
         """
-        if not self._initialized:
-            raise RuntimeError("シミュレーションが初期化されていません")
-
-        # 状態の設定
-        current_state = state or self._state
-
-        # 各項から時間刻み幅の上限を取得
-        dt_terms = [
-            term.compute_timestep(current_state.velocity) for term in self.terms
-        ]
-
-        # CFL条件に基づいた時間刻み幅
-        return min(dt_terms)
-
-    def step_forward(
-        self,
-        dt: Optional[float] = None,
-        state: Optional[SimulationState] = None,
-        **kwargs,
-    ) -> Dict[str, Any]:
-        """
-        シミュレーションを1ステップ進める
-
-        Args:
-            dt: 時間刻み幅（Noneの場合は自動計算）
-            state: 初期状態（Noneの場合は現在の状態を使用）
-            **kwargs: 追加のパラメータ
-
-        Returns:
-            更新された状態と診断情報
-        """
-        if not self._initialized:
-            raise RuntimeError("シミュレーションが初期化されていません")
-
-        # 状態の設定
-        current_state = state or self._state
-
-        # 時間刻み幅の計算
-        if dt is None:
-            dt = self.compute_timestep(current_state)
-
-        # Level Set関数の移流
-        levelset_derivative = self.levelset_method.run(
-            current_state.levelset, current_state.velocity
-        )
-        new_levelset_data = self._time_solver.integrate(
-            current_state.levelset.data, dt, derivative_fn=lambda x: levelset_derivative
-        )
-        new_levelset = current_state.levelset.__class__(
-            data=new_levelset_data, dx=current_state.levelset.dx
-        )
-
-        # 密度と粘性の計算
-        density = new_levelset.heaviside()
-        viscosity = new_levelset.heaviside()
-
-        # 加速度項の計算
-        acceleration = self.acceleration_term.compute(
-            velocity=current_state.velocity,
-            density=density,
-            viscosity=viscosity,
-            pressure=current_state.pressure,
-        )
-
-        # 速度場の更新
-        new_velocity_comps = []
-        for i, (v, a) in enumerate(
-            zip(current_state.velocity.components, acceleration)
-        ):
-            new_v_data = self._time_solver.integrate(
-                v.data, dt, derivative_fn=lambda x: a
-            )
-            new_velocity_comps.append(new_v_data)
-
-        new_velocity = current_state.velocity.__class__(
-            shape=current_state.velocity.shape, dx=current_state.velocity.dx
-        )
-        for i, comp in enumerate(new_velocity_comps):
-            new_velocity.components[i].data = comp
-
-        # 圧力場の計算
-        rhs = self.navier_stokes_solver.compute_rhs(
-            velocity=new_velocity, density=density, viscosity=viscosity, dt=dt
-        )
-        pressure = self.navier_stokes_solver.solve_pressure(rhs, new_velocity)
-        new_velocity = self.navier_stokes_solver.project_velocity(
-            new_velocity, pressure
-        )
-
-        # 新しい状態の作成
-        new_state = SimulationState(
-            time=current_state.time + dt,
-            velocity=new_velocity,
-            levelset=new_levelset,
-            pressure=pressure,
-        )
-
-        # 診断情報の更新
-        diagnostics = {
-            "time": new_state.time,
-            "dt": dt,
-            "navier_stokes": self.navier_stokes_solver.get_diagnostics(),
-            "levelset": {
-                "volume": new_levelset.volume(),
-                "area": new_levelset.area(),
-            },
-        }
-
-        # 状態の更新
-        self._state = new_state
-
-        return {"state": new_state, "diagnostics": diagnostics}
+        return SimulationState.load_state(filepath)
