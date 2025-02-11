@@ -7,7 +7,7 @@ from .base import BaseNavierStokesTerm
 
 class AdvectionTerm(BaseNavierStokesTerm):
     """移流項クラス
-    
+
     中心差分法を用いて移流項を計算します。
     高次精度が必要な場合は、numerics/spatial/ から適切なスキームをインポートして使用してください。
     """
