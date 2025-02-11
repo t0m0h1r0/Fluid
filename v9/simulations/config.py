@@ -9,6 +9,7 @@ from physics.levelset.initializer import Phase
 @dataclass
 class PhaseConfig:
     """流体の物性値を保持するクラス"""
+
     density: float
     viscosity: float
     surface_tension: float = 0.0
@@ -17,8 +18,9 @@ class PhaseConfig:
 @dataclass
 class DomainConfig:
     """計算領域の設定を保持するクラス"""
+
     dimensions: Dict[str, int]  # 'x', 'y', 'z'の格子点数
-    size: Dict[str, float]      # 'x', 'y', 'z'の物理サイズ
+    size: Dict[str, float]  # 'x', 'y', 'z'の物理サイズ
 
     def validate(self) -> None:
         """設定値の妥当性を検証"""
@@ -31,6 +33,7 @@ class DomainConfig:
 @dataclass
 class InterfaceConfig:
     """界面の設定を保持するクラス"""
+
     phase: Phase
     object_type: str  # "background", "layer", "sphere"
     height: Optional[float] = None  # レイヤー用
@@ -59,11 +62,12 @@ class InterfaceConfig:
 @dataclass
 class SimulationConfig:
     """シミュレーション全体の設定を保持するクラス"""
+
     domain: DomainConfig
     phases: Dict[Phase, PhaseConfig]
     interfaces: List[InterfaceConfig] = field(default_factory=list)
     output_dir: str = "results"
-    
+
     def validate(self) -> None:
         """設定値の妥当性を検証"""
         # ドメインの検証
@@ -76,23 +80,25 @@ class SimulationConfig:
                 raise ValueError(f"未定義の相です: {interface.phase}")
 
         # 背景設定の確認
-        background_objects = [obj for obj in self.interfaces if obj.object_type == "background"]
+        background_objects = [
+            obj for obj in self.interfaces if obj.object_type == "background"
+        ]
         if not background_objects:
             raise ValueError("背景相の設定が必要です")
         if len(background_objects) > 1:
             raise ValueError("背景相の設定は1つのみ可能です")
 
     @classmethod
-    def from_dict(cls, config_dict: Dict) -> 'SimulationConfig':
+    def from_dict(cls, config_dict: Dict) -> "SimulationConfig":
         """辞書から設定を生成"""
         domain = DomainConfig(**config_dict["domain"])
-        
+
         # 流体の物性値を設定
         phases = {
             Phase[name.upper()]: PhaseConfig(**props)
             for name, props in config_dict["phases"].items()
         }
-        
+
         # 界面の設定を生成
         interfaces = []
         for obj_dict in config_dict.get("interfaces", []):
@@ -100,14 +106,16 @@ class SimulationConfig:
                 phase=Phase[obj_dict["phase"].upper()],
                 object_type=obj_dict["type"],
                 height=obj_dict.get("height"),
-                center=tuple(obj_dict.get("center", [])) if "center" in obj_dict else None,
-                radius=obj_dict.get("radius")
+                center=tuple(obj_dict.get("center", []))
+                if "center" in obj_dict
+                else None,
+                radius=obj_dict.get("radius"),
             )
             interfaces.append(interface_config)
-            
+
         return cls(
             domain=domain,
             phases=phases,
             interfaces=interfaces,
-            output_dir=config_dict.get("output_dir", "results")
+            output_dir=config_dict.get("output_dir", "results"),
         )

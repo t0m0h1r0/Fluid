@@ -79,7 +79,7 @@ class LevelSetMethod:
         # 連続の式に基づく時間発展方程式の計算
         # -(u⋅∇φ) を計算
         derivative = np.zeros_like(levelset.data)
-        
+
         for i, u_i in enumerate(velocity.components):
             # 各方向の速度成分と空間微分の積を加算
             derivative -= u_i.data * levelset.gradient(i)

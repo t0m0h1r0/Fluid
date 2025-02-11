@@ -4,7 +4,6 @@ import sys
 import argparse
 from pathlib import Path
 
-from logger import SimulationLogger, LogConfig
 from simulations import TwoPhaseFlowSimulator, SimulationConfig
 from visualization import visualize_simulation_state
 from typing import Optional
@@ -21,17 +20,8 @@ def parse_args():
     return parser.parse_args()
 
 
-def setup_logging(config: SimulationConfig, debug: bool) -> SimulationLogger:
-    """ロギングを設定"""
-    log_level = "debug" if debug else "info"
-    log_dir = Path(config.output_dir) / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    return SimulationLogger("TwoPhaseFlow", LogConfig(level=log_level, log_dir=log_dir))
-
-
 def initialize_simulation(
     config: SimulationConfig,
-    logger: SimulationLogger,
     checkpoint: Optional[Path] = None,
 ) -> TwoPhaseFlowSimulator:
     """シミュレーションを初期化"""
@@ -40,13 +30,13 @@ def initialize_simulation(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if checkpoint:
-        logger.info(f"チェックポイントから再開: {checkpoint}")
-        sim = TwoPhaseFlowSimulator(config, logger)
+        print(f"チェックポイントから再開: {checkpoint}")
+        sim = TwoPhaseFlowSimulator(config)
         sim.initialize(state=sim.load_checkpoint(str(checkpoint)))
         return sim
     else:
-        logger.info("新規シミュレーションを開始")
-        sim = TwoPhaseFlowSimulator(config, logger)
+        print("新規シミュレーションを開始")
+        sim = TwoPhaseFlowSimulator(config)
         sim.initialize()
         return sim
 
@@ -59,15 +49,12 @@ def main():
     # 設定ファイルの読み込み
     config = SimulationConfig.from_yaml(args.config)
 
-    # ロガーの設定
-    logger = setup_logging(config, args.debug)
-
     # チェックポイントファイルのパス
     checkpoint = Path(args.checkpoint) if args.checkpoint else None
 
     try:
         # シミュレーションの初期化
-        sim = initialize_simulation(config, logger, checkpoint)
+        sim = initialize_simulation(config, checkpoint)
 
         # 初期状態の可視化と保存
         state, _ = sim.get_state()
@@ -87,7 +74,7 @@ def main():
         # 最初の時間刻み幅を計算
         current_dt = sim._time_solver.compute_timestep(state=state)
 
-        logger.info(
+        print(
             f"シミュレーション開始:\n"
             f"  最大時間: {max_time} [s]\n"
             f"  保存間隔: {save_interval} [s]\n"
@@ -120,24 +107,24 @@ def main():
                 current_dt = sim._time_solver.compute_timestep(state=state)
 
                 # 進捗の出力
-                logger.info(
+                print(
                     f"Time: {step_info.get('time', 0.0):.3f}/{max_time:.1f} "
                     f"(dt={current_dt:.3e}), "
                     f"Diagnostics: {step_info}"
                 )
 
             except Exception as e:
-                logger.error(f"シミュレーションステップ中にエラー: {e}")
+                print(f"シミュレーションステップ中にエラー: {e}", file=sys.stderr)
                 import traceback
 
                 traceback.print_exc()
                 break
 
-        logger.info("シミュレーション正常終了")
+        print("シミュレーション正常終了")
         return 0
 
     except Exception as e:
-        logger.error(f"実行中にエラーが発生: {e}")
+        print(f"実行中にエラーが発生: {e}", file=sys.stderr)
         import traceback
 
         traceback.print_exc()
