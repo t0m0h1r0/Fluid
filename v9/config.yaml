@@ -57,7 +57,7 @@ numerical:
   save_interval: 0.01
   cfl: 0.5
   min_dt: 1.0e-6
-  max_dt: 1.0
+  max_dt: 1.0e-2
 
   level_set:
     epsilon: 1.0e-2
@@ -93,7 +93,7 @@ output:
       color: "black"
       alpha: 0.7
     pressure:
-      enabled: false   # 圧力場を可視化
+      enabled: true   # 圧力場を可視化
       plot_types: ["scalar", "contour"]
       levels: 20
       alpha: 0.5

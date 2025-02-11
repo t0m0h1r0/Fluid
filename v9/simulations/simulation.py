@@ -15,7 +15,7 @@ from physics.navier_stokes.terms import (
     SurfaceTensionForce,
 )
 from numerics.poisson import PoissonConfig
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, Tuple
 
 
 class TwoPhaseFlowSimulator:
@@ -118,12 +118,12 @@ class TwoPhaseFlowSimulator:
 
         self._state.save_state(filepath)
 
-    def get_state(self):
+    def get_state(self) -> Tuple[SimulationState, Dict[str, Any]]:
         """
         現在のシミュレーション状態を取得
 
         Returns:
-            現在の状態と追加情報
+            (現在の状態, 追加情報の辞書)のタプル
         """
         if not self._initialized:
             raise RuntimeError("シミュレーションが初期化されていません")

@@ -68,7 +68,6 @@ def main():
         # 初期状態の可視化と保存
         state, _ = sim.get_state()
         visualize_simulation_state(state, config, timestamp=0.0)
-        return
 
         # 初期チェックポイントを保存
         output_dir = Path(config.output.output_dir) / "checkpoints"
@@ -120,6 +119,7 @@ def main():
                     f"(dt={current_dt:.3e}), "
                     f"Diagnostics: {step_info}"
                 )
+                return
 
             except Exception as e:
                 print(f"シミュレーションステップ中にエラー: {e}", file=sys.stderr)
