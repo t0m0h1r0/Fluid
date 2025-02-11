@@ -40,7 +40,7 @@ initial_conditions:
   objects:
     - type: layer
       phase: water
-      height: 0.80  # 0から1の間の値を使用
+      height: 0.70  # 0から1の間の値を使用
     - type: sphere
       phase: nitrogen
       center: [0.5, 0.5, 0.4]

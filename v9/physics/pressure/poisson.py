@@ -21,8 +21,9 @@ from typing import Dict, Any, Optional, Tuple
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from numerics.poisson import PoissonSolver, PoissonConfig
-
+from numerics.poisson import PoissonConfig
+#from numerics.poisson import PoissonSolver
+from numerics.poisson import SORSolver as PoissonSolver
 
 class PressurePoissonSolver:
     """圧力ポアソン方程式のソルバー"""
