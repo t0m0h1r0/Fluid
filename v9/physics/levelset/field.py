@@ -17,11 +17,9 @@ class LevelSetParameters:
 
 
 class LevelSetField:
-    """Level Set関数を表現し、界面追跡のための操作を提供するクラス"""
-
     def __init__(
         self,
-        data: npt.NDArray,
+        shape: Tuple[int, ...],  # shape 引数を追加
         dx: float = 1.0,
         params: Optional[LevelSetParameters] = None,
     ):
@@ -33,7 +31,7 @@ class LevelSetField:
             dx: グリッド間隔
             params: Level Set法のパラメータ
         """
-        self._data = np.asarray(data)
+        self._data = np.zeros(shape)  # shape を使用して data を初期化
         self._dx = dx
         self.params = params or LevelSetParameters()
         self._steps_since_reinit = 0
