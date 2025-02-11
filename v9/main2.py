@@ -16,7 +16,6 @@ from typing import Optional, Tuple
 
 from simulations import TwoPhaseFlowSimulator, SimulationConfig, SimulationInitializer
 from visualization import visualize_simulation_state
-from numerics.time_evolution.euler import ForwardEuler
 
 
 class SimulationManager:
@@ -71,17 +70,8 @@ class SimulationManager:
         Returns:
             初期化されたTwoPhaseFlowSimulator
         """
-        # 時間積分器の設定
-        time_integrator = ForwardEuler(
-            cfl=self.config.numerical.cfl,
-            min_dt=self.config.numerical.min_dt,
-            max_dt=self.config.numerical.max_dt,
-        )
-
         # シミュレータの作成
-        simulator = TwoPhaseFlowSimulator(
-            config=self.config, time_integrator=time_integrator
-        )
+        simulator = TwoPhaseFlowSimulator(config=self.config)
 
         # チェックポイントからの再開または新規初期化
         if checkpoint_path:

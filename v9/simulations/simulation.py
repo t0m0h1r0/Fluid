@@ -14,7 +14,6 @@ from typing import Dict, Any, Optional, Tuple, List
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from core.solver import TemporalSolver
 from numerics.time_evolution.euler import ForwardEuler
 
 from physics.levelset import LevelSetField, LevelSetMethod
@@ -23,16 +22,16 @@ from physics.pressure import PressurePoissonSolver
 from physics.continuity import ContinuityEquation
 from physics.navier_stokes.terms import GravityForce, SurfaceTensionForce
 
-from .config import SimulationConfig
-from .state import SimulationState
-from .initializer import SimulationInitializer
+from simulations.config import SimulationConfig
+from simulations.state import SimulationState
+from simulations.initializer import SimulationInitializer
 
 
 class TwoPhaseFlowSimulator:
     """二相流シミュレーションの統合的なソルバー"""
 
     def __init__(
-        self, config: SimulationConfig, time_integrator: Optional[TemporalSolver] = None
+        self, config: SimulationConfig
     ):
         """
         シミュレータを初期化
@@ -44,7 +43,7 @@ class TwoPhaseFlowSimulator:
         self.config = config
 
         # デフォルトの時間積分器
-        self._time_solver = time_integrator or ForwardEuler(
+        self._time_solver = ForwardEuler(
             cfl=config.numerical.cfl,
             min_dt=config.numerical.min_dt,
             max_dt=config.numerical.max_dt,
@@ -64,29 +63,6 @@ class TwoPhaseFlowSimulator:
 
         # 現在の状態
         self._current_state = None
-
-    @property
-    def state(self) -> SimulationState:
-        """
-        現在のシミュレーション状態を取得
-
-        Returns:
-            現在のシミュレーション状態
-        """
-        if self._current_state is None:
-            raise ValueError("シミュレーション状態が初期化されていません")
-        return self._current_state
-
-    def get_state(self) -> Tuple[SimulationState, Dict[str, Any]]:
-        """
-        現在のシミュレーション状態を取得（診断情報付き）
-
-        Returns:
-            (現在の状態, 診断情報)のタプル
-        """
-        if self._current_state is None:
-            raise ValueError("シミュレーション状態が初期化されていません")
-        return self._current_state, self._current_state.get_diagnostics()
 
     def compute_material_properties(
         self, levelset: LevelSetField
@@ -191,7 +167,7 @@ class TwoPhaseFlowSimulator:
             density=density,
             viscosity=viscosity,
             pressure=pressure,
-            levelset=None,  # オプション: レベルセット関数
+            external_forces=external_forces,
         )
 
         return velocity_derivative
@@ -215,19 +191,74 @@ class TwoPhaseFlowSimulator:
         )
         return levelset_derivative
 
+    def save_checkpoint(self, filepath: str):
+        """
+        現在の状態をチェックポイントとして保存
+
+        Args:
+            filepath: 保存先のファイルパス
+        """
+        if self._current_state is None:
+            raise ValueError("シミュレーション状態が初期化されていません")
+        self._current_state.save_state(filepath)
+
+    def load_checkpoint(self, filepath: str) -> SimulationState:
+        """
+        チェックポイントから状態を読み込み
+
+        Args:
+            filepath: チェックポイントファイルのパス
+
+        Returns:
+            読み込まれたシミュレーション状態
+        """
+        return SimulationState.load_state(filepath)
+
+    def initialize(self, state: Optional[SimulationState] = None):
+        """
+        シミュレーションを初期化
+
+        Args:
+            state: 初期状態（オプション）
+        """
+        if state is None:
+            initializer = SimulationInitializer(self.config)
+            state = initializer.create_initial_state()
+
+        self._current_state = state
+
+    def get_state(self) -> Tuple[SimulationState, Dict[str, Any]]:
+        """
+        現在のシミュレーション状態を取得
+
+        Returns:
+            (現在の状態, 診断情報)のタプル
+        """
+        if self._current_state is None:
+            raise ValueError("シミュレーション状態が初期化されていません")
+        return self._current_state, self._current_state.get_diagnostics()
+
     def step_forward(
-        self, state: SimulationState, dt: Optional[float] = None
+        self, 
+        state: Optional[SimulationState] = None, 
+        dt: Optional[float] = None
     ) -> Tuple[SimulationState, Dict[str, Any]]:
         """
         シミュレーションを1ステップ進める
 
         Args:
-            state: 現在のシミュレーション状態
+            state: 現在のシミュレーション状態（Noneの場合は現在の状態を使用）
             dt: 時間刻み幅（Noneの場合は自動計算）
 
         Returns:
-            更新された状態と診断情報
+            (更新された状態, 診断情報)のタプル
         """
+        # 状態の指定がない場合は現在の状態を使用
+        if state is None:
+            state = self._current_state
+            if state is None:
+                raise ValueError("シミュレーション状態が初期化されていません")
+
         # 時間刻み幅の計算
         if dt is None:
             dt = self._time_solver.compute_timestep(state=state)
@@ -292,38 +323,7 @@ class TwoPhaseFlowSimulator:
             "material_properties": material_properties,
         }
 
+        # 現在の状態を更新
+        self._current_state = new_state
+
         return new_state, diagnostics
-
-    def initialize(self, state: Optional[SimulationState] = None):
-        """
-        シミュレーションを初期化
-
-        Args:
-            state: 初期状態（オプション）
-        """
-        if state is None:
-            initializer = SimulationInitializer(self.config)
-            state = initializer.create_initial_state()
-
-        self._current_state = state
-
-    def save_checkpoint(self, filepath: str):
-        """
-        現在の状態をチェックポイントとして保存
-
-        Args:
-            filepath: 保存先のファイルパス
-        """
-        self._current_state.save_state(filepath)
-
-    def load_checkpoint(self, filepath: str) -> SimulationState:
-        """
-        チェックポイントから状態を読み込み
-
-        Args:
-            filepath: 読み込むチェックポイントファイルのパス
-
-        Returns:
-            読み込まれたシミュレーション状態
-        """
-        return SimulationState.load_state(filepath)
