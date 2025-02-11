@@ -212,6 +212,9 @@ class SimulationConfig:
     numerical: NumericalConfig = field(default_factory=NumericalConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
 
+    # インターフェース設定を追加
+    interfaces: List[InterfaceConfig] = field(default_factory=list)
+
     def validate(self) -> None:
         """設定値の妥当性を検証"""
         self.domain.validate()
@@ -222,53 +225,49 @@ class SimulationConfig:
         self.numerical.validate()
         self.output.validate()
 
+        # インターフェースの検証を追加
+        for interface in self.interfaces:
+            interface.validate()
+
     @classmethod
     def from_yaml(cls, filepath: str) -> "SimulationConfig":
-        """YAMLファイルから設定を読み込む
-
-        Args:
-            filepath: 設定ファイルのパス
-
-        Returns:
-            SimulationConfig: 読み込まれた設定
-
-        Raises:
-            ValueError: 設定値が不正な場合
-        """
+        """YAMLファイルから設定を読み込む"""
         with open(filepath, "r") as f:
             config_dict = yaml.safe_load(f)
 
-        # ドメイン設定の読み込み
-        # サイズをリストに変換（辞書の場合はvaluesを使用）
-        domain_size = config_dict["domain"]["size"]
-        if isinstance(domain_size, dict):
-            size_list = [float(domain_size[k]) for k in ["x", "y", "z"]]
-        else:
-            size_list = [float(s) for s in domain_size]
-
+        # 必要な設定を読み込む
         domain = DomainConfig(
-            dimensions=config_dict["domain"]["dimensions"], size=size_list
+            dimensions=config_dict["domain"]["dimensions"],
+            size=[float(s) for s in config_dict["domain"]["size"]],
         )
 
-        # 相の物性値を設定
         phases = {
             name: PhaseConfig(**props) for name, props in config_dict["phases"].items()
         }
 
-        # 境界条件の設定
         boundary_conditions = BoundaryConfig(**config_dict["boundary_conditions"])
 
-        # 初期条件の設定
         initial_conditions = InitialConditionConfig(**config_dict["initial_conditions"])
 
-        # 数値計算の設定
+        # インターフェースの読み込み
+        interfaces = [
+            InterfaceConfig(
+                phase=Phase[obj["phase"].upper()],
+                object_type=obj["type"],
+                height_fraction=obj.get("height", None),
+                center=obj.get("center", None),
+                radius=obj.get("radius", None),
+            )
+            for obj in initial_conditions.get("objects", [])
+        ]
+
+        # 追加の設定
         numerical = NumericalConfig(**config_dict.get("numerical", {}))
         if "level_set" in config_dict.get("numerical", {}):
             numerical.level_set = LevelSetConfig(
                 **config_dict["numerical"]["level_set"]
             )
 
-        # 出力設定
         output = OutputConfig(**config_dict.get("output", {}))
 
         # SimulationConfigの生成
@@ -279,6 +278,7 @@ class SimulationConfig:
             initial_conditions=initial_conditions,
             numerical=numerical,
             output=output,
+            interfaces=interfaces,
         )
 
         # 設定の妥当性を検証

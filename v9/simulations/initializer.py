@@ -30,8 +30,8 @@ class SimulationInitializer:
             初期化されたシミュレーション状態
         """
         # グリッドの形状を取得
-        shape = tuple(self.config.domain.dimensions.values())
-        dx = min(self.config.domain.size.values())
+        shape = tuple(self.config.domain.dimensions)  # .values()を削除
+        dx = min(self.config.domain.size)
 
         # 速度場を初期化（ゼロで初期化）
         velocity = VectorField(shape)
