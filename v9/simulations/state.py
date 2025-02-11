@@ -9,7 +9,8 @@ from typing import Dict, Any
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from physics.levelset import LevelSetField
+from physics.levelset import LevelSetField, LevelSetMethod
+from physics.navier_stokes.terms import AccelerationTerm
 
 
 @dataclass
@@ -118,3 +119,42 @@ class SimulationState:
             pressure=pressure,
             diagnostics=data["diagnostics"].item(),
         )
+
+    def compute_derivative(self) -> "SimulationState":
+        """状態の時間微分を計算
+        
+        Returns:
+            時間微分を表す新しい状態
+        """
+        # ゼロで初期化された状態を作成
+        derivative = SimulationState(
+            time=0.0,
+            velocity=VectorField(self.velocity.shape, self.velocity.dx),
+            levelset=LevelSetField(shape=self.levelset.shape, dx=self.levelset.dx),
+            pressure=ScalarField(self.pressure.shape, self.pressure.dx),
+        )
+
+        # 各物理量の時間微分を計算
+        # Level Set方程式の時間発展
+        levelset_method = LevelSetMethod()
+        derivative.levelset.data = levelset_method.run(self.levelset, self.velocity)
+
+        # Navier-Stokes方程式の時間発展
+        # 密度と粘性を計算
+        density = self.get_density()
+        viscosity = self.get_viscosity()
+
+        # 加速度項を計算
+        acceleration_term = AccelerationTerm()
+        acceleration = acceleration_term.compute(
+            velocity=self.velocity,
+            density=density,
+            viscosity=viscosity,
+            pressure=self.pressure,
+        )
+
+        # 速度の時間微分を設定
+        for i, a in enumerate(acceleration):
+            derivative.velocity.components[i].data = a
+
+        return derivative
