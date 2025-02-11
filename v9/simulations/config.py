@@ -156,7 +156,9 @@ class InitialConditionConfig:
 
     velocity: Dict[str, str]  # 初期速度場の設定
     background: Dict[str, Any]  # 背景相の設定
-    objects: List[Dict[str, Any]] = field(default_factory=list)  # 界面オブジェクトのリスト
+    objects: List[Dict[str, Any]] = field(
+        default_factory=list
+    )  # 界面オブジェクトのリスト
 
     def validate(self) -> None:
         """設定値の妥当性を検証"""
