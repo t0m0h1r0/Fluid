@@ -20,7 +20,6 @@ class NavierStokesSolver:
 
     def __init__(
         self,
-        advection_scheme: str = "central",
         enable_surface_tension: bool = True,
         enable_gravity: bool = True,
     ):
@@ -28,12 +27,11 @@ class NavierStokesSolver:
         ソルバーを初期化
 
         Args:
-            advection_scheme: 移流項のスキーム
             enable_surface_tension: 表面張力の有効化
             enable_gravity: 重力の有効化
         """
         # 各項の初期化
-        self.advection_term = AdvectionTerm(use_weno=advection_scheme == "weno")
+        self.advection_term = AdvectionTerm()
         self.diffusion_term = DiffusionTerm()
         self.pressure_term = PressureTerm()
         self.acceleration_term = AccelerationTerm()
@@ -111,11 +109,14 @@ class NavierStokesSolver:
         Returns:
             最大許容時間刻み幅
         """
+        # 各項からの時間刻み幅の制限を取得
         timesteps = [
             self.advection_term.compute_timestep(velocity),
             self.diffusion_term.compute_timestep(velocity),
             self.pressure_term.compute_timestep(velocity, pressure),
         ]
+
+        # 最も厳しい制限を採用
         return min(timesteps)
 
     def get_diagnostics(self) -> Dict[str, Any]:
@@ -125,6 +126,7 @@ class NavierStokesSolver:
         Returns:
             ソルバーの診断情報
         """
+        # 各項の診断情報を収集
         return {
             "advection": self.advection_term.get_diagnostics(),
             "diffusion": self.diffusion_term.get_diagnostics(),
