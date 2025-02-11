@@ -5,7 +5,7 @@
 """
 
 import numpy as np
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from ..base import PoissonSolverConfig
 from ..solver import PoissonSolver
 
@@ -84,40 +84,55 @@ class ConjugateGradientSolver(PoissonSolver):
         self._iteration_count += 1
         return solution
 
-    def _apply_operator(self, v: np.ndarray, dx: float) -> np.ndarray:
+    def _apply_operator(
+        self, v: np.ndarray, dx: Union[float, np.ndarray]
+    ) -> np.ndarray:
         """ラプラシアン演算子を適用
 
         Args:
             v: 入力ベクトル
-            dx: グリッド間隔
+            dx: グリッド間隔（スカラーまたはベクトル）
 
         Returns:
             ラプラシアン演算子を適用した結果
         """
         result = np.zeros_like(v)
-        dx2 = dx * dx
+
+        # dxをベクトルとして扱う
+        if np.isscalar(dx):
+            dx_vec = np.full(v.ndim, dx)
+        else:
+            dx_vec = np.asarray(dx)
 
         # 各方向のラプラシアンを計算
         for axis in range(v.ndim):
             # 中心差分による2階微分
             forward = np.roll(v, -1, axis=axis)
             backward = np.roll(v, 1, axis=axis)
-            result += (forward - 2 * v + backward) / dx2
+            result += (forward - 2 * v + backward) / (dx_vec[axis] * dx_vec[axis])
 
         return result
 
-    def _apply_jacobi_preconditioner(self, v: np.ndarray, dx: float) -> np.ndarray:
+    def _apply_jacobi_preconditioner(
+        self, v: np.ndarray, dx: Union[float, np.ndarray]
+    ) -> np.ndarray:
         """Jacobi前処理を適用
 
         Args:
             v: 入力ベクトル
-            dx: グリッド間隔
+            dx: グリッド間隔（スカラーまたはベクトル）
 
         Returns:
             前処理を適用した結果
         """
+        # dxをベクトルとして扱う
+        if np.isscalar(dx):
+            dx_vec = np.full(v.ndim, dx)
+        else:
+            dx_vec = np.asarray(dx)
+
         # 対角項の逆数を計算（ラプラシアン演算子の場合）
-        diagonal = -2.0 * v.ndim / (dx * dx)
+        diagonal = sum(-2.0 / (dx_i * dx_i) for dx_i in dx_vec)
         return v / diagonal
 
     def get_diagnostics(self) -> Dict[str, Any]:

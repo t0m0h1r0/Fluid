@@ -24,7 +24,8 @@ from core.field import VectorField, ScalarField
 from numerics.poisson import PoissonConfig
 
 # from numerics.poisson import PoissonSolver
-from numerics.poisson import SORSolver as PoissonSolver
+# from numerics.poisson import SORSolver as PoissonSolver
+from numerics.poisson import ConjugateGradientSolver as PoissonSolver
 
 
 class PressurePoissonSolver:
