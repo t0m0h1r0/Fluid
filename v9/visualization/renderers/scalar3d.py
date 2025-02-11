@@ -89,10 +89,15 @@ class Scalar3DRenderer:
         # カラーマップと色の設定
         cmap = kwargs.get("cmap", "viridis")
 
-        # データの正規化
-        normalized_data = (slice_data - slice_data.min()) / (
-            slice_data.max() - slice_data.min()
-        )
+        # データの正規化（ゼロ除算を防ぐ）
+        min_val = slice_data.min()
+        max_val = slice_data.max()
+
+        if min_val == max_val:
+            # すべての値が同じ場合
+            normalized_data = np.ones_like(slice_data)
+        else:
+            normalized_data = (slice_data - min_val) / (max_val - min_val)
 
         im = ax.plot_surface(
             X,

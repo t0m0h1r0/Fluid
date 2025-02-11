@@ -62,6 +62,32 @@ class TwoPhaseFlowSimulator:
             surface_tension=config.physics.surface_tension
         )
 
+        # 現在の状態
+        self._current_state = None
+
+    @property
+    def state(self) -> SimulationState:
+        """
+        現在のシミュレーション状態を取得
+
+        Returns:
+            現在のシミュレーション状態
+        """
+        if self._current_state is None:
+            raise ValueError("シミュレーション状態が初期化されていません")
+        return self._current_state
+
+    def get_state(self) -> Tuple[SimulationState, Dict[str, Any]]:
+        """
+        現在のシミュレーション状態を取得（診断情報付き）
+
+        Returns:
+            (現在の状態, 診断情報)のタプル
+        """
+        if self._current_state is None:
+            raise ValueError("シミュレーション状態が初期化されていません")
+        return self._current_state, self._current_state.get_diagnostics()
+
     def compute_material_properties(
         self, levelset: LevelSetField
     ) -> Dict[str, ScalarField]:
