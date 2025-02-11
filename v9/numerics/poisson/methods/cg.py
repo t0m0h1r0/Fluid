@@ -5,8 +5,8 @@
 """
 
 import numpy as np
-from typing import Optional, Dict, Any, Union, Tuple
-from ..base import PoissonSolverBase, PoissonSolverConfig
+from typing import Optional, Dict, Any, Union
+from ..base import PoissonSolverConfig
 from ..solver import PoissonSolver
 
 
@@ -17,7 +17,7 @@ class ConjugateGradientSolver(PoissonSolver):
         self,
         config: Optional[PoissonSolverConfig] = None,
         preconditioner: str = "none",
-        **kwargs
+        **kwargs,
     ):
         """共役勾配法ソルバーを初期化
 
@@ -33,7 +33,10 @@ class ConjugateGradientSolver(PoissonSolver):
         self._initial_residual_norm = None
 
     def solve(
-        self, rhs: np.ndarray, initial_solution: Optional[np.ndarray] = None, dx: Union[float, np.ndarray] = 1.0
+        self,
+        rhs: np.ndarray,
+        initial_solution: Optional[np.ndarray] = None,
+        dx: Union[float, np.ndarray] = 1.0,
     ) -> np.ndarray:
         """Poisson方程式を解く
 
@@ -54,7 +57,7 @@ class ConjugateGradientSolver(PoissonSolver):
         # 初期残差の計算
         self.residual = rhs - self._apply_operator(solution, dx)
         residual_norm = np.linalg.norm(self.residual)
-        
+
         # ゼロ右辺のチェック
         rhs_norm = np.linalg.norm(rhs)
         if rhs_norm < 1e-15:
@@ -102,7 +105,7 @@ class ConjugateGradientSolver(PoissonSolver):
             # 収束判定
             residual_norm = np.linalg.norm(self.residual)
             self._residual_history.append(residual_norm)
-            
+
             if residual_norm < self.tolerance * rhs_norm:
                 break
 
@@ -123,7 +126,9 @@ class ConjugateGradientSolver(PoissonSolver):
         self._iteration_count = i + 1
         return solution
 
-    def _apply_operator(self, v: np.ndarray, dx: Union[float, np.ndarray]) -> np.ndarray:
+    def _apply_operator(
+        self, v: np.ndarray, dx: Union[float, np.ndarray]
+    ) -> np.ndarray:
         """ラプラシアン演算子を適用
 
         Args:
@@ -150,7 +155,9 @@ class ConjugateGradientSolver(PoissonSolver):
 
         return result
 
-    def _apply_jacobi_preconditioner(self, v: np.ndarray, dx: Union[float, np.ndarray]) -> np.ndarray:
+    def _apply_jacobi_preconditioner(
+        self, v: np.ndarray, dx: Union[float, np.ndarray]
+    ) -> np.ndarray:
         """Jacobi前処理を適用
 
         Args:
@@ -175,17 +182,21 @@ class ConjugateGradientSolver(PoissonSolver):
         return {
             "iterations": self._iteration_count,
             "initial_residual": self._initial_residual_norm,
-            "final_residual": self._residual_history[-1] if self._residual_history else None,
+            "final_residual": self._residual_history[-1]
+            if self._residual_history
+            else None,
             "residual_history": self._residual_history,
-            "converged": self._iteration_count < self.max_iterations
+            "converged": self._iteration_count < self.max_iterations,
         }
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""
         diag = super().get_diagnostics()
-        diag.update({
-            "method": "Conjugate Gradient",
-            "preconditioner": self.preconditioner,
-            "convergence_info": self.get_convergence_info()
-        })
+        diag.update(
+            {
+                "method": "Conjugate Gradient",
+                "preconditioner": self.preconditioner,
+                "convergence_info": self.get_convergence_info(),
+            }
+        )
         return diag
