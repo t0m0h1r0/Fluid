@@ -1,8 +1,65 @@
 """界面の設定を管理するモジュール"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Any, List, Optional, Union
 from .base import BaseConfig, Phase, load_config_safely
+
+
+@dataclass
+class InitialConditionConfig(BaseConfig):
+    """初期条件の設定を保持するクラス"""
+
+    background: Dict[str, str] = field(default_factory=lambda: {"phase": "nitrogen"})
+    objects: List[Dict[str, Any]] = field(default_factory=list)
+    velocity: Dict[str, str] = field(default_factory=lambda: {"type": "zero"})
+
+    def validate(self) -> None:
+        """設定値の妥当性を検証"""
+        # 背景相のバリデーション
+        if "phase" not in self.background:
+            raise ValueError("背景相には相の指定が必要です")
+
+        # オブジェクトのバリデーション
+        for obj in self.objects:
+            InterfaceConfig(**obj).validate()
+
+        # 速度場のバリデーション
+        if "type" not in self.velocity:
+            raise ValueError("初期速度場の種類の指定が必要です")
+
+    def load(self, config_dict: Dict[str, Any]) -> "InitialConditionConfig":
+        """辞書から設定を読み込む"""
+        # デフォルト値を設定しつつ、入力された値で上書き
+        merged_config = load_config_safely(
+            config_dict,
+            {
+                "background": {"phase": "nitrogen"},
+                "objects": [],
+                "velocity": {"type": "zero"},
+            },
+        )
+
+        return InitialConditionConfig(
+            background=merged_config.get("background", {"phase": "nitrogen"}),
+            objects=[
+                {k: (str(v) if k == "type" else v) for k, v in obj.items()}
+                for obj in merged_config.get("objects", [])
+            ],
+            velocity=merged_config.get("velocity", {"type": "zero"}),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        """設定を辞書形式にシリアライズ"""
+        return {
+            "background": self.background,
+            "objects": self.objects,
+            "velocity": self.velocity,
+        }
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "InitialConditionConfig":
+        """辞書から設定を復元"""
+        return cls().load(config_dict)
 
 
 @dataclass
