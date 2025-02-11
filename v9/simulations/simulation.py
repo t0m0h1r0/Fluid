@@ -14,7 +14,8 @@ from typing import Dict, Any, Optional, Tuple, List
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from numerics.time_evolution.euler import ForwardEuler
+from numerics.time_evolution.euler import ForwardEuler as TimeIntegrator
+#from numerics.time_evolution.runge_kutta import RungeKutta4 as TimeIntegrator
 
 from physics.levelset import LevelSetField, LevelSetMethod
 from physics.navier_stokes import NavierStokesSolver
@@ -41,7 +42,7 @@ class TwoPhaseFlowSimulator:
         self.config = config
 
         # デフォルトの時間積分器
-        self._time_solver = ForwardEuler(
+        self._time_solver = TimeIntegrator(
             cfl=config.numerical.cfl,
             min_dt=config.numerical.min_dt,
             max_dt=config.numerical.max_dt,
