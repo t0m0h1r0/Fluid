@@ -27,7 +27,7 @@ class LevelSetField:
         Level Set関数を初期化
 
         Args:
-            data: Level Set関数の数値データ
+            shape: グリッドの形状
             dx: グリッド間隔
             params: Level Set法のパラメータ
         """
@@ -57,6 +57,18 @@ class LevelSetField:
     def dx(self) -> float:
         """グリッド間隔を取得"""
         return self._dx
+
+    def gradient(self, axis: int) -> np.ndarray:
+        """指定軸方向の勾配を計算
+
+        Args:
+            axis: 勾配を計算する軸のインデックス
+
+        Returns:
+            計算された勾配
+        """
+        # 中心差分による2次精度の勾配計算
+        return np.gradient(self._data, self._dx, axis=axis)
 
     def volume(self) -> float:
         """体積を計算"""
@@ -93,4 +105,6 @@ class LevelSetField:
 
     def copy(self) -> "LevelSetField":
         """深いコピーを作成"""
-        return LevelSetField(data=self._data.copy(), dx=self._dx, params=self.params)
+        new_field = self.__class__(shape=self.shape, dx=self.dx, params=self.params)
+        new_field.data = self._data.copy()
+        return new_field

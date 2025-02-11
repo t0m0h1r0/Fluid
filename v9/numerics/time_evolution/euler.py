@@ -1,7 +1,7 @@
 from typing import Callable, TypeVar, Dict, Any
 from .base import TimeIntegrator
 
-T = TypeVar("T")
+T = TypeVar('T')
 
 
 class ForwardEuler(TimeIntegrator[T]):
@@ -19,7 +19,16 @@ class ForwardEuler(TimeIntegrator[T]):
             更新された状態
         """
         derivative = derivative_fn(state)
-        return state + dt * derivative
+        
+        # 状態の各属性を更新
+        if hasattr(state, 'velocity'):
+            state.velocity = [v + dt * dv for v, dv in zip(state.velocity.components, derivative)]
+        
+        if hasattr(state, 'levelset'):
+            state.levelset.data += dt * derivative
+
+        state.time += dt
+        return state
 
     def get_order(self) -> int:
         """積分スキームの次数を返す"""

@@ -66,12 +66,7 @@ class TimeIntegrator(ABC, Generic[T]):
         Returns:
             時間発展の結果を含む辞書
         """
-        # シミュレーション状態から関連する情報を抽出
-        velocity = getattr(state, 'velocity', None)
-        levelset = getattr(state, 'levelset', None)
-        pressure = getattr(state, 'pressure', None)
-
-        # 時間微分を計算する関数を定義
+        # デリバティブを計算する関数を定義
         def derivative_fn(current_state: T) -> T:
             if hasattr(current_state, 'compute_derivative'):
                 return current_state.compute_derivative()
@@ -83,23 +78,9 @@ class TimeIntegrator(ABC, Generic[T]):
 
         # 診断情報の収集
         diagnostics = {
-            "time": getattr(new_state, 'time', 0.0) + dt,
+            "time": new_state.time, 
             "dt": dt,
         }
-
-        if velocity is not None:
-            diagnostics["velocity_max"] = max(
-                float(abs(v.data).max()) for v in velocity.components
-            )
-
-        if pressure is not None:
-            diagnostics["pressure_max"] = float(abs(pressure.data).max())
-
-        if levelset is not None:
-            diagnostics["levelset"] = {
-                "min": float(levelset.data.min()),
-                "max": float(levelset.data.max()),
-            }
 
         return {
             "state": new_state,
