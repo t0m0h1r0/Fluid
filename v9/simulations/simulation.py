@@ -15,19 +15,23 @@ from physics.navier_stokes.terms import (
     SurfaceTensionForce,
 )
 from numerics.poisson import PoissonConfig
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 
 
 class TwoPhaseFlowSimulator:
     """二相流シミュレーションを管理するクラス"""
 
-    def __init__(self, config: SimulationConfig):
+    def __init__(self, config: Union[SimulationConfig, Dict[str, Any]]):
         """
         シミュレーションを初期化
 
         Args:
             config: シミュレーション設定
         """
+        # config が辞書の場合、SimulationConfigに変換
+        if isinstance(config, dict):
+            config = SimulationConfig.from_dict(config)
+
         self.config = config
 
         # ポアソンソルバーの設定
@@ -36,8 +40,9 @@ class TwoPhaseFlowSimulator:
         poisson_config.convergence["max_iterations"] = 1000
 
         # 時間積分器の設定
+        cfl = config.numerical.get("cfl", 0.5)
         self._time_solver = ForwardEuler(
-            cfl=config.numerical.cfl or 0.5,
+            cfl=cfl,
         )
 
         # Navier-Stokes方程式の各項を設定
