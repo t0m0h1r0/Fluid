@@ -31,7 +31,7 @@ class NavierStokesSolver:
         self.pressure_term = PressureTerm()
         self.acceleration_term = AccelerationTerm()
 
-    def compute_velocity_derivative(
+    def compute(
         self,
         velocity: VectorField,
         density: ScalarField,
