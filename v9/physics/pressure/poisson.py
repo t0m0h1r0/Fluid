@@ -1,13 +1,10 @@
-"""二相流体における圧力ポアソン方程式（PPE）のソルバー
+"""
+二相流体における圧力ポアソン方程式（PPE）のソルバー
 
 圧力ポアソン方程式の導出:
-1. Navier-Stokes方程式の両辺の発散を取る
-2. 非圧縮性条件 ∇・u = 0 を適用
-3. 密度 ρ の空間変化を考慮し、調和平均で補間
-4. 外力（重力、界面張力）の影響を考慮
-
-結果として得られる方程式:
-∇・(1/ρ ∇p) = ∇・(u・∇u) + ∇・fs - ∇・(∇ν・∇u)
+1. 密度変化を考慮したラプラシアン形の圧力ポアソン方程式
+2. 密度の勾配項を近似的に無視
+∇²p ≈ ρ(∇・(u・∇u) + ∇・fs - ∇・(∇ν・∇u))
 """
 
 from typing import Dict, Any, Optional, Tuple
@@ -38,109 +35,95 @@ class PressurePoissonSolver:
         density: ScalarField,
         viscosity: ScalarField,
         force: Optional[VectorField] = None,
-        initial_pressure: Optional[ScalarField] = None,
+        initial_solution: Optional[ScalarField] = None,
+        **kwargs
     ) -> Tuple[ScalarField, Dict[str, Any]]:
-        """圧力場を計算
+        """
+        圧力ポアソン方程式を解く
 
         Args:
             velocity: 速度場
             density: 密度場
             viscosity: 粘性場
-            dt: 時間刻み幅
-            external_force: 外力場（オプション）
-            initial_pressure: 初期圧力場（オプション）
+            force: 外力場（オプション）
+            initial_solution: 初期推定解（オプション）
 
         Returns:
             (圧力場, 診断情報)のタプル
         """
-        # 右辺の計算
-        rhs = self._compute_rhs(velocity, density, viscosity, force)
+        # 密度と次元数を取得
+        rho = density.data
+        dx = velocity.dx
+        ndim = velocity.ndim
 
-        # 初期値の設定
-        initial_solution = None
-        if initial_pressure is not None:
-            initial_solution = initial_pressure.data.copy()
+        # 右辺の非密度項の計算
+        rhs = np.zeros_like(rho)
+
+        # 速度の発散項（密度スケールなし）
+        for i in range(ndim):
+            flux = np.zeros_like(rho)
+            for j in range(ndim):
+                # u_j * ∂u_i/∂x_j の計算
+                flux += (
+                    velocity.components[j].data * 
+                    np.gradient(velocity.components[i].data, dx, axis=j)
+                )
+            rhs += flux
+
+        # 外力項の追加（オプション、密度スケールなし）
+        if force is not None:
+            for i in range(ndim):
+                rhs += np.gradient(force.components[i].data, force.dx, axis=i)
+
+        # 最後に密度をかける
+        rhs *= rho
+
+        # 初期解のセットアップ
+        if initial_solution is None:
+            initial_solution = ScalarField(velocity.shape, velocity.dx)
 
         # ポアソンソルバーの実行
-        pressure_data = self._poisson_solver.solve(
-            rhs, initial_solution=initial_solution
-        )
+        result_data = self._poisson_solver.solve(rhs, initial_solution=initial_solution.data)
 
-        # ScalarFieldの作成
+        # 圧力場の作成
         pressure = ScalarField(velocity.shape, velocity.dx)
-        pressure.data = pressure_data
+        pressure.data = result_data
 
-        return pressure, self._diagnostics
+        # 診断情報の更新
+        diagnostics = {}
+        if hasattr(self._poisson_solver, "get_diagnostics"):
+            diagnostics.update(self._poisson_solver.get_diagnostics())
+        
+        # メモリへの診断情報の保存
+        self._diagnostics = diagnostics
 
-    def _compute_rhs(
-        self,
-        velocity: VectorField,
-        density: ScalarField,
-        viscosity: ScalarField,
-        force: Optional[VectorField] = None,
-    ) -> np.ndarray:
-        """右辺項を計算
+        return pressure, diagnostics
 
-        各項の寄与:
-        1. 移流項: ∇・(u・∇u)
-        2. 粘性項: -∇・(∇ν・∇u)
-        3. 外力項: ∇・f
+    def compute_residual(
+        self, solution: ScalarField, rhs: np.ndarray, **kwargs
+    ) -> float:
+        """残差を計算
+
+        Args:
+            solution: 現在の解
+            rhs: 右辺
+
+        Returns:
+            計算された残差
         """
-        dx = velocity.dx
-        rhs = np.zeros_like(density.data)
+        # ラプラシアンの計算
+        laplacian = np.zeros_like(solution.data)
+        for axis in range(solution.ndim):
+            forward = np.roll(solution.data, 1, axis=axis)
+            backward = np.roll(solution.data, -1, axis=axis)
+            laplacian += (forward + backward - 2 * solution.data) / (solution.dx ** 2)
 
-        # 移流項の計算
-        for i, v_i in enumerate(velocity.components):
-            for j, v_j in enumerate(velocity.components):
-                grad_vi = np.gradient(v_i.data, dx, axis=j)
-                rhs += np.gradient(v_j.data * grad_vi, dx, axis=j)
+        # 残差の計算
+        residual = laplacian - rhs
 
-        # 粘性の不均一性を考慮した項の計算
-        viscosity_term = self._compute_viscosity_term(velocity, viscosity)
-        rhs -= viscosity_term
-
-        # 外力項の計算
-        if force is not None:
-            for i, f_i in enumerate(force.components):
-                rhs += np.gradient(f_i.data, dx, axis=i)
-
-        # 密度の逆数による調和平均
-        rhs *= self._compute_inverse_density(density)
-
-        return rhs
-
-    def _compute_viscosity_term(
-        self, velocity: VectorField, viscosity: ScalarField
-    ) -> np.ndarray:
-        """粘性の不均一性を考慮した項を計算"""
-        dx = velocity.dx
-        result = np.zeros_like(viscosity.data)
-
-        # 粘性勾配の計算
-        nu_grad = []
-        for i in range(velocity.ndim):
-            nu_grad.append(np.gradient(viscosity.data, dx, axis=i))
-
-        # 速度勾配との積を計算
-        for i in range(velocity.ndim):
-            vel_grad = []
-            for j in range(velocity.ndim):
-                vel_grad.append(np.gradient(velocity.components[i].data, dx, axis=j))
-
-            for j in range(velocity.ndim):
-                result += np.gradient(nu_grad[j] * vel_grad[j], dx, axis=i)
-
-        return result
-
-    def _compute_inverse_density(self, density: ScalarField) -> np.ndarray:
-        """密度の逆数を調和平均で計算"""
-        # セル中心での密度の逆数を計算
-        rho = np.maximum(density.data, 1e-10)  # ゼロ除算防止
-        inv_rho = 1.0 / rho
-
-        # 調和平均の計算（必要に応じて）
-        # 現在は単純な逆数を返す
-        return inv_rho
+        # L2ノルムを計算
+        residual_norm = np.sqrt(np.mean(residual**2))
+        return max(residual_norm, 1e-15)  # 最小値を保証
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""

@@ -6,7 +6,6 @@ from physics.navier_stokes.terms import (
     AdvectionTerm,
     DiffusionTerm,
     PressureTerm,
-    AccelerationTerm,
 )
 
 
@@ -23,7 +22,6 @@ class NavierStokesSolver:
         self.advection_term = AdvectionTerm()
         self.diffusion_term = DiffusionTerm()
         self.pressure_term = PressureTerm()
-        self.acceleration_term = AccelerationTerm()
 
     def compute_velocity_derivative(
         self,
