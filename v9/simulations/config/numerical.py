@@ -81,7 +81,9 @@ class NumericalConfig(BaseConfig):
             min_dt=merged_config.get("min_dt", 1.0e-6),
             max_dt=merged_config.get("max_dt", 1.0),
             level_set_epsilon=level_set_config.get("epsilon", 1.0e-2),
-            level_set_reinit_interval=level_set_config.get("reinit_interval", 10),  # デフォルト値を更新
+            level_set_reinit_interval=level_set_config.get(
+                "reinit_interval", 10
+            ),  # デフォルト値を更新
             level_set_reinit_steps=level_set_config.get("reinit_steps", 2),
         )
 

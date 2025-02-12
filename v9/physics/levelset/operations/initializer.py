@@ -18,15 +18,13 @@ class LevelSetInitializer(BaseLevelSetOperation):
             **kwargs: 初期化パラメータ
                 - objects: オブジェクトのリスト
                 - background_phase: 背景の相
-                
+
         Returns:
             初期化されたLevel Set関数の値
         """
         # グリッドの生成
-        coords = np.meshgrid(
-            *[np.linspace(0, 1, s) for s in shape], indexing="ij"
-        )
-        
+        coords = np.meshgrid(*[np.linspace(0, 1, s) for s in shape], indexing="ij")
+
         # 初期値を設定
         phi = np.full(shape, np.inf)
 
@@ -40,9 +38,9 @@ class LevelSetInitializer(BaseLevelSetOperation):
         # 各オブジェクトの処理
         for obj in prioritized_objects:
             phi_obj = self._compute_object_levelset(obj, shape)
-            
+
             # オブジェクトの相に応じて更新戦略を選択
-            if obj['phase'].lower() != background_phase.lower():
+            if obj["phase"].lower() != background_phase.lower():
                 # 異なる相のオブジェクト：最小値を取る（界面を保持）
                 phi = np.minimum(phi, phi_obj)
             else:
@@ -52,9 +50,7 @@ class LevelSetInitializer(BaseLevelSetOperation):
         return phi
 
     def _prioritize_objects(
-        self, 
-        objects: List[Dict[str, Any]], 
-        background_phase: str
+        self, objects: List[Dict[str, Any]], background_phase: str
     ) -> List[Dict[str, Any]]:
         """
         オブジェクトの優先順位を決定
@@ -66,27 +62,28 @@ class LevelSetInitializer(BaseLevelSetOperation):
         Returns:
             優先順位付きのオブジェクトリスト
         """
+
         def priority_key(obj):
             # 背景相と異なる相のオブジェクトを優先
-            is_different_phase = obj.get('phase', '').lower() != background_phase.lower()
-            
+            is_different_phase = (
+                obj.get("phase", "").lower() != background_phase.lower()
+            )
+
             # オブジェクトタイプに基づく追加の優先順位
             type_priority = {
-                'sphere': 10,    # 球体を最優先
-                'plate': 5,      # 平面を次点
-                'background': 1  # 背景オブジェクトは最後
+                "sphere": 10,  # 球体を最優先
+                "plate": 5,  # 平面を次点
+                "background": 1,  # 背景オブジェクトは最後
             }
-            
-            type_score = type_priority.get(obj.get('type', 'background'), 0)
-            
+
+            type_score = type_priority.get(obj.get("type", "background"), 0)
+
             return (-is_different_phase, -type_score)
 
         return sorted(objects, key=priority_key)
 
     def _compute_object_levelset(
-        self, 
-        obj: Dict[str, Any], 
-        shape: Tuple[int, ...]
+        self, obj: Dict[str, Any], shape: Tuple[int, ...]
     ) -> np.ndarray:
         """
         特定のオブジェクトのレベルセット関数を計算
@@ -99,32 +96,28 @@ class LevelSetInitializer(BaseLevelSetOperation):
             オブジェクトのレベルセット関数
         """
         # グリッドの生成
-        coords = np.meshgrid(
-            *[np.linspace(0, 1, s) for s in shape], indexing="ij"
-        )
+        coords = np.meshgrid(*[np.linspace(0, 1, s) for s in shape], indexing="ij")
 
-        obj_type = obj.get('type')
+        obj_type = obj.get("type")
 
-        if obj_type == 'plate':
-            height = obj.get('height', 0.5)
+        if obj_type == "plate":
+            height = obj.get("height", 0.5)
             if not 0 <= height <= 1:
                 raise ValueError("高さは0から1の間である必要があります")
             return coords[-1] - height
 
-        elif obj_type == 'sphere':
-            center = obj.get('center', [0.5, 0.5, 0.5])
-            radius = obj.get('radius', 0.2)
+        elif obj_type == "sphere":
+            center = obj.get("center", [0.5, 0.5, 0.5])
+            radius = obj.get("radius", 0.2)
 
             # 中心からの距離を計算
-            squared_distance = sum(
-                (coord - c) ** 2 for coord, c in zip(coords, center)
-            )
+            squared_distance = sum((coord - c) ** 2 for coord, c in zip(coords, center))
             distance = np.sqrt(squared_distance)
-            
+
             # 符号付き距離関数を計算
             return distance - radius
 
-        elif obj_type == 'background':
+        elif obj_type == "background":
             # デフォルトの背景（全空間が同一相）
             return np.zeros_like(coords[0])
 

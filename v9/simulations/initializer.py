@@ -120,7 +120,7 @@ class SimulationInitializer:
         # レベルセット関数を初期化（背景相情報とオブジェクトリストを一括で渡す）
         levelset.initialize(
             background_phase=self.config.initial_conditions.background["phase"],
-            objects=self.config.initial_conditions.objects
+            objects=self.config.initial_conditions.objects,
         )
 
         # 符号付き距離関数として再初期化

@@ -71,7 +71,7 @@ class SimulationState:
 
     def copy(self) -> "SimulationState":
         """状態の深いコピーを作成
-        
+
         Returns:
             コピーされた状態
         """
@@ -80,12 +80,12 @@ class SimulationState:
             velocity=self.velocity.copy(),
             levelset=self.levelset.copy(),
             pressure=self.pressure.copy(),
-            diagnostics=self.diagnostics.copy() if self.diagnostics else None
+            diagnostics=self.diagnostics.copy() if self.diagnostics else None,
         )
 
     def update(self, derivative: "SimulationState", dt: float) -> None:
         """状態を更新
-        
+
         Args:
             derivative: 時間微分
             dt: 時間刻み幅
