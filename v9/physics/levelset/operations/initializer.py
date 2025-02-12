@@ -21,17 +21,17 @@ class LevelSetInitializer(BaseLevelSetOperation):
         Returns:
             初期化されたLevel Set関数の値
         """
-        # グリッドの生成（インデックス用）
+        # グリッドの生成（実際の座標用）
         self.coords = np.meshgrid(
             *[np.linspace(0, 1, s) for s in shape], indexing="ij"
         )
         
-        # 未設定部分を大きな正の値で初期化
-        phi = np.full(shape, np.inf)
-
-        # オブジェクトリストと背景相の取得
-        objects = kwargs.get("objects", [])
+        # 背景相に応じた初期値
         background_phase = kwargs.get("background_phase", "nitrogen")
+        phi = np.full(shape, np.inf if background_phase == "nitrogen" else -np.inf)
+
+        # オブジェクトリストの取得
+        objects = kwargs.get("objects", [])
 
         # 各オブジェクトの処理
         for obj in objects:
@@ -40,35 +40,34 @@ class LevelSetInitializer(BaseLevelSetOperation):
 
             # レベルセット関数の計算
             if obj_type == "plate":
-                phi_new = self._compute_plate_levelset(obj)
+                phi_new = self._compute_plate_levelset(obj, shape)
             elif obj_type == "sphere":
-                phi_new = self._compute_sphere_levelset(obj)
+                phi_new = self._compute_sphere_levelset(obj, shape)
             else:
                 continue
 
             # 相に応じたレベルセット関数の更新
             if obj_phase != background_phase:
-                # 異なる相のオブジェクトならminを取る（負の値が内部を示す）
+                # 異なる相のオブジェクトは負の値（内部）でminを取る
                 phi = np.minimum(phi, -phi_new)
             else:
-                # 背景相と同じ相ならmaxを取る（正の値が外部を示す）
+                # 背景相と同じ相のオブジェクトは正の値（外部）でmaxを取る
                 phi = np.maximum(phi, phi_new)
 
         return phi
 
-    def _compute_sphere_levelset(self, obj: Dict[str, Any]) -> np.ndarray:
+    def _compute_sphere_levelset(self, obj: Dict[str, Any], shape: Tuple[int, ...]) -> np.ndarray:
         """球のレベルセット関数を計算
 
         Args:
             obj: 球オブジェクトの設定
-                - center: 球の中心座標
-                - radius: 球の半径
+            shape: グリッドの形状
 
         Returns:
             計算されたレベルセット関数の値
         """
         # デフォルト値の設定
-        center = obj.get("center", [0.5, 0.5, 0.5][:len(self.coords)])
+        center = obj.get("center", [0.5, 0.5, 0.5][:len(shape)])
         radius = obj.get("radius", 0.2)
 
         # 中心からの距離を計算
@@ -81,12 +80,12 @@ class LevelSetInitializer(BaseLevelSetOperation):
         distance = np.sqrt(squared_distance)
         return distance - radius
 
-    def _compute_plate_levelset(self, obj: Dict[str, Any]) -> np.ndarray:
+    def _compute_plate_levelset(self, obj: Dict[str, Any], shape: Tuple[int, ...]) -> np.ndarray:
         """平面のレベルセット関数を計算
 
         Args:
             obj: 平面オブジェクトの設定
-                - height: 平面の高さ（0-1の範囲）
+            shape: グリッドの形状
 
         Returns:
             計算されたレベルセット関数の値
@@ -96,8 +95,13 @@ class LevelSetInitializer(BaseLevelSetOperation):
         if not 0 <= height <= 1:
             raise ValueError("高さは0から1の間である必要があります")
         
+        # 全次元で平面を表現
         # Z座標との差を計算（正: 平面より上、負: 平面より下）
-        return self.coords[-1] - height
+        plane = np.zeros(shape)
+        for coord in self.coords:
+            plane += np.abs(coord - height)
+        
+        return plane
 
     def validate_input(self, phi: np.ndarray) -> None:
         """入力データを検証
