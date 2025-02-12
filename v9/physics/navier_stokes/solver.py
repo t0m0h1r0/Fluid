@@ -49,7 +49,7 @@ class NavierStokesSolver:
         density: ScalarField,
         viscosity: ScalarField,
         pressure: ScalarField,
-        levelset: Optional[ScalarField] = None,
+        external_force: VectorField,
         **kwargs,
     ) -> List[np.ndarray]:
         """
@@ -71,17 +71,6 @@ class NavierStokesSolver:
         diffusion = self.diffusion_term.compute(velocity)
         pressure_grad = self.pressure_term.compute(velocity, pressure)
 
-        # 外力項の計算
-        force_terms = []
-        for force in self.force_terms:
-            if force.__class__ == SurfaceTensionForce and levelset is not None:
-                force_term = force.compute(velocity, levelset)
-            elif force.__class__ == GravityForce:
-                force_term = force.compute(velocity, density)
-            else:
-                continue
-            force_terms.extend(force_term)
-
         # 速度の時間微分を統合
         velocity_derivative = [
             -adv + diff - press_grad + f
@@ -89,7 +78,7 @@ class NavierStokesSolver:
                 advection,
                 diffusion,
                 pressure_grad,
-                [force_terms[i] for i in range(velocity.ndim)],
+                external_force
             )
         ]
 
