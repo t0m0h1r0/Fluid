@@ -8,13 +8,6 @@
 
 結果として得られる方程式:
 ∇・(1/ρ ∇p) = ∇・(u・∇u) + ∇・fs - ∇・(∇ν・∇u)
-
-ここで:
-- p: 圧力
-- ρ: 密度（空間的に変化）
-- u: 速度場
-- ν: 動粘性係数
-- fs: 界面張力による体積力
 """
 
 from typing import Dict, Any, Optional, Tuple
@@ -44,7 +37,6 @@ class PressurePoissonSolver:
         velocity: VectorField,
         density: ScalarField,
         viscosity: ScalarField,
-        dt: float,
         external_force: Optional[VectorField] = None,
         initial_pressure: Optional[ScalarField] = None,
     ) -> Tuple[ScalarField, Dict[str, Any]]:
@@ -62,14 +54,19 @@ class PressurePoissonSolver:
             (圧力場, 診断情報)のタプル
         """
         # 右辺の計算
-        rhs = self._compute_rhs(velocity, density, viscosity, dt, external_force)
+        rhs = self._compute_rhs(velocity, density, viscosity, external_force)
 
-        # 圧力場の計算
-        pressure = ScalarField(velocity.shape, velocity.dx)
+        # 初期値の設定
+        initial_solution = None
         if initial_pressure is not None:
-            pressure.data = initial_pressure.data.copy()
+            initial_solution = initial_pressure.data.copy()
 
-        pressure.data = self._poisson_solver.solve(rhs, initial_solution=pressure.data)
+        # ポアソンソルバーの実行
+        pressure_data = self._poisson_solver.solve(rhs, initial_solution=initial_solution)
+
+        # ScalarFieldの作成
+        pressure = ScalarField(velocity.shape, velocity.dx)
+        pressure.data = pressure_data
 
         return pressure, self._diagnostics
 
@@ -78,7 +75,6 @@ class PressurePoissonSolver:
         velocity: VectorField,
         density: ScalarField,
         viscosity: ScalarField,
-        dt: float,
         external_force: Optional[VectorField] = None,
     ) -> np.ndarray:
         """右辺項を計算
