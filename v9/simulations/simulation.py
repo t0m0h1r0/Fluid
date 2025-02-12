@@ -91,34 +91,34 @@ class TwoPhaseFlowSimulator:
         return {"density": density, "viscosity": viscosity}
 
     def compute_external_forces(
-        self,
-        levelset: LevelSetField,
+        self, state: SimulationState, material_properties: Dict[str, ScalarField]
     ) -> Tuple[VectorField, Dict[str, Any]]:
         """外力（重力と表面張力）を計算
 
         Args:
-            levelset: レベルセット関数場
+            state: シミュレーション状態
+            material_properties: 物性値の辞書
 
         Returns:
-            外力のベクトル場と関連する診断情報
+            外力のベクトル場と関連する診断情報のタプル
         """
         # 重力項
-        gravity_force = VectorField(levelset.shape, levelset.dx)
-        gravity_direction = [
-            -self.config.physics.gravity if axis == len(levelset.shape) - 1 else 0
-            for axis in range(levelset.ndim)
-        ]
+        gravity_force = VectorField(state.levelset.shape, state.levelset.dx)
         for i, comp in enumerate(gravity_force.components):
-            comp.data = gravity_direction[i]
+            # 最後の次元（z方向）にのみ重力を適用
+            if i == len(state.levelset.shape) - 1:
+                comp.data = np.full(state.levelset.shape, -self.config.physics.gravity)
+            else:
+                comp.data = np.zeros(state.levelset.shape)
 
         # 表面張力項の計算
         surface_tension_force, surface_tension_info = compute_surface_tension_force(
-            levelset, surface_tension_coefficient=self._surface_tension_coefficient
+            state.levelset, surface_tension_coefficient=self._surface_tension_coefficient
         )
 
         # 外力を統合
-        total_force = VectorField(levelset.shape, levelset.dx)
-        for i in range(levelset.ndim):
+        total_force = VectorField(state.levelset.shape, state.levelset.dx)
+        for i in range(state.levelset.ndim):
             total_force.components[i].data = (
                 gravity_force.components[i].data
                 + surface_tension_force.components[i].data
@@ -152,11 +152,10 @@ class TwoPhaseFlowSimulator:
             external_force: 外力場
 
         Returns:
-            計算された圧力場と診断情報
+            計算された圧力場と診断情報のタプル
         """
         # 圧力場の計算
-        pressure = ScalarField(velocity.shape, velocity.dx)
-        pressure.data, solver_diagnostics = self._pressure_solver.solve(
+        pressure, solver_diagnostics = self._pressure_solver.solve(
             velocity=velocity, density=density, viscosity=viscosity
         )
 
@@ -191,7 +190,7 @@ class TwoPhaseFlowSimulator:
 
         # 外力の計算
         external_forces, force_diagnostics = self.compute_external_forces(
-            state.velocity, state.levelset
+            state, material_properties
         )
 
         # 圧力場の計算
@@ -218,10 +217,10 @@ class TwoPhaseFlowSimulator:
 
         # 時間積分器による更新
         new_velocity = self._time_solver.integrate(
-            state.velocity, dt, lambda v: VectorField.from_list(velocity_derivative)
+            state.velocity, dt=dt, derivative_fn=velocity_derivative
         )
         new_levelset = self._time_solver.integrate(
-            state.levelset, dt, lambda levelset_field: levelset_derivative
+            state.levelset, dt=dt, derivative_fn=levelset_derivative
         )
 
         # 必要に応じてレベルセット関数の再初期化

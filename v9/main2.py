@@ -136,6 +136,7 @@ class SimulationManager:
                         self._save_diagnostics(step_info, current_state.time)
 
                         next_save_time += save_interval
+                        return 0
 
                 except Exception as step_error:
                     self.logger.error(

@@ -7,8 +7,8 @@
 """
 
 from typing import Dict, Any
-import numpy as np
 from core.field import VectorField, ScalarField
+import numpy as np
 
 
 class ContinuityEquation:
@@ -38,21 +38,23 @@ class ContinuityEquation:
         self.name = name
 
     def compute_derivative(
-        self, field: ScalarField, velocity: VectorField, dt: float = 0.0
-    ) -> np.ndarray:
+        self, field: ScalarField, velocity: VectorField,
+    ) -> ScalarField:
         """
         スカラー場の時間微分を計算
 
         Args:
             field: 移流される任意のスカラー場
             velocity: 速度場
-            dt: 時間刻み幅（オプション）
 
         Returns:
-            スカラー場の時間微分
+            スカラー場の時間微分をScalarFieldとして返す
         """
+        # 結果を格納するScalarFieldを作成
+        result = ScalarField(field.shape, field.dx)
+
         # 移流項 u⋅∇f の計算
-        advection = np.zeros_like(field.data)
+        advection = result.data  # 直接データ配列を参照
 
         # 各方向の速度成分による寄与を計算
         for i in range(velocity.ndim):
@@ -61,7 +63,9 @@ class ContinuityEquation:
             advection += velocity.components[i].data * field.gradient(i)
 
         # 移流の符号を反転（移流方程式の形式）
-        return -advection
+        result.data = -advection
+
+        return result
 
     def compute_timestep(
         self, velocity: VectorField, field: ScalarField, **kwargs

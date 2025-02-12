@@ -1,7 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List
-import numpy as np
-
+from typing import Dict, Any
 from core.field import VectorField
 
 
@@ -22,8 +20,16 @@ class BaseNavierStokesTerm(ABC):
         return self._enabled
 
     @abstractmethod
-    def compute(self, velocity: VectorField, **kwargs) -> List[np.ndarray]:
-        """項の寄与を計算する抽象メソッド"""
+    def compute(self, velocity: VectorField, **kwargs) -> VectorField:
+        """項の寄与を計算する抽象メソッド
+        
+        Args:
+            velocity: 速度場
+            **kwargs: 追加のパラメータ
+            
+        Returns:
+            計算された項の寄与をVectorFieldとして返す
+        """
         pass
 
     def compute_timestep(self, velocity: VectorField, **kwargs) -> float:
