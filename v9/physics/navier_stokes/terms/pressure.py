@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import Dict, Any
 import numpy as np
 
 from core.field import VectorField, ScalarField
@@ -22,7 +22,7 @@ class PressureTerm(BaseNavierStokesTerm):
 
     def compute(
         self, velocity: VectorField, pressure: ScalarField, **kwargs
-    ) -> List[np.ndarray]:
+    ) -> VectorField:
         """圧力項の寄与を計算
 
         Args:
@@ -30,18 +30,19 @@ class PressureTerm(BaseNavierStokesTerm):
             pressure: 圧力場
 
         Returns:
-            各方向の速度成分への圧力項の寄与
+            各方向の速度成分への圧力項の寄与をVectorFieldとして返す
         """
         if not self.enabled:
-            return [np.zeros_like(v.data) for v in velocity.components]
+            return VectorField(velocity.shape, velocity.dx)
 
-        result = []
+        # 結果用のVectorFieldを作成
+        result = VectorField(velocity.shape, velocity.dx)
         dx = velocity.dx
 
         # 各方向の圧力勾配を計算
         for i in range(velocity.ndim):
             grad_p = np.gradient(pressure.data, dx, axis=i)
-            result.append(-grad_p / self._density)
+            result.components[i].data = -grad_p / self._density
 
         # 診断情報の更新
         self._diagnostics = {

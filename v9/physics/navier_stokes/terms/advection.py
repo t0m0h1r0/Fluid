@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import Dict, Any
 import numpy as np
 
 from core.field import VectorField
@@ -25,28 +25,34 @@ class AdvectionTerm(BaseNavierStokesTerm):
         super().__init__(name, enabled)
         self._scheme = "central"  # デフォルトは中心差分
 
-    def compute(self, velocity: VectorField, **kwargs) -> List[np.ndarray]:
+    def compute(self, velocity: VectorField, **kwargs) -> VectorField:
         """移流項の寄与を計算
 
         Args:
             velocity: 速度場
 
         Returns:
-            各方向の速度成分への移流項の寄与
+            各方向の速度成分への移流項の寄与をVectorFieldとして返す
         """
         if not self.enabled:
-            return [np.zeros_like(v.data) for v in velocity.components]
+            return VectorField(velocity.shape, velocity.dx)
 
-        result = []
+        # 結果用のVectorFieldを作成
+        result = VectorField(velocity.shape, velocity.dx)
+
+        # 各方向の移流項を計算
         for i, v_i in enumerate(velocity.components):
             # 中心差分による移流項の計算
             flux = -sum(
                 v_j.data * v_i.gradient(j) for j, v_j in enumerate(velocity.components)
             )
-            result.append(flux)
+            # 結果をVectorFieldのコンポーネントに設定
+            result.components[i].data = flux
 
         # 診断情報の更新
-        self._diagnostics["flux_max"] = float(max(np.max(np.abs(r)) for r in result))
+        self._diagnostics["flux_max"] = float(
+            max(np.max(np.abs(comp.data)) for comp in result.components)
+        )
         self._diagnostics["scheme"] = self._scheme
 
         return result

@@ -155,9 +155,11 @@ class TwoPhaseFlowSimulator:
             計算された圧力場と診断情報のタプル
         """
         # 圧力場の計算
-        pressure, solver_diagnostics = self._pressure_solver.solve(
+        pressure = ScalarField(velocity.shape, velocity.dx)
+        pressure_data, solver_diagnostics = self._pressure_solver.solve(
             velocity=velocity, density=density, viscosity=viscosity
         )
+        pressure.data = pressure_data
 
         # 診断情報の更新
         self._diagnostics.update(solver_diagnostics)
@@ -195,32 +197,32 @@ class TwoPhaseFlowSimulator:
 
         # 圧力場の計算
         pressure, pressure_diagnostics = self.compute_pressure(
-            state.velocity,
-            material_properties["density"],
-            material_properties["viscosity"],
-            external_forces,
+            velocity=state.velocity,
+            density=material_properties["density"],
+            viscosity=material_properties["viscosity"],
+            force=external_forces,
         )
 
-        # 速度場の時間微分を計算
-        velocity_derivative = self._navier_stokes_solver.compute_velocity_derivative(
-            state.velocity,
-            material_properties["density"],
-            material_properties["viscosity"],
-            pressure,
-            state.levelset,
+        acceleration = self._navier_stokes_solver.compute_velocity_derivative(
+            velocity=state.velocity,
+            density=material_properties["density"],
+            viscosity=material_properties["viscosity"],
+            pressure=pressure,
+            external_force=external_forces,
         )
 
-        # レベルセット関数の時間微分を計算
-        levelset_derivative = self._continuity_solver.compute_derivative(
-            state.levelset, state.velocity
+        derivatives = self._continuity_solver.compute_derivative(
+            field=state.levelset,
+            velocity=state.velocity
         )
+
 
         # 時間積分器による更新
         new_velocity = self._time_solver.integrate(
-            state.velocity, dt=dt, derivative_fn=velocity_derivative
+            state.velocity, dt, acceleration
         )
         new_levelset = self._time_solver.integrate(
-            state.levelset, dt=dt, derivative_fn=levelset_derivative
+            state.levelset, dt, derivatives
         )
 
         # 必要に応じてレベルセット関数の再初期化

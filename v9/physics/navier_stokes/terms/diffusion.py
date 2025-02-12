@@ -1,7 +1,7 @@
-from typing import List, Dict, Any
+from typing import Dict, Any
 import numpy as np
 
-from core.field import VectorField
+from core.field import VectorField, ScalarField
 from .base import BaseNavierStokesTerm
 
 
@@ -20,19 +20,20 @@ class DiffusionTerm(BaseNavierStokesTerm):
         super().__init__(name, enabled)
         self._viscosity = viscosity
 
-    def compute(self, velocity: VectorField, **kwargs) -> List[np.ndarray]:
+    def compute(self, velocity: VectorField, **kwargs) -> VectorField:
         """粘性項の寄与を計算
 
         Args:
             velocity: 速度場
 
         Returns:
-            各方向の速度成分への拡散項の寄与
+            各方向の速度成分への拡散項の寄与をVectorFieldとして返す
         """
         if not self.enabled:
-            return [np.zeros_like(v.data) for v in velocity.components]
+            return VectorField(velocity.shape, velocity.dx)
 
-        result = []
+        # 結果用のVectorFieldを作成
+        result = VectorField(velocity.shape, velocity.dx)
         dx = velocity.dx
 
         # 各成分の粘性項を計算
@@ -43,8 +44,8 @@ class DiffusionTerm(BaseNavierStokesTerm):
                 for j in range(velocity.ndim)
             )
 
-            # 粘性による加速度
-            result.append(self._viscosity * laplacian)
+            # 粘性による加速度を結果に設定
+            result.components[i].data = self._viscosity * laplacian
 
         # 診断情報の更新
         total_dissipation = self._compute_dissipation(velocity)
