@@ -9,7 +9,7 @@ from typing import Dict, Any
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from physics.levelset import LevelSetField, LevelSetMethod
+from physics.levelset import LevelSetField
 from physics.navier_stokes.terms import AccelerationTerm
 
 
@@ -46,16 +46,14 @@ class SimulationState:
 
     def get_density(self) -> ScalarField:
         """密度場を計算"""
-        # レベルセット関数から密度場を計算
         density = ScalarField(self.levelset.shape, self.levelset.dx)
-        density.data = self.levelset.heaviside()
+        density.data = self.levelset.get_heaviside().data
         return density
 
     def get_viscosity(self) -> ScalarField:
         """粘性場を計算"""
-        # レベルセット関数から粘性場を計算
         viscosity = ScalarField(self.levelset.shape, self.levelset.dx)
-        viscosity.data = self.levelset.heaviside()
+        viscosity.data = self.levelset.get_heaviside().data
         return viscosity
 
     def get_diagnostics(self) -> Dict[str, Any]:
@@ -68,6 +66,7 @@ class SimulationState:
             "pressure_max": float(np.abs(self.pressure.data).max()),
             "levelset_min": float(self.levelset.data.min()),
             "levelset_max": float(self.levelset.data.max()),
+            "interface_geometry": self.levelset.get_geometry_info(),
             **self.diagnostics,
         }
 
@@ -126,10 +125,9 @@ class SimulationState:
         Returns:
             時間微分を表す新しい状態
         """
-        # Level Set方程式の時間発展
-        levelset_derivative = LevelSetMethod().run(self.levelset, self.velocity)
+        # Level Set方程式の時間発展（界面の移流）
+        levelset_derivative = self.levelset.compute_derivative(self.velocity)
 
-        # Navier-Stokes方程式の時間発展
         # 密度と粘性を計算
         density = self.get_density()
         viscosity = self.get_viscosity()
@@ -151,6 +149,7 @@ class SimulationState:
             pressure=ScalarField(self.pressure.shape, self.pressure.dx),
         )
 
+        # 時間微分を設定
         derivative_state.levelset.data = levelset_derivative
         derivative_state.velocity.components = [
             ScalarField(v.shape, v.dx, initial_value=a)

@@ -1,30 +1,20 @@
+"""Level Set法のパッケージ
+
+このパッケージは、Level Set法に関する機能を提供します。
+
+主な機能:
+- Level Set関数のフィールド管理
+- 幾何学的計算（法線ベクトル、曲率など）
+- Heaviside関数とDelta関数による密度場の計算
+- 界面の初期化と再初期化
+"""
+
 from .field import LevelSetField, LevelSetParameters
-from .method import LevelSetMethod
-from .initializer import LevelSetInitializer
-from .reinitializer import reinitialize_levelset
-from .utils import (
-    heaviside,
-    delta,
-    compute_curvature,
-    compute_volume,
-    compute_area,
-    extend_velocity,
-)
-from .operations import LevelSetOperations
 
 __all__ = [
-    # クラス
     "LevelSetField",
     "LevelSetParameters",
-    "LevelSetMethod",
-    "LevelSetInitializer",
-    "LevelSetOperations",
-    # 関数
-    "reinitialize_levelset",
-    "heaviside",
-    "delta",
-    "compute_curvature",
-    "compute_volume",
-    "compute_area",
-    "extend_velocity",
 ]
+
+# バージョン情報
+__version__ = "1.0.0"
