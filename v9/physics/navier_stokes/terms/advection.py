@@ -1,3 +1,9 @@
+"""
+移流項（対流項）の計算を提供するモジュール
+
+Navier-Stokes方程式における u⋅∇u 項を計算します。
+"""
+
 from typing import Dict, Any
 import numpy as np
 
@@ -6,59 +12,85 @@ from .base import BaseNavierStokesTerm
 
 
 class AdvectionTerm(BaseNavierStokesTerm):
-    """移流項クラス
+    """
+    移流項（対流項）を計算するクラス
 
-    中心差分法を用いて移流項を計算します。
-    高次精度が必要な場合は、numerics/spatial/ から適切なスキームをインポートして使用してください。
+    速度場の移流（u⋅∇u）を中心差分で近似計算します。
     """
 
     def __init__(
         self,
         name: str = "Advection",
         enabled: bool = True,
+        scheme: str = "central",
     ):
         """
         Args:
             name: 項の名前
             enabled: 項を有効にするかどうか
+            scheme: 差分スキーム（現時点では中心差分のみ）
         """
         super().__init__(name, enabled)
-        self._scheme = "central"  # デフォルトは中心差分
+        self._scheme = scheme
 
     def compute(self, velocity: VectorField, **kwargs) -> VectorField:
-        """移流項の寄与を計算
+        """
+        移流項の寄与を計算
 
         Args:
             velocity: 速度場
 
         Returns:
-            各方向の速度成分への移流項の寄与をVectorFieldとして返す
+            移流項をVectorFieldとして返す
         """
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
         # 結果用のVectorFieldを作成
         result = VectorField(velocity.shape, velocity.dx)
+        dx = velocity.dx
 
         # 各方向の移流項を計算
+        flux_terms = []
         for i, v_i in enumerate(velocity.components):
-            # 中心差分による移流項の計算
+            # 移流項の計算: -u⋅∇u
             flux = -sum(
                 v_j.data * v_i.gradient(j) for j, v_j in enumerate(velocity.components)
             )
-            # 結果をVectorFieldのコンポーネントに設定
             result.components[i].data = flux
+            flux_terms.append(flux)
 
         # 診断情報の更新
-        self._diagnostics["flux_max"] = float(
-            max(np.max(np.abs(comp.data)) for comp in result.components)
-        )
-        self._diagnostics["scheme"] = self._scheme
+        self._update_diagnostics(result, flux_terms)
 
         return result
 
+    def _update_diagnostics(
+        self, 
+        result: VectorField, 
+        flux_terms: list
+    ):
+        """
+        診断情報を更新
+
+        Args:
+            result: 計算された移流項
+            flux_terms: 各成分の移流項
+        """
+        max_flux = [np.max(np.abs(flux)) for flux in flux_terms]
+        self._diagnostics = {
+            "scheme": self._scheme,
+            "max_flux_x": float(max_flux[0]) if len(max_flux) > 0 else 0.0,
+            "max_flux_y": float(max_flux[1]) if len(max_flux) > 1 else 0.0,
+            "max_flux_z": float(max_flux[2]) if len(max_flux) > 2 else 0.0,
+            "max_advection": float(
+                max(np.max(np.abs(comp.data)) for comp in result.components)
+            ),
+        }
+
     def compute_timestep(self, velocity: VectorField, **kwargs) -> float:
-        """移流項に基づく時間刻み幅の制限を計算
+        """
+        移流項に基づく時間刻み幅の制限を計算
 
         Args:
             velocity: 速度場
@@ -69,20 +101,17 @@ class AdvectionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return float("inf")
 
-        # 最大速度の計算
-        max_velocity = max(np.max(np.abs(comp.data)) for comp in velocity.components)
+        # 最大速度の計算（各成分の最大絶対値）
+        max_velocity = max(
+            np.max(np.abs(comp.data)) for comp in velocity.components
+        )
 
-        # CFL条件に基づく時間刻み幅の計算
+        # CFLに基づく時間刻み幅の計算
         cfl = kwargs.get("cfl", 0.5)
         return cfl * velocity.dx / (max_velocity + 1e-10)
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""
         diag = super().get_diagnostics()
-        diag.update(
-            {
-                "scheme": self._scheme,
-                "flux_max": self._diagnostics.get("flux_max", 0.0),
-            }
-        )
+        diag.update(self._diagnostics)
         return diag
