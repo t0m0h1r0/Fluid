@@ -87,7 +87,9 @@ class NavierStokesSolver:
         """
         for name, field in fields.items():
             max_value = max(np.max(np.abs(comp.data)) for comp in field.components)
-            self._diagnostics = self._diagnostics if hasattr(self, "_diagnostics") else {}
+            self._diagnostics = (
+                self._diagnostics if hasattr(self, "_diagnostics") else {}
+            )
             self._diagnostics[f"{name}_max"] = float(max_value)
 
     def compute_timestep(
@@ -112,7 +114,7 @@ class NavierStokesSolver:
 
         # 最も厳しい制限を採用
         dt = min(timesteps)
-        
+
         # 診断情報に時間刻み幅の情報を追加
         if not hasattr(self, "_diagnostics"):
             self._diagnostics = {}

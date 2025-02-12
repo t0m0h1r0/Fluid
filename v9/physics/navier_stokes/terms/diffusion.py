@@ -1,7 +1,7 @@
 from typing import Dict, Any
 import numpy as np
 
-from core.field import VectorField, ScalarField
+from core.field import VectorField
 from .base import BaseNavierStokesTerm
 
 

@@ -18,7 +18,7 @@ from numerics.time_evolution.euler import ForwardEuler
 from physics.levelset import LevelSetField
 from physics.navier_stokes import NavierStokesSolver
 from physics.pressure import PressurePoissonSolver
-from physics.surface_tension import compute_surface_tension_force
+from physics.surface_tension import SurfaceTensionCalculator
 from physics.continuity import ContinuityEquation
 
 from simulations.config import SimulationConfig
@@ -52,13 +52,16 @@ class TwoPhaseFlowSimulator:
             max_dt=config.numerical.max_dt,
         )
 
+        # 表面張力係数の保存
+        self._surface_tension_coefficient = surface_tension_coefficient
+
         # ソルバーの初期化
         self._navier_stokes_solver = NavierStokesSolver()
         self._pressure_solver = PressurePoissonSolver()
         self._continuity_solver = ContinuityEquation()
-
-        # 表面張力係数の保存
-        self._surface_tension_coefficient = surface_tension_coefficient
+        self._surface_tension_calculator = SurfaceTensionCalculator(
+            surface_tension_coefficient=surface_tension_coefficient
+        )
 
         # 現在の状態
         self._current_state = None
@@ -66,14 +69,14 @@ class TwoPhaseFlowSimulator:
 
     def compute_material_properties(
         self, levelset: LevelSetField
-    ) -> Dict[str, ScalarField]:
+    ) -> Tuple[ScalarField, ScalarField]:
         """レベルセット関数から物性値を計算
 
         Args:
             levelset: レベルセット関数場
 
         Returns:
-            密度場、粘性場を含む辞書
+            (密度場, 粘性場)のタプル
         """
         # Heaviside関数を使用して物性値を計算
         density = levelset.get_density(
@@ -88,41 +91,38 @@ class TwoPhaseFlowSimulator:
             rho2=self.config.physics.phases[1].viscosity,
         ).data
 
-        return {"density": density, "viscosity": viscosity}
+        return density, viscosity
 
     def compute_external_forces(
-        self, state: SimulationState, material_properties: Dict[str, ScalarField]
+        self,
+        levelset: LevelSetField,
+        density: ScalarField,
     ) -> Tuple[VectorField, Dict[str, Any]]:
         """外力（重力と表面張力）を計算
 
         Args:
-            state: シミュレーション状態
-            material_properties: 物性値の辞書
+            levelset: レベルセット関数場
+            density: 密度場
 
         Returns:
-            外力のベクトル場と関連する診断情報のタプル
+            (外力のベクトル場, 診断情報)のタプル
         """
-        # 重力項
-        gravity_force = VectorField(state.levelset.shape, state.levelset.dx)
+        # 重力項の計算
+        gravity_force = VectorField(levelset.shape, levelset.dx)
         for i, comp in enumerate(gravity_force.components):
             # 最後の次元（z方向）にのみ重力を適用
-            if i == len(state.levelset.shape) - 1:
-                comp.data = np.full(state.levelset.shape, -self.config.physics.gravity)
+            if i == len(levelset.shape) - 1:
+                comp.data = -self.config.physics.gravity * density.data
             else:
-                comp.data = np.zeros(state.levelset.shape)
+                comp.data = np.zeros(density.shape)
 
         # 表面張力項の計算
-        surface_tension_force, surface_tension_info = compute_surface_tension_force(
-            state.levelset, surface_tension_coefficient=self._surface_tension_coefficient
+        surface_tension_force, surface_tension_info = (
+            self._surface_tension_calculator.compute_force(levelset=levelset)
         )
 
         # 外力を統合
-        total_force = VectorField(state.levelset.shape, state.levelset.dx)
-        for i in range(state.levelset.ndim):
-            total_force.components[i].data = (
-                gravity_force.components[i].data
-                + surface_tension_force.components[i].data
-            )
+        total_force = gravity_force + surface_tension_force
 
         # 診断情報の更新
         diagnostics = {
@@ -132,7 +132,6 @@ class TwoPhaseFlowSimulator:
                 np.max([np.abs(f.data).max() for f in total_force.components])
             ),
         }
-        self._diagnostics.update(diagnostics)
 
         return total_force, diagnostics
 
@@ -152,12 +151,15 @@ class TwoPhaseFlowSimulator:
             external_force: 外力場
 
         Returns:
-            計算された圧力場と診断情報のタプル
+            (圧力場, 診断情報)のタプル
         """
         # 圧力場の計算
         pressure = ScalarField(velocity.shape, velocity.dx)
         pressure_data, solver_diagnostics = self._pressure_solver.solve(
-            velocity=velocity, density=density, viscosity=viscosity
+            velocity=velocity,
+            density=density,
+            viscosity=viscosity,
+            external_force=external_force,
         )
         pressure.data = pressure_data
 
@@ -188,41 +190,41 @@ class TwoPhaseFlowSimulator:
             dt = self._time_solver.compute_timestep(state=state)
 
         # 物性値の計算
-        material_properties = self.compute_material_properties(state.levelset)
+        density, viscosity = self.compute_material_properties(state.levelset)
 
         # 外力の計算
         external_forces, force_diagnostics = self.compute_external_forces(
-            state, material_properties
+            levelset=state.levelset,
+            density=density,
         )
 
         # 圧力場の計算
         pressure, pressure_diagnostics = self.compute_pressure(
             velocity=state.velocity,
-            density=material_properties["density"],
-            viscosity=material_properties["viscosity"],
-            force=external_forces,
+            density=density,
+            viscosity=viscosity,
+            external_force=external_forces,
         )
 
-        acceleration = self._navier_stokes_solver.compute_velocity_derivative(
+        # 速度とレベルセットの時間微分を計算
+        velocity_derivative = self._navier_stokes_solver.compute_velocity_derivative(
             velocity=state.velocity,
-            density=material_properties["density"],
-            viscosity=material_properties["viscosity"],
+            density=density,
+            viscosity=viscosity,
             pressure=pressure,
             external_force=external_forces,
         )
 
-        derivatives = self._continuity_solver.compute_derivative(
-            field=state.levelset,
-            velocity=state.velocity
+        levelset_derivative = self._continuity_solver.compute_derivative(
+            field=state.levelset, velocity=state.velocity
         )
-
 
         # 時間積分器による更新
         new_velocity = self._time_solver.integrate(
-            state.velocity, dt, acceleration
+            state.velocity, dt, velocity_derivative
         )
         new_levelset = self._time_solver.integrate(
-            state.levelset, dt, derivatives
+            state.levelset, dt, levelset_derivative
         )
 
         # 必要に応じてレベルセット関数の再初期化

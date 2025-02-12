@@ -22,11 +22,11 @@ class BaseNavierStokesTerm(ABC):
     @abstractmethod
     def compute(self, velocity: VectorField, **kwargs) -> VectorField:
         """項の寄与を計算する抽象メソッド
-        
+
         Args:
             velocity: 速度場
             **kwargs: 追加のパラメータ
-            
+
         Returns:
             計算された項の寄与をVectorFieldとして返す
         """

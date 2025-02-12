@@ -37,7 +37,7 @@ class PressurePoissonSolver:
         velocity: VectorField,
         density: ScalarField,
         viscosity: ScalarField,
-        external_force: Optional[VectorField] = None,
+        force: Optional[VectorField] = None,
         initial_pressure: Optional[ScalarField] = None,
     ) -> Tuple[ScalarField, Dict[str, Any]]:
         """圧力場を計算
@@ -54,7 +54,7 @@ class PressurePoissonSolver:
             (圧力場, 診断情報)のタプル
         """
         # 右辺の計算
-        rhs = self._compute_rhs(velocity, density, viscosity, external_force)
+        rhs = self._compute_rhs(velocity, density, viscosity, force)
 
         # 初期値の設定
         initial_solution = None
@@ -62,7 +62,9 @@ class PressurePoissonSolver:
             initial_solution = initial_pressure.data.copy()
 
         # ポアソンソルバーの実行
-        pressure_data = self._poisson_solver.solve(rhs, initial_solution=initial_solution)
+        pressure_data = self._poisson_solver.solve(
+            rhs, initial_solution=initial_solution
+        )
 
         # ScalarFieldの作成
         pressure = ScalarField(velocity.shape, velocity.dx)
@@ -75,7 +77,7 @@ class PressurePoissonSolver:
         velocity: VectorField,
         density: ScalarField,
         viscosity: ScalarField,
-        external_force: Optional[VectorField] = None,
+        force: Optional[VectorField] = None,
     ) -> np.ndarray:
         """右辺項を計算
 
@@ -98,8 +100,8 @@ class PressurePoissonSolver:
         rhs -= viscosity_term
 
         # 外力項の計算
-        if external_force is not None:
-            for i, f_i in enumerate(external_force.components):
+        if force is not None:
+            for i, f_i in enumerate(force.components):
                 rhs += np.gradient(f_i.data, dx, axis=i)
 
         # 密度の逆数による調和平均

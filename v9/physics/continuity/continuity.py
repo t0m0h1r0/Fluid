@@ -38,7 +38,9 @@ class ContinuityEquation:
         self.name = name
 
     def compute_derivative(
-        self, field: ScalarField, velocity: VectorField,
+        self,
+        field: ScalarField,
+        velocity: VectorField,
     ) -> ScalarField:
         """
         スカラー場の時間微分を計算

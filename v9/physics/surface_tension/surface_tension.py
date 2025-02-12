@@ -5,7 +5,7 @@
 二相流体における表面張力を計算するためのクラスを提供します。
 """
 
-from typing import List, Optional, Tuple, Dict, Any
+from typing import Dict, Any, Optional, Tuple
 import numpy as np
 
 from physics.levelset import LevelSetField
@@ -35,7 +35,9 @@ class SurfaceTensionCalculator:
         self._sigma = surface_tension_coefficient
         self._epsilon = epsilon
 
-    def compute_force(self, levelset: LevelSetField, **kwargs) -> List[np.ndarray]:
+    def compute_force(
+        self, levelset: LevelSetField, **kwargs
+    ) -> Tuple[VectorField, Dict[str, Any]]:
         """
         表面張力を計算
 
@@ -44,7 +46,7 @@ class SurfaceTensionCalculator:
             **kwargs: 追加のパラメータ
 
         Returns:
-            各方向の表面張力成分
+            (表面張力のベクトル場, 診断情報)のタプル
         """
         # デルタ関数のパラメータ設定
         epsilon = self._epsilon or levelset.params.epsilon
@@ -68,13 +70,22 @@ class SurfaceTensionCalculator:
         kappa = self._compute_curvature(levelset, grad_norm)
 
         # 表面張力の計算（法線方向に垂直）
-        force_components = []
-        for axis in range(levelset.ndim):
+        force = VectorField(levelset.shape, levelset.dx)
+        for i in range(levelset.ndim):
             # デルタ関数, 曲率, 表面張力係数を用いた力の計算
-            force = -self._sigma * delta * kappa * normals[axis]
-            force_components.append(force)
+            force.components[i].data = -self._sigma * delta * kappa * normals[i]
 
-        return force_components
+        # 診断情報の作成
+        diagnostics = {
+            "surface_tension_coefficient": self._sigma,
+            "max_force_magnitude": float(
+                max(np.abs(comp.data).max() for comp in force.components)
+            ),
+            "max_curvature": float(np.max(np.abs(kappa))),
+            "epsilon": epsilon,
+        }
+
+        return force, diagnostics
 
     def _compute_curvature(
         self, levelset: LevelSetField, grad_norm: np.ndarray
@@ -99,54 +110,3 @@ class SurfaceTensionCalculator:
             kappa += grad_norm_derivative
 
         return kappa
-
-    def get_diagnostics(
-        self, force_components: List[np.ndarray], levelset: LevelSetField
-    ) -> Dict[str, Any]:
-        """
-        表面張力に関する診断情報を取得
-
-        Args:
-            force_components: 各方向の表面張力成分
-            levelset: Level Set関数場
-
-        Returns:
-            診断情報の辞書
-        """
-        return {
-            "surface_tension_coefficient": self._sigma,
-            "max_force_magnitude": np.max([np.abs(f).max() for f in force_components]),
-            "interface_area": levelset.area(),
-            "interface_volume": levelset.volume(),
-            "epsilon": self._epsilon or levelset.params.epsilon,
-        }
-
-
-def compute_surface_tension_force(
-    levelset: LevelSetField, surface_tension_coefficient: float = 0.072
-) -> Tuple[VectorField, Dict[str, Any]]:
-    """
-    表面張力を計算し、VectorFieldとして返す便利関数
-
-    Args:
-        levelset: Level Set関数場
-        surface_tension_coefficient: 表面張力係数 [N/m]
-
-    Returns:
-        表面張力のベクトル場と診断情報のタプル
-    """
-    # 表面張力計算器の初期化
-    surface_tension_calculator = SurfaceTensionCalculator(surface_tension_coefficient)
-
-    # 表面張力の計算
-    force_components = surface_tension_calculator.compute_force(levelset)
-
-    # VectorFieldに変換
-    surface_tension_force = VectorField(levelset.shape, levelset.dx)
-    for i, comp in enumerate(surface_tension_force.components):
-        comp.data = force_components[i]
-
-    # 診断情報の取得
-    diagnostics = surface_tension_calculator.get_diagnostics(force_components, levelset)
-
-    return surface_tension_force, diagnostics
