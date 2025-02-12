@@ -7,8 +7,6 @@ from physics.navier_stokes.terms import (
     DiffusionTerm,
     PressureTerm,
     AccelerationTerm,
-    GravityForce,
-    SurfaceTensionForce,
 )
 
 
@@ -35,13 +33,6 @@ class NavierStokesSolver:
         self.diffusion_term = DiffusionTerm()
         self.pressure_term = PressureTerm()
         self.acceleration_term = AccelerationTerm()
-
-        # 外力項の初期化（オプション）
-        self.force_terms = []
-        if enable_gravity:
-            self.force_terms.append(GravityForce())
-        if enable_surface_tension:
-            self.force_terms.append(SurfaceTensionForce())
 
     def compute_velocity_derivative(
         self,
