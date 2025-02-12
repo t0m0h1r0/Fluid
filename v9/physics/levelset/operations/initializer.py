@@ -9,6 +9,7 @@ from .base import BaseLevelSetOperation
 class LevelSetInitializer(BaseLevelSetOperation):
     """Level Set関数の初期化クラス"""
 
+class LevelSetInitializer(BaseLevelSetOperation):
     def initialize(self, shape: Tuple[int, ...], **kwargs) -> np.ndarray:
         """Level Set関数を初期化
 
@@ -25,10 +26,9 @@ class LevelSetInitializer(BaseLevelSetOperation):
         self.coords = np.meshgrid(
             *[np.linspace(0, 1, s) for s in shape], indexing="ij"
         )
-        
-        # 背景相に応じた初期値
-        background_phase = kwargs.get("background_phase", "nitrogen")
-        phi = np.full(shape, np.inf if background_phase == "nitrogen" else -np.inf)
+
+        # 背景相の初期化
+        phi = np.full(shape, 1e6)  # np.infを避ける
 
         # オブジェクトリストの取得
         objects = kwargs.get("objects", [])
@@ -36,7 +36,6 @@ class LevelSetInitializer(BaseLevelSetOperation):
         # 各オブジェクトの処理
         for obj in objects:
             obj_type = obj.get("type")
-            obj_phase = obj.get("phase", "water")
 
             # レベルセット関数の計算
             if obj_type == "plate":
@@ -46,13 +45,8 @@ class LevelSetInitializer(BaseLevelSetOperation):
             else:
                 continue
 
-            # 相に応じたレベルセット関数の更新
-            if obj_phase != background_phase:
-                # 異なる相のオブジェクトは負の値（内部）でminを取る
-                phi = np.minimum(phi, -phi_new)
-            else:
-                # 背景相と同じ相のオブジェクトは正の値（外部）でmaxを取る
-                phi = np.maximum(phi, phi_new)
+            # 最小値を取ることで、各オブジェクトの内外が正しく設定される
+            phi = np.minimum(phi, phi_new)
 
         return phi
 
