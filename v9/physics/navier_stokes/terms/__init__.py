@@ -1,15 +1,15 @@
 """Navier-Stokes方程式の各項を提供するパッケージ
 
-このパッケージは、Navier-Stokes方程式を構成する各項（移流項、粘性項、圧力項、外力項、加速度項）
-を実装したクラスを提供します。
+このパッケージは、Navier-Stokes方程式を構成する各項
+（移流項、粘性項、圧力項）を実装したクラスを提供します。
+外力項は上位のソルバーから直接与えられ、時間微分項はソルバーで
+扱われるため、それらは個別の項としては実装しません。
 """
 
 from .base import BaseNavierStokesTerm
 from .advection import AdvectionTerm
 from .diffusion import DiffusionTerm
 from .pressure import PressureTerm
-from .force import GravityForce, SurfaceTensionForce
-from .acceleration import AccelerationTerm
 
 __all__ = [
     # 基底クラス
@@ -18,8 +18,4 @@ __all__ = [
     "AdvectionTerm",
     "DiffusionTerm",
     "PressureTerm",
-    "AccelerationTerm",
-    # 外力関連
-    "GravityForce",
-    "SurfaceTensionForce",
 ]

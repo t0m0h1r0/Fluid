@@ -2,9 +2,6 @@ from .terms import (
     AdvectionTerm,
     DiffusionTerm,
     PressureTerm,
-    AccelerationTerm,
-    GravityForce,
-    SurfaceTensionForce,
 )
 from .solver import NavierStokesSolver
 
@@ -13,9 +10,6 @@ __all__ = [
     "AdvectionTerm",
     "DiffusionTerm",
     "PressureTerm",
-    "AccelerationTerm",
-    "GravityForce",
-    "SurfaceTensionForce",
     # ソルバー
     "NavierStokesSolver",
 ]
