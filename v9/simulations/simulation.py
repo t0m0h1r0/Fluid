@@ -205,12 +205,21 @@ class TwoPhaseFlowSimulator:
         return new_state, self._diagnostics
 
     def _should_reinitialize(self, state: SimulationState) -> bool:
-        """Level Set関数の再初期化が必要か判定"""
+        """Level Set関数の再初期化が必要か判定
+
+        Args:
+            state: シミュレーション状態
+
+        Returns:
+            再初期化が必要かどうか
+        """
         reinit_interval = self.config.numerical.level_set_reinit_interval
         if reinit_interval <= 0:
             return False
 
-        current_step = int(state.time / self._time_solver.dt)
+        # 時間ベースでの再初期化チェック
+        dt = self.config.numerical.initial_dt  # 基準時間刻み幅
+        current_step = int(state.time / dt)
         return current_step % reinit_interval == 0
 
     def initialize(self, state: Optional[SimulationState] = None):

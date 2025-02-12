@@ -69,6 +69,33 @@ class SimulationState:
             **self.diagnostics,
         }
 
+    def copy(self) -> "SimulationState":
+        """状態の深いコピーを作成
+        
+        Returns:
+            コピーされた状態
+        """
+        return SimulationState(
+            time=self.time,
+            velocity=self.velocity.copy(),
+            levelset=self.levelset.copy(),
+            pressure=self.pressure.copy(),
+            diagnostics=self.diagnostics.copy() if self.diagnostics else None
+        )
+
+    def update(self, derivative: "SimulationState", dt: float) -> None:
+        """状態を更新
+        
+        Args:
+            derivative: 時間微分
+            dt: 時間刻み幅
+        """
+        self.time += dt
+        for i, comp in enumerate(self.velocity.components):
+            comp.data += dt * derivative.velocity.components[i].data
+        self.levelset.data += dt * derivative.levelset.data
+        self.pressure.data += dt * derivative.pressure.data
+
     def save_state(self, filepath: str) -> None:
         """状態をファイルに保存
 

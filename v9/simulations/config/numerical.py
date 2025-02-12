@@ -17,7 +17,7 @@ class NumericalConfig(BaseConfig):
     min_dt: float = 1.0e-6
     max_dt: float = 1.0
     level_set_epsilon: float = 1.0e-2
-    level_set_reinit_interval: int = 5
+    level_set_reinit_interval: int = 10  # より適切なデフォルト値に更新
     level_set_reinit_steps: int = 2
 
     def validate(self) -> None:
@@ -63,7 +63,7 @@ class NumericalConfig(BaseConfig):
                 "max_dt": 1.0,
                 "level_set": {
                     "epsilon": 1.0e-2,
-                    "reinit_interval": 5,
+                    "reinit_interval": 10,  # デフォルト値を更新
                     "reinit_steps": 2,
                 },
             },
@@ -81,7 +81,7 @@ class NumericalConfig(BaseConfig):
             min_dt=merged_config.get("min_dt", 1.0e-6),
             max_dt=merged_config.get("max_dt", 1.0),
             level_set_epsilon=level_set_config.get("epsilon", 1.0e-2),
-            level_set_reinit_interval=level_set_config.get("reinit_interval", 5),
+            level_set_reinit_interval=level_set_config.get("reinit_interval", 10),  # デフォルト値を更新
             level_set_reinit_steps=level_set_config.get("reinit_steps", 2),
         )
 
