@@ -16,18 +16,8 @@ class NavierStokesSolver:
     入力された速度場、密度場、粘性場、圧力場から速度の時間微分を計算する。
     """
 
-    def __init__(
-        self,
-        enable_surface_tension: bool = True,
-        enable_gravity: bool = True,
-    ):
-        """
-        ソルバーを初期化
-
-        Args:
-            enable_surface_tension: 表面張力の有効化
-            enable_gravity: 重力の有効化
-        """
+    def __init__(self):
+        """ソルバーを初期化"""
         # 各項の初期化
         self.advection_term = AdvectionTerm()
         self.diffusion_term = DiffusionTerm()
@@ -40,18 +30,17 @@ class NavierStokesSolver:
         density: ScalarField,
         viscosity: ScalarField,
         pressure: ScalarField,
-        external_force: VectorField,
+        external_force: Optional[VectorField] = None,
         **kwargs,
     ) -> List[np.ndarray]:
-        """
-        速度の時間微分を計算
+        """速度の時間微分を計算
 
         Args:
             velocity: 速度場
             density: 密度場
             viscosity: 粘性場
             pressure: 圧力場
-            levelset: レベルセット関数（オプション）
+            external_force: 外力場（オプション）
             **kwargs: 追加のパラメータ
 
         Returns:
@@ -62,6 +51,11 @@ class NavierStokesSolver:
         diffusion = self.diffusion_term.compute(velocity)
         pressure_grad = self.pressure_term.compute(velocity, pressure)
 
+        # 外力項の処理
+        force_components = [np.zeros_like(v.data) for v in velocity.components]
+        if external_force is not None:
+            force_components = [f.data for f in external_force.components]
+
         # 速度の時間微分を統合
         velocity_derivative = [
             -adv + diff - press_grad + f
@@ -69,7 +63,7 @@ class NavierStokesSolver:
                 advection,
                 diffusion,
                 pressure_grad,
-                external_force
+                force_components
             )
         ]
 
@@ -78,8 +72,7 @@ class NavierStokesSolver:
     def compute_timestep(
         self, velocity: VectorField, density: ScalarField, pressure: ScalarField
     ) -> float:
-        """
-        安定な時間刻み幅を計算
+        """安定な時間刻み幅を計算
 
         Args:
             velocity: 速度場
@@ -100,8 +93,7 @@ class NavierStokesSolver:
         return min(timesteps)
 
     def get_diagnostics(self) -> Dict[str, Any]:
-        """
-        診断情報を取得
+        """診断情報を取得
 
         Returns:
             ソルバーの診断情報
@@ -111,5 +103,4 @@ class NavierStokesSolver:
             "advection": self.advection_term.get_diagnostics(),
             "diffusion": self.diffusion_term.get_diagnostics(),
             "pressure": self.pressure_term.get_diagnostics(),
-            "force_terms": [term.get_diagnostics() for term in self.force_terms],
         }
