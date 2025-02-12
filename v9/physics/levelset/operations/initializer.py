@@ -1,17 +1,17 @@
 """Level Set関数の初期化を提供するモジュール"""
 
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List
 import numpy as np
 
 from .base import BaseLevelSetOperation
 
 
 class LevelSetInitializer(BaseLevelSetOperation):
-    """Level Set関数の初期化クラス"""
+    """Level Set関数の高度な初期化クラス"""
 
-class LevelSetInitializer(BaseLevelSetOperation):
     def initialize(self, shape: Tuple[int, ...], **kwargs) -> np.ndarray:
-        """Level Set関数を初期化
+        """
+        Level Set関数を初期化
 
         Args:
             shape: グリッドの形状
@@ -22,91 +22,117 @@ class LevelSetInitializer(BaseLevelSetOperation):
         Returns:
             初期化されたLevel Set関数の値
         """
-        # グリッドの生成（実際の座標用）
-        self.coords = np.meshgrid(
+        # グリッドの生成
+        coords = np.meshgrid(
             *[np.linspace(0, 1, s) for s in shape], indexing="ij"
         )
+        
+        # 初期値を設定
+        phi = np.full(shape, np.inf)
 
-        # 背景相の初期化
-        phi = np.full(shape, 1e6)  # np.infを避ける
-
-        # オブジェクトリストの取得
+        # オブジェクトリストと背景相の取得
         objects = kwargs.get("objects", [])
+        background_phase = kwargs.get("background_phase", "water")
+
+        # オブジェクトの優先順位リストを作成
+        prioritized_objects = self._prioritize_objects(objects, background_phase)
 
         # 各オブジェクトの処理
-        for obj in objects:
-            obj_type = obj.get("type")
-
-            # レベルセット関数の計算
-            if obj_type == "plate":
-                phi_new = self._compute_plate_levelset(obj, shape)
-            elif obj_type == "sphere":
-                phi_new = self._compute_sphere_levelset(obj, shape)
+        for obj in prioritized_objects:
+            phi_obj = self._compute_object_levelset(obj, shape)
+            
+            # オブジェクトの相に応じて更新戦略を選択
+            if obj['phase'].lower() != background_phase.lower():
+                # 異なる相のオブジェクト：最小値を取る（界面を保持）
+                phi = np.minimum(phi, phi_obj)
             else:
-                continue
-
-            # 最小値を取ることで、各オブジェクトの内外が正しく設定される
-            phi = np.minimum(phi, phi_new)
+                # 背景相と同じ相のオブジェクト：最大値を取る
+                phi = np.maximum(phi, -phi_obj)
 
         return phi
 
-    def _compute_sphere_levelset(self, obj: Dict[str, Any], shape: Tuple[int, ...]) -> np.ndarray:
-        """球のレベルセット関数を計算
+    def _prioritize_objects(
+        self, 
+        objects: List[Dict[str, Any]], 
+        background_phase: str
+    ) -> List[Dict[str, Any]]:
+        """
+        オブジェクトの優先順位を決定
 
         Args:
-            obj: 球オブジェクトの設定
+            objects: オブジェクトのリスト
+            background_phase: 背景相
+
+        Returns:
+            優先順位付きのオブジェクトリスト
+        """
+        def priority_key(obj):
+            # 背景相と異なる相のオブジェクトを優先
+            is_different_phase = obj.get('phase', '').lower() != background_phase.lower()
+            
+            # オブジェクトタイプに基づく追加の優先順位
+            type_priority = {
+                'sphere': 10,    # 球体を最優先
+                'plate': 5,      # 平面を次点
+                'background': 1  # 背景オブジェクトは最後
+            }
+            
+            type_score = type_priority.get(obj.get('type', 'background'), 0)
+            
+            return (-is_different_phase, -type_score)
+
+        return sorted(objects, key=priority_key)
+
+    def _compute_object_levelset(
+        self, 
+        obj: Dict[str, Any], 
+        shape: Tuple[int, ...]
+    ) -> np.ndarray:
+        """
+        特定のオブジェクトのレベルセット関数を計算
+
+        Args:
+            obj: オブジェクトの設定
             shape: グリッドの形状
 
         Returns:
-            計算されたレベルセット関数の値
+            オブジェクトのレベルセット関数
         """
-        # デフォルト値の設定
-        center = obj.get("center", [0.5, 0.5, 0.5][:len(shape)])
-        radius = obj.get("radius", 0.2)
-
-        # 中心からの距離を計算
-        squared_distance = sum(
-            (coord - cent) ** 2 
-            for coord, cent in zip(self.coords[:len(center)], center)
+        # グリッドの生成
+        coords = np.meshgrid(
+            *[np.linspace(0, 1, s) for s in shape], indexing="ij"
         )
-        
-        # 符号付き距離関数を計算
-        distance = np.sqrt(squared_distance)
-        return distance - radius
 
-    def _compute_plate_levelset(self, obj: Dict[str, Any], shape: Tuple[int, ...]) -> np.ndarray:
-        """平面のレベルセット関数を計算
+        obj_type = obj.get('type')
 
-        Args:
-            obj: 平面オブジェクトの設定
-            shape: グリッドの形状
+        if obj_type == 'plate':
+            height = obj.get('height', 0.5)
+            if not 0 <= height <= 1:
+                raise ValueError("高さは0から1の間である必要があります")
+            return coords[-1] - height
 
-        Returns:
-            計算されたレベルセット関数の値
-        """
-        # 高さの設定とバリデーション
-        height = obj.get("height", 0.5)
-        if not 0 <= height <= 1:
-            raise ValueError("高さは0から1の間である必要があります")
-        
-        # 全次元で平面を表現
-        # Z座標との差を計算（正: 平面より上、負: 平面より下）
-        plane = np.zeros(shape)
-        for coord in self.coords:
-            plane += np.abs(coord - height)
-        
-        return plane
+        elif obj_type == 'sphere':
+            center = obj.get('center', [0.5, 0.5, 0.5])
+            radius = obj.get('radius', 0.2)
+
+            # 中心からの距離を計算
+            squared_distance = sum(
+                (coord - c) ** 2 for coord, c in zip(coords, center)
+            )
+            distance = np.sqrt(squared_distance)
+            
+            # 符号付き距離関数を計算
+            return distance - radius
+
+        elif obj_type == 'background':
+            # デフォルトの背景（全空間が同一相）
+            return np.zeros_like(coords[0])
+
+        else:
+            raise ValueError(f"サポートされていないオブジェクトタイプ: {obj_type}")
 
     def validate_input(self, phi: np.ndarray) -> None:
-        """入力データを検証
-
-        Args:
-            phi: Level Set関数の値
-
-        Raises:
-            TypeError: 入力が不適切な型の場合
-            ValueError: 入力の次元が不適切な場合
-        """
+        """入力データを検証"""
         if not isinstance(phi, np.ndarray):
             raise TypeError("入力はnumpy配列である必要があります")
         if phi.ndim < 1 or phi.ndim > 3:
