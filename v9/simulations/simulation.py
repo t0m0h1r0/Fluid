@@ -18,6 +18,7 @@ from physics.levelset import LevelSetField
 from physics.navier_stokes import NavierStokesSolver
 from physics.pressure import PressurePoissonSolver
 from physics.surface_tension import compute_surface_tension_force
+from physics.continuity import ContinuityEquation
 
 from simulations.config import SimulationConfig
 from simulations.state import SimulationState
@@ -53,6 +54,7 @@ class TwoPhaseFlowSimulator:
         # ソルバーの初期化
         self._navier_stokes_solver = NavierStokesSolver()
         self._pressure_solver = PressurePoissonSolver()
+        self._continuity_solver = ContinuityEquation()
 
         # 表面張力係数の保存
         self._surface_tension_coefficient = surface_tension_coefficient
@@ -123,6 +125,50 @@ class TwoPhaseFlowSimulator:
 
         return total_force
 
+    def compute_derivative(self, state: SimulationState) -> SimulationState:
+        """状態の時間微分を計算
+
+        Args:
+            state: 現在の状態
+
+        Returns:
+            時間微分を表す新しい状態
+        """
+        # Level Set場の時間発展を計算（移流方程式）
+        levelset_derivative = self._continuity_solver.compute_derivative(
+            state.levelset, state.velocity
+        )
+
+        # 密度と粘性を計算
+        density = state.get_density()
+        viscosity = state.get_viscosity()
+
+        # 加速度項を計算
+        acceleration = self._navier_stokes_solver.compute_velocity_derivative(
+            velocity=state.velocity,
+            density=density,
+            viscosity=viscosity,
+            pressure=state.pressure,
+            levelset=state.levelset,
+        )
+
+        # 新しい状態を初期化
+        derivative_state = SimulationState(
+            time=0.0,
+            velocity=VectorField(state.velocity.shape, state.velocity.dx),
+            levelset=LevelSetField(shape=state.levelset.shape, dx=state.levelset.dx),
+            pressure=ScalarField(state.pressure.shape, state.pressure.dx),
+        )
+
+        # 時間微分を設定
+        derivative_state.levelset.data = levelset_derivative
+        derivative_state.velocity.components = [
+            ScalarField(v.shape, v.dx, initial_value=a)
+            for v, a in zip(state.velocity.components, acceleration)
+        ]
+
+        return derivative_state
+
     def step_forward(
         self, state: Optional[SimulationState] = None, dt: Optional[float] = None
     ) -> Tuple[SimulationState, Dict[str, Any]]:
@@ -136,26 +182,9 @@ class TwoPhaseFlowSimulator:
         if dt is None:
             dt = self._time_solver.compute_timestep(state=state)
 
-        # 1. 物性値の計算
-        material_properties = self.compute_material_properties(state.levelset)
-        density = material_properties["density"]
-        viscosity = material_properties["viscosity"]
-
-        # 2. 外力の計算
-        external_forces = self.compute_forces(state.velocity, density, state.levelset)
-
-        # 3. 圧力場の計算
-        pressure, pressure_info = self._pressure_solver.solve(
-            velocity=state.velocity,
-            density=density,
-            viscosity=viscosity,
-            dt=dt,
-            external_force=external_forces,
-        )
-
-        # 4. 速度と界面の時間発展
+        # 1. 状態の時間発展を計算
         new_state = self._time_solver.integrate(
-            state, dt, lambda s: s.compute_derivative()
+            state, dt, lambda s: self.compute_derivative(s)
         )
 
         # Level Set関数の再初期化（必要に応じて）
@@ -167,17 +196,6 @@ class TwoPhaseFlowSimulator:
             {
                 "time": new_state.time,
                 "dt": dt,
-                "pressure": pressure_info,
-                "material_properties": {
-                    "density_range": (
-                        float(np.min(density.data)),
-                        float(np.max(density.data)),
-                    ),
-                    "viscosity_range": (
-                        float(np.min(viscosity.data)),
-                        float(np.max(viscosity.data)),
-                    ),
-                },
             }
         )
 

@@ -80,6 +80,11 @@ class LevelSetField:
         """グリッド間隔を取得"""
         return self._dx
 
+    @property
+    def ndim(self) -> int:
+        """次元数を取得"""
+        return self._data.ndim
+
     def initialize(self, **kwargs) -> None:
         """Level Set関数を初期化"""
         self._data = self._initializer.initialize(self.shape, **kwargs)
@@ -138,15 +143,15 @@ class LevelSetField:
         result.data = rho1 * h + rho2 * (1.0 - h)
         return result
 
-    def get_volume(self) -> float:
+    def volume(self) -> float:
         """体積を計算"""
         h = self._heaviside.compute(self._data)
-        return float(np.sum(h) * self._dx ** len(self.shape))
+        return float(np.sum(h) * self._dx**self.ndim)
 
-    def get_area(self) -> float:
+    def area(self) -> float:
         """界面の面積を計算"""
         d = self._delta.compute(self._data)
-        return float(np.sum(d) * self._dx ** len(self.shape))
+        return float(np.sum(d) * self._dx**self.ndim)
 
     def gradient(self, axis: int) -> np.ndarray:
         """指定軸方向の勾配を計算"""
@@ -162,8 +167,8 @@ class LevelSetField:
         """幾何学的な情報を取得"""
         kappa = self.get_curvature()
         return {
-            "volume": self.get_volume(),
-            "area": self.get_area(),
+            "volume": self.volume(),
+            "area": self.area(),
             "min_curvature": float(np.min(kappa.data)),
             "max_curvature": float(np.max(kappa.data)),
             "mean_curvature": float(np.mean(kappa.data)),

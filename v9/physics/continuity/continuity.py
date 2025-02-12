@@ -1,29 +1,29 @@
 """
-連続の方程式（レベルセット関数の移流方程式）を解くためのモジュール
+連続の方程式（移流方程式）を解くためのモジュール
 
-支配方程式: ∂t∂ϕ + u⋅∇ϕ = 0
+支配方程式: ∂t∂f + u⋅∇f = 0
 
-注意: このモジュールは、LevelSet法における界面追跡のための基本的な移流方程式を実装します。
+このモジュールは、任意のスカラー場の移流を計算し、時間発展を追跡します。
 """
 
 from typing import Dict, Any
 import numpy as np
-from core.field import VectorField
-from physics.levelset import LevelSetField
+from core.field import VectorField, ScalarField
 
 
 class ContinuityEquation:
     """
-    レベルセット関数の連続の方程式を解くためのクラス
+    連続の方程式（移流方程式）を解くためのクラス
 
-    この実装は、レベルセット関数の移流を計算し、時間発展を追跡します。
+    この実装は、スカラー場の移流を計算し、時間発展を追跡します。
+    レベルセット法、温度場、密度場など、様々なスカラー場の移流に使用できます。
     """
 
     def __init__(
         self,
         use_weno: bool = True,
         weno_order: int = 5,
-        name: str = "LevelSetContinuity",
+        name: str = "Continuity",
     ):
         """
         連続の方程式クラスを初期化
@@ -38,38 +38,40 @@ class ContinuityEquation:
         self.name = name
 
     def compute_derivative(
-        self, levelset: LevelSetField, velocity: VectorField, dt: float = 0.0
+        self, field: ScalarField, velocity: VectorField, dt: float = 0.0
     ) -> np.ndarray:
         """
-        レベルセット関数の時間微分を計算
+        スカラー場の時間微分を計算
 
         Args:
-            levelset: 現在のレベルセット関数
+            field: 移流される任意のスカラー場
             velocity: 速度場
             dt: 時間刻み幅（オプション）
 
         Returns:
-            レベルセット関数の時間微分
+            スカラー場の時間微分
         """
-        # 単純な中心差分による計算
-        derivative = np.zeros_like(levelset.data)
+        # 移流項 u⋅∇f の計算
+        advection = np.zeros_like(field.data)
 
-        # u⋅∇ϕ の計算
+        # 各方向の速度成分による寄与を計算
         for i in range(velocity.ndim):
-            # 各速度成分と空間微分の積を加算
-            derivative -= velocity.components[i].data * levelset.gradient(i)
+            # 速度場とスカラー場の勾配の積を計算
+            # 将来的にはWENOスキームを使用する
+            advection += velocity.components[i].data * field.gradient(i)
 
-        return derivative
+        # 移流の符号を反転（移流方程式の形式）
+        return -advection
 
     def compute_timestep(
-        self, velocity: VectorField, levelset: LevelSetField, **kwargs
+        self, velocity: VectorField, field: ScalarField, **kwargs
     ) -> float:
         """
-        レベルセット移流のための時間刻み幅を計算
+        移流のための時間刻み幅を計算
 
         Args:
             velocity: 速度場
-            levelset: レベルセット関数
+            field: スカラー場
             **kwargs: 追加のパラメータ
 
         Returns:
@@ -82,16 +84,16 @@ class ContinuityEquation:
         max_velocity = max(np.max(np.abs(comp.data)) for comp in velocity.components)
 
         # CFL条件に基づく時間刻み幅の計算
-        return cfl * levelset.dx / (max_velocity + 1e-10)
+        return cfl * field.dx / (max_velocity + 1e-10)
 
     def get_diagnostics(
-        self, levelset: LevelSetField, velocity: VectorField
+        self, field: ScalarField, velocity: VectorField
     ) -> Dict[str, Any]:
         """
         診断情報を取得
 
         Args:
-            levelset: レベルセット関数
+            field: スカラー場
             velocity: 速度場
 
         Returns:
@@ -100,14 +102,15 @@ class ContinuityEquation:
         # 移流項の最大値と特性を計算
         advection_terms = []
         for i in range(velocity.ndim):
-            advection_term = velocity.components[i].data * levelset.gradient(i)
+            advection_term = velocity.components[i].data * field.gradient(i)
             advection_terms.append(advection_term)
 
         return {
             "name": self.name,
-            "max_advection": float(np.max(np.abs(sum(advection_terms)))),
+            "max_advection": float(max(np.max(np.abs(r)) for r in advection_terms)),
             "method": "WENO" if self.use_weno else "Central",
             "weno_order": self.weno_order if self.use_weno else None,
-            "levelset_volume": levelset.volume(),
-            "levelset_area": levelset.area(),
+            "field_mean": float(np.mean(field.data)),
+            "field_max": float(np.max(field.data)),
+            "field_min": float(np.min(field.data)),
         }
