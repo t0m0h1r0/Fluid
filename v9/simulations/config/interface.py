@@ -67,7 +67,7 @@ class InterfaceConfig(BaseConfig):
     """界面の設定を保持するクラス"""
 
     phase: Phase = Phase.WATER
-    object_type: str = "background"  # "background", "layer", "sphere"
+    object_type: str = "background"  # "background", "plate", "sphere"
     height: Optional[float] = None  # レイヤー用
     center: Optional[List[float]] = None  # 球体用
     radius: Optional[float] = None  # 球体用
@@ -104,7 +104,7 @@ class InterfaceConfig(BaseConfig):
         if self.object_type == "background":
             if any([self.height, self.center, self.radius]):
                 raise ValueError("背景相には高さ、中心、半径は指定できません")
-        elif self.object_type == "layer":
+        elif self.object_type == "plate":
             if self.height is not None and not 0 <= self.height <= 1:
                 raise ValueError("高さは0から1の間である必要があります")
             if any([self.center, self.radius]):

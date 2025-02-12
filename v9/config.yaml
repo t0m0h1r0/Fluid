@@ -38,7 +38,7 @@ initial_conditions:
   background:
     phase: nitrogen
   objects:
-    - type: layer
+    - type: plate
       phase: water
       height: 0.70  # 0から1の間の値を使用
     - type: sphere

@@ -116,24 +116,12 @@ class SimulationInitializer:
         )
 
         levelset = LevelSetField(shape, dx, params)
-        coords = np.meshgrid(*[np.linspace(0, 1, s) for s in shape], indexing="ij")
 
-        # 背景相の設定
-        levelset.data.fill(1.0)  # デフォルトは正の値（第2相）
-
-        # オブジェクトの配置
-        for obj in self.config.initial_conditions.objects:
-            if obj["type"] == "layer":
-                # 水平層
-                height = obj.get("height", 0.5)
-                levelset.data = np.where(coords[-1] < height, -1.0, levelset.data)
-
-            elif obj["type"] == "sphere":
-                # 球体
-                center = obj.get("center", [0.5, 0.5, 0.5])
-                radius = obj.get("radius", 0.2)
-                r = np.sqrt(sum((c - cent) ** 2 for c, cent in zip(coords, center)))
-                levelset.data = np.where(r < radius, -1.0, levelset.data)
+        # レベルセット関数を初期化（背景相情報とオブジェクトリストを一括で渡す）
+        levelset.initialize(
+            background_phase=self.config.initial_conditions.background["phase"],
+            objects=self.config.initial_conditions.objects
+        )
 
         # 符号付き距離関数として再初期化
         levelset.reinitialize()
