@@ -1,18 +1,19 @@
 """
 二相流体における圧力ポアソン方程式（PPE）のソルバー
 
-圧力ポアソン方程式の導出:
-1. 密度変化を考慮したラプラシアン形の圧力ポアソン方程式
-2. 密度の勾配項を近似的に無視
-∇²p ≈ ρ(∇・(u・∇u) + ∇・fs - ∇・(∇ν・∇u))
+圧力ポアソン方程式:
+∇²p = ∇⋅(-ρ Du/Dt + ∇⋅τ + f)
+
+簡略化形:
+∇²p ≈ ρ(∇⋅(u⋅∇u) + ∇⋅fs - ∇⋅(∇ν⋅∇u))
 """
 
 from typing import Dict, Any, Optional, Tuple
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from numerics.poisson import PoissonConfig
-from numerics.poisson import ConjugateGradientSolver as PoissonSolver
+from numerics.poisson import PoissonConfig, ConjugateGradientSolver
+from .terms import AdvectionTerm, ViscousTerm, ForceTerm
 
 
 class PressurePoissonSolver:
@@ -23,8 +24,16 @@ class PressurePoissonSolver:
         Args:
             solver_config: ポアソンソルバーの設定
         """
-        self._poisson_solver = PoissonSolver(solver_config or PoissonConfig())
-        self._diagnostics = {}
+        # 基本ソルバーの初期化
+        self._poisson_solver = ConjugateGradientSolver(solver_config or PoissonConfig())
+
+        # 各項の初期化
+        self._advection_term = AdvectionTerm()
+        self._viscous_term = ViscousTerm()
+        self._force_term = ForceTerm()
+
+        # 診断情報の初期化
+        self._diagnostics: Dict[str, Any] = {}
 
     def solve(
         self,
@@ -32,7 +41,7 @@ class PressurePoissonSolver:
         density: ScalarField,
         viscosity: ScalarField,
         external_force: Optional[VectorField] = None,
-        **kwargs
+        **kwargs,
     ) -> Tuple[ScalarField, Dict[str, Any]]:
         """
         圧力ポアソン方程式を解く
@@ -46,65 +55,69 @@ class PressurePoissonSolver:
         Returns:
             (圧力場, 診断情報)のタプル
         """
-        # 密度と次元数を取得
-        rho = density.data
-        dx = velocity.dx
-        ndim = velocity.ndim
+        # 1. 各項の計算
+        # 移流項: ∇⋅(u⋅∇u)
+        advection_term = self._advection_term.compute(velocity=velocity)
 
-        # 右辺の非密度項の計算
+        # 粘性項: -∇⋅(∇ν⋅∇u)
+        viscous_term = self._viscous_term.compute(
+            velocity=velocity, viscosity=viscosity
+        )
+
+        # 外力項: ∇⋅f
+        force_term = self._force_term.compute(
+            shape=velocity.shape, dx=velocity.dx, external_force=external_force
+        )
+
+        # 2. 右辺の組み立て
         rhs = ScalarField(velocity.shape, velocity.dx)
+        rhs.data = density.data * (
+            advection_term.data + viscous_term.data + force_term.data
+        )
 
-        # 速度の発散項（密度スケールなし）
-        velocity_divergence = velocity.divergence()
-        rhs.data += velocity_divergence.data
-
-        # 外力項の追加（オプション、密度スケールなし）
-        if external_force is not None:
-            external_force_divergence = external_force.divergence()
-            rhs.data += external_force_divergence.data
-
-        # 最後に密度をかける
-        rhs.data *= rho
-
-        # ポアソンソルバーの実行
-        result_data = self._poisson_solver.solve(rhs.data)
-
-        # 圧力場の作成
+        # 3. ポアソン方程式を解く
         pressure = ScalarField(velocity.shape, velocity.dx)
-        pressure.data = result_data
+        pressure.data = self._poisson_solver.solve(rhs.data)
 
         # 診断情報の更新
-        diagnostics = {}
-        if hasattr(self._poisson_solver, "get_diagnostics"):
-            diagnostics.update(self._poisson_solver.get_diagnostics())
-        
-        # メモリへの診断情報の保存
-        self._diagnostics = diagnostics
+        self._update_diagnostics(
+            pressure=pressure,
+            rhs=rhs,
+            terms={
+                "advection": self._advection_term.get_diagnostics(),
+                "viscous": self._viscous_term.get_diagnostics(),
+                "force": self._force_term.get_diagnostics(),
+            },
+        )
 
-        return pressure, diagnostics
+        return pressure, self._diagnostics
 
-    def compute_residual(
-        self, solution: ScalarField, rhs: np.ndarray, **kwargs
-    ) -> float:
-        """残差を計算
+    def _update_diagnostics(
+        self, pressure: ScalarField, rhs: ScalarField, terms: Dict[str, Dict[str, Any]]
+    ) -> None:
+        """
+        診断情報を更新
 
         Args:
-            solution: 現在の解
+            pressure: 計算された圧力場
             rhs: 右辺
-
-        Returns:
-            計算された残差
+            terms: 各項の診断情報
         """
-        # ラプラシアンの計算
-        laplacian = solution.laplacian()
+        self._diagnostics = {
+            "pressure": {
+                "min": float(np.min(pressure.data)),
+                "max": float(np.max(pressure.data)),
+                "mean": float(np.mean(pressure.data)),
+                "norm": float(np.linalg.norm(pressure.data)),
+            },
+            "source_terms": terms,
+            "rhs": {
+                "min": float(np.min(rhs.data)),
+                "max": float(np.max(rhs.data)),
+                "norm": float(np.linalg.norm(rhs.data)),
+            },
+        }
 
-        # 残差の計算
-        residual = laplacian.data - rhs
-
-        # L2ノルムを計算
-        residual_norm = np.sqrt(np.mean(residual**2))
-        return max(residual_norm, 1e-15)  # 最小値を保証
-
-    def get_diagnostics(self) -> Dict[str, Any]:
-        """診断情報を取得"""
-        return self._diagnostics
+        # ポアソンソルバーの診断情報も追加
+        if hasattr(self._poisson_solver, "get_diagnostics"):
+            self._diagnostics["solver"] = self._poisson_solver.get_diagnostics()

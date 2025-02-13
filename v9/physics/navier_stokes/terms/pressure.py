@@ -18,12 +18,7 @@ class PressureTerm(BaseNavierStokesTerm):
     速度場の圧力勾配項を中心差分で近似計算します。
     """
 
-    def __init__(
-        self, 
-        name: str = "Pressure", 
-        enabled: bool = True,
-        order: int = 2
-    ):
+    def __init__(self, name: str = "Pressure", enabled: bool = True, order: int = 2):
         """
         Args:
             name: 項の名前
@@ -32,22 +27,21 @@ class PressureTerm(BaseNavierStokesTerm):
         """
         super().__init__(name, enabled)
         self._order = order
-        self._diagnostics: Dict[str, Any] = {}
 
     def compute(
-        self, 
-        velocity: VectorField, 
-        pressure: ScalarField, 
+        self,
+        velocity: VectorField,
+        pressure: ScalarField,
         density: Union[float, ScalarField, None] = None,
-        **kwargs
+        **kwargs,
     ) -> VectorField:
         """
-        圧力項の寄与を計算
+        圧力項 -1/ρ ∇p を計算
 
         Args:
-            velocity: 速度場
+            velocity: 速度場（形状情報のみ使用）
             pressure: 圧力場
-            density: 密度（定数、スカラー場、またはNone）
+            density: 密度場（またはスカラー値）
 
         Returns:
             圧力項をVectorFieldとして返す
@@ -57,74 +51,70 @@ class PressureTerm(BaseNavierStokesTerm):
 
         # 結果用のVectorFieldを作成
         result = VectorField(velocity.shape, velocity.dx)
-        dx = velocity.dx
 
-        # 密度の設定（デフォルトは1000.0）
-        rho = 1000.0 if density is None else density
+        # 密度場の準備
+        if density is None:
+            density = ScalarField(velocity.shape, velocity.dx, initial_value=1000.0)
+        elif isinstance(density, (int, float)):
+            density = ScalarField(velocity.shape, velocity.dx, initial_value=density)
 
-        # 密度の処理（スカラー場または定数）
-        if isinstance(rho, ScalarField):
-            rho_data = rho.data
-        else:
-            rho_data = rho
-
-        # 各方向の圧力勾配項を計算
-        pressure_gradient_terms = []
+        # 各方向の圧力勾配を計算
         for i in range(velocity.ndim):
-            # 圧力勾配の計算: -1/ρ ∇p
-            grad_p = np.gradient(pressure.data, dx, axis=i)
-            
-            # 密度による除算
-            pressure_grad = (
-                -grad_p / np.maximum(rho_data, 1e-10)  # ゼロ除算を防ぐ
-            )
-            
-            # 結果をVectorFieldに設定
-            result.components[i].data = pressure_grad
-            pressure_gradient_terms.append(pressure_grad)
+            # i方向の圧力勾配を計算
+            pressure_grad = pressure.gradient(i)
+
+            # 密度で割って符号を反転
+            result.components[i].data = -pressure_grad / np.maximum(density.data, 1e-10)
 
         # 診断情報の更新
-        self._update_diagnostics(result, pressure_gradient_terms, pressure)
+        self._update_diagnostics(result, pressure, density)
 
         return result
 
     def _update_diagnostics(
-        self, 
-        result: VectorField, 
-        pressure_gradient_terms: list,
-        pressure: ScalarField
+        self, result: VectorField, pressure: ScalarField, density: ScalarField
     ):
         """
         診断情報を更新
 
         Args:
             result: 計算された圧力項
-            pressure_gradient_terms: 各成分の圧力勾配項
             pressure: 圧力場
+            density: 密度場
         """
-        max_gradient = [np.max(np.abs(term)) for term in pressure_gradient_terms]
+        gradient_max = [float(np.max(np.abs(comp.data))) for comp in result.components]
+
         self._diagnostics = {
             "order": self._order,
-            "max_gradient_x": float(max_gradient[0]) if len(max_gradient) > 0 else 0.0,
-            "max_gradient_y": float(max_gradient[1]) if len(max_gradient) > 1 else 0.0,
-            "max_gradient_z": float(max_gradient[2]) if len(max_gradient) > 2 else 0.0,
-            "max_pressure_gradient": float(
-                max(np.max(np.abs(comp.data)) for comp in result.components)
-            ),
+            "max_gradient_x": gradient_max[0] if len(gradient_max) > 0 else 0.0,
+            "max_gradient_y": gradient_max[1] if len(gradient_max) > 1 else 0.0,
+            "max_gradient_z": gradient_max[2] if len(gradient_max) > 2 else 0.0,
+            "max_pressure_gradient": float(max(gradient_max)),
             "pressure_range": {
                 "min": float(np.min(pressure.data)),
                 "max": float(np.max(pressure.data)),
                 "mean": float(np.mean(pressure.data)),
-            }
+            },
+            "density_range": {
+                "min": float(np.min(density.data)),
+                "max": float(np.max(density.data)),
+            },
         }
 
-    def compute_timestep(self, velocity: VectorField, pressure: ScalarField, **kwargs) -> float:
+    def compute_timestep(
+        self,
+        velocity: VectorField,
+        pressure: ScalarField,
+        density: Union[float, ScalarField, None] = None,
+        **kwargs,
+    ) -> float:
         """
         圧力項に基づく時間刻み幅の制限を計算
 
         Args:
             velocity: 速度場
             pressure: 圧力場
+            density: 密度場またはスカラー値
 
         Returns:
             計算された時間刻み幅の制限
@@ -132,11 +122,19 @@ class PressureTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return float("inf")
 
-        # 音速の推定
-        # 音速 c = √(dp/dρ) ≈ √(max(p)/ρ)
-        density = kwargs.get('density', 1000.0)
-        max_pressure = float(np.max(pressure.data))
-        sound_speed = np.sqrt(max_pressure / density)
+        # 密度の処理
+        if density is None:
+            rho = 1000.0
+        elif isinstance(density, ScalarField):
+            rho = np.min(density.data)  # 安全側の評価
+        else:
+            rho = float(density)
+
+        # 音速の推定: c ≈ √(max(|∇p|)/ρ)
+        max_pressure_grad = max(
+            np.max(np.abs(pressure.gradient(i))) for i in range(pressure.ndim)
+        )
+        sound_speed = np.sqrt(max_pressure_grad / (rho + 1e-10))
 
         # CFL条件に基づく時間刻み幅の計算
         cfl = kwargs.get("cfl", 0.5)

@@ -1,7 +1,7 @@
 """
 密度勾配による加速度項を計算するモジュール
 
-密度の空間的な変化による加速度項を表現します。
+密度の空間的な変化による加速度項 -1/ρ u(u⋅∇ρ) を計算します。
 """
 
 from typing import Dict, Any
@@ -31,10 +31,7 @@ class AccelerationTerm(BaseNavierStokesTerm):
         super().__init__(name, enabled)
 
     def compute(
-        self, 
-        velocity: VectorField, 
-        density: ScalarField,
-        **kwargs
+        self, velocity: VectorField, density: ScalarField, **kwargs
     ) -> VectorField:
         """
         密度勾配による加速度項を計算
@@ -44,66 +41,76 @@ class AccelerationTerm(BaseNavierStokesTerm):
             density: 密度場
 
         Returns:
-            密度勾配による加速度項をVectorFieldとして返す
+            加速度項をVectorFieldとして返す
         """
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
         # 結果用のVectorFieldを作成
         result = VectorField(velocity.shape, velocity.dx)
-        dx = velocity.dx
 
-        # 密度の勾配を計算
-        density_gradients = [
-            np.gradient(density.data, dx, axis=axis) 
-            for axis in range(density.ndim)
-        ]
+        # まず u⋅∇ρ を計算
+        density_advection = np.zeros_like(density.data)
+        for i, v_i in enumerate(velocity.components):
+            density_advection += v_i.data * density.gradient(i)
 
-        # 密度の勾配による加速度項を計算
-        for i in range(velocity.ndim):
-            # u⋅∇ρ の計算
-            density_advection = sum(
-                velocity.components[j].data * density_gradients[j]
-                for j in range(velocity.ndim)
-            )
-            
-            # -1/ρ u(u⋅∇ρ)
-            result.components[i].data = (
-                -velocity.components[i].data * density_advection / 
-                np.maximum(density.data, 1e-10)  # ゼロ除算を防ぐ
+        # 次に -1/ρ u(u⋅∇ρ) を計算
+        inverse_density = 1.0 / np.maximum(density.data, 1e-10)
+        for i, v_i in enumerate(velocity.components):
+            result.components[i].data = -(
+                v_i.data * density_advection * inverse_density
             )
 
         # 診断情報の更新
-        self._update_diagnostics(result)
+        self._update_diagnostics(result, density_advection, density)
 
         return result
 
-    def _update_diagnostics(self, result: VectorField):
+    def _update_diagnostics(
+        self, result: VectorField, density_advection: np.ndarray, density: ScalarField
+    ):
         """
         診断情報を更新
 
         Args:
             result: 計算された加速度項
+            density_advection: 密度の移流量
+            density: 密度場
         """
+        # 密度勾配の大きさ
+        density_gradients = [
+            np.max(np.abs(density.gradient(i))) for i in range(density.ndim)
+        ]
+
         self._diagnostics = {
             "max_acceleration": float(
                 max(np.max(np.abs(comp.data)) for comp in result.components)
             ),
-            "enabled": self.enabled,
+            "density_advection": {
+                "min": float(np.min(density_advection)),
+                "max": float(np.max(density_advection)),
+                "mean": float(np.mean(density_advection)),
+            },
+            "density_gradients": {
+                "x": float(density_gradients[0]) if len(density_gradients) > 0 else 0.0,
+                "y": float(density_gradients[1]) if len(density_gradients) > 1 else 0.0,
+                "z": float(density_gradients[2]) if len(density_gradients) > 2 else 0.0,
+            },
+            "density_range": {
+                "min": float(np.min(density.data)),
+                "max": float(np.max(density.data)),
+            },
         }
 
-    def get_diagnostics(self) -> Dict[str, Any]:
-        """診断情報を取得"""
-        diag = super().get_diagnostics()
-        diag.update(self._diagnostics)
-        return diag
-
-    def compute_timestep(self, velocity: VectorField, **kwargs) -> float:
+    def compute_timestep(
+        self, velocity: VectorField, density: ScalarField, **kwargs
+    ) -> float:
         """
         密度勾配による加速度項に基づく時間刻み幅の制限を計算
 
         Args:
             velocity: 速度場
+            density: 密度場
 
         Returns:
             計算された時間刻み幅の制限
@@ -111,8 +118,24 @@ class AccelerationTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return float("inf")
 
-        # 密度勾配による加速度の最大値を推定
+        # 密度勾配の最大値を計算
+        max_density_grad = max(
+            np.max(np.abs(density.gradient(i))) for i in range(density.ndim)
+        )
+
+        # 最大速度の計算
         max_velocity = max(np.max(np.abs(comp.data)) for comp in velocity.components)
+
+        # 特性速度の推定: v_c ≈ max(|u|) * max(|∇ρ|/ρ)
+        min_density = np.min(density.data)
+        characteristic_speed = max_velocity * max_density_grad / (min_density + 1e-10)
+
+        # CFL条件に基づく時間刻み幅の計算
         cfl = kwargs.get("cfl", 0.5)
-        
-        return cfl * velocity.dx / (max_velocity + 1e-10)
+        return cfl * velocity.dx / (characteristic_speed + 1e-10)
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """診断情報を取得"""
+        diag = super().get_diagnostics()
+        diag.update(self._diagnostics)
+        return diag

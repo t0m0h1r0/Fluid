@@ -115,16 +115,16 @@ class NavierStokesSolver:
 
         # 1. 移流項: -u⋅∇u
         advection = self.advection_term.compute(velocity)
-        
+
         # 2. 密度勾配による加速度項: -1/ρ u(u⋅∇ρ)
         density_gradient = self.acceleration_term.compute(velocity, density)
-        
+
         # 3. 粘性項: 1/ρ ∇⋅(μ(∇u+∇uT))
         diffusion = self.diffusion_term.compute(velocity, viscosity)
-        
+
         # 4. 圧力項: -1/ρ ∇p
         pressure_grad = self.pressure_term.compute(velocity, pressure, density)
-        
+
         # 5. 外力項: 1/ρ f
         if force is None:
             force = VectorField(velocity.shape, velocity.dx)
@@ -132,10 +132,10 @@ class NavierStokesSolver:
         # 各成分の時間微分を計算
         for i in range(velocity.ndim):
             result.components[i].data = (
-                -advection.components[i].data      # 移流項
+                -advection.components[i].data  # 移流項
                 + density_gradient.components[i].data  # 密度勾配項
-                + diffusion.components[i].data     # 粘性項
-                - pressure_grad.components[i].data # 圧力項
+                + diffusion.components[i].data  # 粘性項
+                - pressure_grad.components[i].data  # 圧力項
                 + force.components[i].data / np.maximum(density.data, 1e-10)  # 外力項
             )
 

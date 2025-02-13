@@ -35,7 +35,7 @@ class AdvectionTerm(BaseNavierStokesTerm):
 
     def compute(self, velocity: VectorField, **kwargs) -> VectorField:
         """
-        移流項の寄与を計算
+        移流項の寄与を計算 (u⋅∇)u
 
         Args:
             velocity: 速度場
@@ -46,46 +46,38 @@ class AdvectionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        # 結果用のVectorFieldを作成
         result = VectorField(velocity.shape, velocity.dx)
-        dx = velocity.dx
 
-        # 各方向の移流項を計算
-        flux_terms = []
+        # (u⋅∇)u の計算
         for i, v_i in enumerate(velocity.components):
-            # 移流項の計算: -u⋅∇u
-            flux = -sum(
-                v_j.data * v_i.gradient(j) for j, v_j in enumerate(velocity.components)
-            )
-            result.components[i].data = flux
-            flux_terms.append(flux)
+            # u_j ∂u_i/∂x_j を計算
+            advection = np.zeros_like(v_i.data)
+            for j, v_j in enumerate(velocity.components):
+                advection += v_j.data * v_i.gradient(j)
+
+            result.components[i].data = -advection  # 符号に注意
 
         # 診断情報の更新
-        self._update_diagnostics(result, flux_terms)
+        self._update_diagnostics(result)
 
         return result
 
-    def _update_diagnostics(
-        self, 
-        result: VectorField, 
-        flux_terms: list
-    ):
+    def _update_diagnostics(self, result: VectorField):
         """
         診断情報を更新
 
         Args:
             result: 計算された移流項
-            flux_terms: 各成分の移流項
         """
-        max_flux = [np.max(np.abs(flux)) for flux in flux_terms]
         self._diagnostics = {
             "scheme": self._scheme,
-            "max_flux_x": float(max_flux[0]) if len(max_flux) > 0 else 0.0,
-            "max_flux_y": float(max_flux[1]) if len(max_flux) > 1 else 0.0,
-            "max_flux_z": float(max_flux[2]) if len(max_flux) > 2 else 0.0,
             "max_advection": float(
                 max(np.max(np.abs(comp.data)) for comp in result.components)
             ),
+            "component_max": {
+                f"component_{i}": float(np.max(np.abs(comp.data)))
+                for i, comp in enumerate(result.components)
+            },
         }
 
     def compute_timestep(self, velocity: VectorField, **kwargs) -> float:
@@ -102,9 +94,7 @@ class AdvectionTerm(BaseNavierStokesTerm):
             return float("inf")
 
         # 最大速度の計算（各成分の最大絶対値）
-        max_velocity = max(
-            np.max(np.abs(comp.data)) for comp in velocity.components
-        )
+        max_velocity = max(np.max(np.abs(comp.data)) for comp in velocity.components)
 
         # CFLに基づく時間刻み幅の計算
         cfl = kwargs.get("cfl", 0.5)

@@ -1,7 +1,7 @@
 """
 粘性項（拡散項）の計算を提供するモジュール
 
-Navier-Stokes方程式における∇⋅(μ(∇u+∇uT)) 項を計算します。
+Navier-Stokes方程式における∇⋅(μ(∇u+∇uᵀ)) 項を計算します。
 """
 
 from typing import Dict, Any, Union
@@ -18,12 +18,7 @@ class DiffusionTerm(BaseNavierStokesTerm):
     速度場の粘性拡散を中心差分で近似計算します。
     """
 
-    def __init__(
-        self, 
-        name: str = "Diffusion", 
-        enabled: bool = True,
-        order: int = 2
-    ):
+    def __init__(self, name: str = "Diffusion", enabled: bool = True, order: int = 2):
         """
         Args:
             name: 項の名前
@@ -32,20 +27,20 @@ class DiffusionTerm(BaseNavierStokesTerm):
         """
         super().__init__(name, enabled)
         self._order = order
-        self._diagnostics: Dict[str, Any] = {}
 
     def compute(
-        self, 
-        velocity: VectorField, 
+        self,
+        velocity: VectorField,
         viscosity: Union[float, ScalarField, None] = None,
-        **kwargs
+        **kwargs,
     ) -> VectorField:
         """
-        粘性項の寄与を計算
+        粘性項 ∇⋅(μ(∇u+∇uᵀ)) を計算
+        各成分 [∇⋅(μ(∇u_i+∇u_i^T))]_i を計算
 
         Args:
             velocity: 速度場
-            viscosity: 粘性係数（定数、スカラー場、またはNone）
+            viscosity: 粘性係数（スカラー場または定数）
 
         Returns:
             拡散項をVectorFieldとして返す
@@ -53,68 +48,64 @@ class DiffusionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        # 結果用のVectorFieldを作成
         result = VectorField(velocity.shape, velocity.dx)
         dx = velocity.dx
 
-        # 粘性係数の設定
-        nu = 1.0e-3 if viscosity is None else viscosity
+        # 粘性係数の設定（スカラー場または定数）
+        nu = viscosity if viscosity is not None else 1.0e-3
+        nu_field = (
+            nu
+            if isinstance(nu, ScalarField)
+            else ScalarField(velocity.shape, dx, initial_value=nu)
+        )
 
-        # 各方向の拡散項を計算
-        dissipation_terms = []
         for i, v_i in enumerate(velocity.components):
-            # 粘性係数の処理（スカラー場または定数）
-            if isinstance(nu, ScalarField):
-                effective_nu = nu.data
-            else:
-                effective_nu = nu
+            diffusion = np.zeros_like(v_i.data)
 
-            # ラプラシアンの計算（対称勾配テンソル: ∇⋅(μ(∇u+∇uT))）
-            laplacian = np.zeros_like(v_i.data)
             for j in range(velocity.ndim):
-                # 対角成分: 2 * ∂μ/∂x_j * ∂u_i/∂x_j
-                dui_dxj = np.gradient(v_i.data, dx, axis=j)
-                
-                # 粘性係数が空間的に変化する場合の追加項
-                if isinstance(nu, ScalarField):
-                    dnu_dxj = np.gradient(effective_nu, dx, axis=j)
-                    laplacian += dnu_dxj * dui_dxj
-                
-                # 2次精度中心差分のラプラシアン
-                laplacian += effective_nu * (
-                    np.gradient(np.gradient(v_i.data, dx, axis=j), dx, axis=j)
-                )
+                # ∂u_i/∂x_j を計算
+                dui_dxj = v_i.gradient(j)
 
-            # 結果をVectorFieldに設定
-            result.components[i].data = laplacian
-            dissipation_terms.append(laplacian)
+                # ∂u_j/∂x_i を計算 (対称項)
+                if i != j:  # 非対角項の場合のみ
+                    duj_dxi = velocity.components[j].gradient(i)
+                    strain_rate = 0.5 * (dui_dxj + duj_dxi)
+                else:
+                    strain_rate = dui_dxj
+
+                # 粘性応力項の発散を計算
+                # ∂/∂x_j(μ * 2ε_ij)
+                stress = nu_field.data * (2.0 * strain_rate)
+                diffusion += np.gradient(stress, dx, axis=j)
+
+            result.components[i].data = diffusion
 
         # 診断情報の更新
-        self._update_diagnostics(result, dissipation_terms)
+        self._update_diagnostics(result, nu_field)
 
         return result
 
-    def _update_diagnostics(
-        self, 
-        result: VectorField, 
-        dissipation_terms: list
-    ):
+    def _update_diagnostics(self, result: VectorField, viscosity: ScalarField):
         """
         診断情報を更新
 
         Args:
             result: 計算された拡散項
-            dissipation_terms: 各成分の拡散項
+            viscosity: 粘性係数場
         """
-        max_dissipation = [np.max(np.abs(term)) for term in dissipation_terms]
+        diffusion_max = [float(np.max(np.abs(comp.data))) for comp in result.components]
+
         self._diagnostics = {
             "order": self._order,
-            "max_dissipation_x": float(max_dissipation[0]) if len(max_dissipation) > 0 else 0.0,
-            "max_dissipation_y": float(max_dissipation[1]) if len(max_dissipation) > 1 else 0.0,
-            "max_dissipation_z": float(max_dissipation[2]) if len(max_dissipation) > 2 else 0.0,
-            "max_diffusion": float(
-                max(np.max(np.abs(comp.data)) for comp in result.components)
-            ),
+            "max_diffusion_x": diffusion_max[0] if len(diffusion_max) > 0 else 0.0,
+            "max_diffusion_y": diffusion_max[1] if len(diffusion_max) > 1 else 0.0,
+            "max_diffusion_z": diffusion_max[2] if len(diffusion_max) > 2 else 0.0,
+            "max_diffusion": float(max(diffusion_max)),
+            "viscosity_range": {
+                "min": float(np.min(viscosity.data)),
+                "max": float(np.max(viscosity.data)),
+                "mean": float(np.mean(viscosity.data)),
+            },
         }
 
     def compute_timestep(self, velocity: VectorField, **kwargs) -> float:
@@ -131,8 +122,10 @@ class DiffusionTerm(BaseNavierStokesTerm):
             return float("inf")
 
         # 粘性の取得（デフォルト値）
-        viscosity = kwargs.get('viscosity', 1.0e-3)
-        
+        viscosity = kwargs.get("viscosity", 1.0e-3)
+        if isinstance(viscosity, ScalarField):
+            viscosity = np.max(viscosity.data)
+
         # 拡散項に基づく時間刻み幅の制限: dt ≤ dx² / (2ν)
         return 0.5 * velocity.dx**2 / (viscosity + 1e-10)
 

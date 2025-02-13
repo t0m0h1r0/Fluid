@@ -6,6 +6,4 @@
 
 from .solver import NavierStokesSolver
 
-__all__ = [
-    "NavierStokesSolver"
-]
+__all__ = ["NavierStokesSolver"]
