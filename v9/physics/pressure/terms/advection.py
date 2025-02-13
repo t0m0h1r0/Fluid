@@ -1,67 +1,84 @@
 """
-圧力ポアソン方程式の移流項を計算するモジュール
+移流項（対流項）の計算を提供するモジュール
 
-移流項 ∇⋅(u⋅∇u) の計算を実装します。
+Navier-Stokes方程式における移流項 u⋅∇u を計算します。
 """
 
+from typing import Dict, Any
 import numpy as np
 
-from core.field import VectorField, ScalarField
+from core.field import VectorField
 from .base import PoissonTerm
 
 
 class AdvectionTerm(PoissonTerm):
-    """移流項の計算クラス"""
+    """移流項（対流項）を計算するクラス"""
 
-    def __init__(self, name: str = "Advection", enabled: bool = True):
+    def __init__(
+        self,
+        name: str = "Advection",
+        enabled: bool = True,
+        scheme: str = "central",
+    ):
         """
         Args:
             name: 項の名前
             enabled: 項を有効にするかどうか
+            scheme: 差分スキーム（現時点では中心差分のみ）
         """
         super().__init__(name, enabled)
+        self._scheme = scheme
 
-    def compute(self, velocity: VectorField, **kwargs) -> ScalarField:
-        """
-        移流項 ∇⋅(u⋅∇u) を計算
+    def compute(self, velocity: VectorField, **kwargs) -> VectorField:
+        """移流項の寄与を計算 ∇⋅(u⋅∇u)
 
         Args:
             velocity: 速度場
 
         Returns:
-            移流項の発散を表すScalarField
+            移流項をVectorFieldとして返す
         """
         if not self.enabled:
-            return ScalarField(velocity.shape, velocity.dx)
+            return VectorField(velocity.shape, velocity.dx)
 
-        result = ScalarField(velocity.shape, velocity.dx)
-        dx = velocity.dx
+        result = VectorField(velocity.shape, velocity.dx)
 
         # 各方向成分について
-        for i in range(velocity.ndim):
+        for i, v_i in enumerate(velocity.components):
             # u⋅∇u_i の計算
-            advection = np.zeros_like(velocity.components[i].data)
+            advection = np.zeros_like(v_i.data)
             for j, v_j in enumerate(velocity.components):
-                advection += v_j.data * velocity.components[i].gradient(j)
+                # v_j * ∂v_i/∂x_j を計算
+                tmp = v_j.data * v_i.gradient(j)
+                # 発散の計算: ∂/∂x_j(v_j * ∂v_i/∂x_j)
+                advection += np.gradient(tmp, velocity.dx[j], axis=j)
 
-            # 発散の計算: ∂/∂x_i(u⋅∇u_i)
-            result.data += np.gradient(advection, dx, axis=i)
+            result.components[i].data = -advection  # 符号に注意
 
         # 診断情報の更新
         self._update_diagnostics(result)
 
         return result
 
-    def _update_diagnostics(self, result: ScalarField):
-        """
-        診断情報を更新
+    def _update_diagnostics(self, result: VectorField):
+        """診断情報を更新
 
         Args:
             result: 計算された移流項
         """
         self._diagnostics = {
-            "max_value": float(np.max(np.abs(result.data))),
-            "min_value": float(np.min(result.data)),
-            "mean_value": float(np.mean(result.data)),
-            "norm": float(np.linalg.norm(result.data)),
+            "scheme": self._scheme,
+            "max_advection": float(
+                max(np.max(np.abs(comp.data)) for comp in result.components)
+            ),
+            "component_max": {
+                f"component_{i}": float(np.max(np.abs(comp.data)))
+                for i, comp in enumerate(result.components)
+            },
         }
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """診断情報を取得"""
+        diag = super().get_diagnostics()
+        diag.update(self._diagnostics)
+        return diag

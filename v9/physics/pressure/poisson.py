@@ -1,14 +1,15 @@
 """
-二相流体における圧力ポアソン方程式（PPE）のソルバー
+圧力ポアソン方程式のソルバー
 
-圧力ポアソン方程式:
-∇²p = ∇⋅(-ρ Du/Dt + ∇⋅τ + f)
+圧力ポアソン方程式: ∇²p = ∇⋅f を解きます。
 
-簡略化形:
-∇²p ≈ ρ(∇⋅(u⋅∇u) + ∇⋅fs - ∇⋅(∇ν⋅∇u))
+ここで、右辺の f は以下の項から構成されます：
+- 移流項: -ρ(u⋅∇)u
+- 粘性項: μ∇²u
+- 外力項: ρg + f_s (重力と表面張力)
 """
 
-from typing import Dict, Any, Optional, Tuple
+from typing import Optional, Dict, Any, Tuple
 import numpy as np
 
 from core.field import VectorField, ScalarField
@@ -17,17 +18,22 @@ from .terms import AdvectionTerm, ViscousTerm, ForceTerm
 
 
 class PressurePoissonSolver:
-    """圧力ポアソン方程式のソルバー"""
+    """圧力ポアソン方程式のソルバー
+
+    非圧縮性流体の圧力場を計算するためのソルバーです。
+    各種の物理項（移流、粘性、外力）の発散から右辺を構築し、
+    ポアソン方程式を解いて圧力場を得ます。
+    """
 
     def __init__(self, solver_config: Optional[PoissonConfig] = None):
         """
         Args:
             solver_config: ポアソンソルバーの設定
         """
-        # 基本ソルバーの初期化
+        # ポアソンソルバーの初期化
         self._poisson_solver = ConjugateGradientSolver(solver_config or PoissonConfig())
 
-        # 各項の初期化
+        # 物理項の初期化
         self._advection_term = AdvectionTerm()
         self._viscous_term = ViscousTerm()
         self._force_term = ForceTerm()
@@ -43,65 +49,82 @@ class PressurePoissonSolver:
         external_force: Optional[VectorField] = None,
         **kwargs,
     ) -> Tuple[ScalarField, Dict[str, Any]]:
-        """
-        圧力ポアソン方程式を解く
+        """圧力ポアソン方程式を解く
 
         Args:
             velocity: 速度場
             density: 密度場
             viscosity: 粘性場
             external_force: 外力場（オプション）
+            **kwargs: 追加のパラメータ
 
         Returns:
             (圧力場, 診断情報)のタプル
         """
-        # 1. 各項の計算
-        # 移流項: ∇⋅(u⋅∇u)
-        advection_term = self._advection_term.compute(velocity=velocity)
-
-        # 粘性項: -∇⋅(∇ν⋅∇u)
-        viscous_term = self._viscous_term.compute(
-            velocity=velocity, viscosity=viscosity
+        # 各物理項からの寄与を計算
+        source_terms = self._compute_source_terms(
+            velocity, density, viscosity, external_force
         )
 
-        # 外力項: ∇⋅f
-        force_term = self._force_term.compute(
-            shape=velocity.shape, dx=velocity.dx, external_force=external_force
-        )
-
-        # 2. 右辺の組み立て
+        # 右辺の構築
         rhs = ScalarField(velocity.shape, velocity.dx)
-        rhs.data = density.data * (
-            advection_term.data + viscous_term.data + force_term.data
-        )
+        for term in source_terms.values():
+            rhs.data = np.array(rhs.data) + np.array(term.data)
 
-        # 3. ポアソン方程式を解く
+        # ポアソン方程式を解く
         pressure = ScalarField(velocity.shape, velocity.dx)
-        pressure.data = self._poisson_solver.solve(rhs.data)
+        pressure.data = self._poisson_solver.solve(np.array(rhs.data))
 
         # 診断情報の更新
-        self._update_diagnostics(
-            pressure=pressure,
-            rhs=rhs,
-            terms={
-                "advection": self._advection_term.get_diagnostics(),
-                "viscous": self._viscous_term.get_diagnostics(),
-                "force": self._force_term.get_diagnostics(),
-            },
-        )
+        self._update_diagnostics(pressure, rhs, source_terms)
 
         return pressure, self._diagnostics
 
+    def _compute_source_terms(
+        self,
+        velocity: VectorField,
+        density: ScalarField,
+        viscosity: ScalarField,
+        external_force: Optional[VectorField],
+    ) -> Dict[str, ScalarField]:
+        """ポアソン方程式の右辺を構成する各項を計算"""
+        source_terms = {}
+
+        # 移流項の発散: -∇⋅(ρ(u⋅∇)u)
+        advection = self._advection_term.compute(velocity=velocity)
+        source_terms["advection"] = ScalarField(
+            velocity.shape,
+            velocity.dx,
+            initial_value=-np.array(density.data) * np.array(advection.data),
+        )
+
+        # 粘性項の発散: ∇⋅(μ∇²u)
+        viscous = self._viscous_term.compute(velocity=velocity, viscosity=viscosity)
+        source_terms["viscous"] = ScalarField(
+            velocity.shape, velocity.dx, initial_value=np.array(viscous.data)
+        )
+
+        # 外力項の発散: ∇⋅f
+        if external_force is not None:
+            force = self._force_term.compute(
+                shape=velocity.shape, dx=velocity.dx, external_force=external_force
+            )
+            source_terms["force"] = force
+
+        return source_terms
+
     def _update_diagnostics(
-        self, pressure: ScalarField, rhs: ScalarField, terms: Dict[str, Dict[str, Any]]
+        self,
+        pressure: ScalarField,
+        rhs: ScalarField,
+        source_terms: Dict[str, ScalarField],
     ) -> None:
-        """
-        診断情報を更新
+        """診断情報を更新
 
         Args:
             pressure: 計算された圧力場
             rhs: 右辺
-            terms: 各項の診断情報
+            source_terms: 各物理項からの寄与
         """
         self._diagnostics = {
             "pressure": {
@@ -110,7 +133,14 @@ class PressurePoissonSolver:
                 "mean": float(np.mean(pressure.data)),
                 "norm": float(np.linalg.norm(pressure.data)),
             },
-            "source_terms": terms,
+            "source_terms": {
+                name: {
+                    "min": float(np.min(term.data)),
+                    "max": float(np.max(term.data)),
+                    "norm": float(np.linalg.norm(term.data)),
+                }
+                for name, term in source_terms.items()
+            },
             "rhs": {
                 "min": float(np.min(rhs.data)),
                 "max": float(np.max(rhs.data)),

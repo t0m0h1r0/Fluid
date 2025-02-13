@@ -3,17 +3,20 @@
 このモジュールは、スカラー量（圧力、温度など）を表現するための場のクラスを定義します。
 """
 
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, List
 import numpy as np
 from .field import Field
-from typing import Dict, Any
+from typing import Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .vector import VectorField
 
 
 class ScalarField(Field):
     """スカラー場クラス
 
     温度、圧力などのスカラー量を表現するためのクラスです。
-    基本的な微分演算や補間機能を提供します。
+    NumPyスタイルの演算子と数値計算メソッドを提供します。
     """
 
     def __init__(
@@ -43,6 +46,93 @@ class ScalarField(Field):
                 self._data.fill(initial_value)
         else:
             raise TypeError(f"Unsupported initial_value type: {type(initial_value)}")
+
+    def __add__(self, other):
+        """NumPyの+演算子に準じた加算"""
+        if isinstance(other, (int, float, np.ndarray)):
+            result = self.copy()
+            result.data += other
+            return result
+        elif isinstance(other, ScalarField):
+            result = self.copy()
+            result.data += other.data
+            return result
+        else:
+            raise TypeError(f"サポートされていない型との加算: {type(other)}")
+
+    def __radd__(self, other):
+        """右側からの加算"""
+        return self.__add__(other)
+
+    def __sub__(self, other):
+        """NumPyの-演算子に準じた減算"""
+        if isinstance(other, (int, float, np.ndarray)):
+            result = self.copy()
+            result.data -= other
+            return result
+        elif isinstance(other, ScalarField):
+            result = self.copy()
+            result.data -= other.data
+            return result
+        else:
+            raise TypeError(f"サポートされていない型との減算: {type(other)}")
+
+    def __rsub__(self, other):
+        """右側からの減算"""
+        result = self.copy()
+        result.data = other - result.data
+        return result
+
+    def __mul__(self, other):
+        """NumPyの*演算子に準じた乗算"""
+        if isinstance(other, (int, float, np.ndarray)):
+            result = self.copy()
+            result.data *= other
+            return result
+        elif isinstance(other, ScalarField):
+            result = self.copy()
+            result.data *= other.data
+            return result
+        else:
+            raise TypeError(f"サポートされていない型との乗算: {type(other)}")
+
+    def __rmul__(self, other):
+        """右側からの乗算"""
+        return self.__mul__(other)
+
+    def __truediv__(self, other):
+        """NumPyの/演算子に準じた除算"""
+        if isinstance(other, (int, float, np.ndarray)):
+            result = self.copy()
+            result.data /= other
+            return result
+        elif isinstance(other, ScalarField):
+            result = self.copy()
+            result.data /= other.data
+            return result
+        else:
+            raise TypeError(f"サポートされていない型との除算: {type(other)}")
+
+    def __rtruediv__(self, other):
+        """右側からの除算"""
+        result = self.copy()
+        result.data = other / result.data
+        return result
+
+    def gradient(self, axis: int = None) -> Union[np.ndarray, List[np.ndarray]]:
+        """NumPyのgradientに準じた勾配計算"""
+        if axis is None:
+            return [np.gradient(self.data, self.dx, axis=i) for i in range(self.ndim)]
+        return np.gradient(self.data, self.dx, axis=axis)
+
+    def dot(self, other: 'VectorField') -> 'ScalarField':
+        """内積計算（NumPyのdot演算に準じる）"""
+        result = ScalarField(self.shape, self.dx)
+        result.data = sum(
+            comp.data * other_comp.data 
+            for comp, other_comp in zip(other.components, other.components)
+        )
+        return result
 
     def interpolate(self, points: np.ndarray) -> np.ndarray:
         """任意の点での値を線形補間
@@ -132,49 +222,6 @@ class ScalarField(Field):
         from scipy.ndimage import gaussian_filter
 
         self._data = gaussian_filter(self._data, sigma)
-
-    def __add__(self, other):
-        """加算演算子の実装"""
-        result = self.__class__(self.shape, self.dx)
-        if isinstance(other, (int, float)):
-            result.data = self.data + other
-        elif isinstance(other, ScalarField):
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result.data = self.data + other.data
-        else:
-            raise TypeError("無効な型との演算です")
-        return result
-
-    def __mul__(self, other):
-        """乗算演算子の実装"""
-        result = self.__class__(self.shape, self.dx)
-        if isinstance(other, (int, float)):
-            result.data = self.data * other
-        elif isinstance(other, ScalarField):
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result.data = self.data * other.data
-        else:
-            raise TypeError("無効な型との演算です")
-        return result
-
-    def __rmul__(self, other):
-        """右乗算演算子の実装"""
-        return self.__mul__(other)
-
-    def __truediv__(self, other):
-        """除算演算子の実装"""
-        result = self.__class__(self.shape, self.dx)
-        if isinstance(other, (int, float)):
-            result.data = self.data / other
-        elif isinstance(other, ScalarField):
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result.data = self.data / other.data
-        else:
-            raise TypeError("無効な型との演算です")
-        return result
 
     def save_state(self) -> Dict[str, Any]:
         """現在の状態を保存

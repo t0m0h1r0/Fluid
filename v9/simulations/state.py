@@ -31,9 +31,9 @@ class SimulationState:
         if self.diagnostics is None:
             self.diagnostics = {}
 
-        # 界面演算子の初期化
+        # 界面演算子の初期化（ベクトル化されたdxを使用）
         self._interface_ops = InterfaceOperations(
-            dx=self.velocity.dx,
+            dx=self.velocity.dx,  # VectorFieldのdxを使用
             epsilon=1e-2,  # デフォルトのepsilon値
         )
 

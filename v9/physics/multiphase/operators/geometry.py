@@ -10,11 +10,11 @@ from core.field import VectorField, ScalarField
 class GeometryOperator:
     """界面の幾何学的演算を実行するクラス"""
 
-    def __init__(self, dx: float, epsilon: float = 1.0e-6):
+    def __init__(self, dx: np.ndarray, epsilon: float = 1.0e-6):
         """幾何演算子を初期化
 
         Args:
-            dx: グリッド間隔
+            dx: グリッド間隔（ベクトル）
             epsilon: 数値計算の安定化パラメータ
         """
         self.dx = dx
@@ -75,7 +75,8 @@ class GeometryOperator:
         result = ScalarField(phi.shape, self.dx)
         for i in range(phi.ndim):
             normalized_grad = grad_components[i] / grad_norm
-            result.data += np.gradient(normalized_grad, self.dx, axis=i)
+            # 各方向の勾配を個別に計算
+            result.data += np.gradient(normalized_grad, self.dx[i], axis=i)
 
         return result
 
@@ -102,7 +103,7 @@ class GeometryOperator:
     ) -> np.ndarray:
         """4次精度の2階微分を計算"""
         data = phi.data
-        dx = self.dx
+        dx = self.dx[i]  # 対応する方向のグリッド間隔を使用
 
         # 4次精度の係数
         c = [-1 / 12, 4 / 3, -5 / 2, 4 / 3, -1 / 12]
@@ -120,13 +121,15 @@ class GeometryOperator:
     ) -> np.ndarray:
         """4次精度の交差微分を計算"""
         data = phi.data
-        dx = self.dx
+        dx_i = self.dx[i]  # i方向のグリッド間隔
+        dx_j = self.dx[j]  # j方向のグリッド間隔
 
         # まず i 方向の1階微分を計算
         di = np.zeros_like(data)
         for k in range(-2, 3):
             shifted = np.roll(data, k, axis=i)
             di += (-1 / 12 if abs(k) == 2 else 2 / 3 if abs(k) == 1 else 0) * shifted
+        di /= dx_i
 
         # 次に j 方向の1階微分を計算
         result = np.zeros_like(data)
@@ -135,5 +138,6 @@ class GeometryOperator:
             result += (
                 -1 / 12 if abs(k) == 2 else 2 / 3 if abs(k) == 1 else 0
             ) * shifted
+        result /= dx_j
 
-        return result / (dx * dx)
+        return result

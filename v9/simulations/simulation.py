@@ -51,10 +51,20 @@ class TwoPhaseFlowSimulator:
         self._state: Optional[SimulationState] = None
         self._diagnostics: Dict[str, Any] = {}
 
+        # グリッド間隔の計算
+        self.dx = np.array(
+            [
+                size / (dim - 1)
+                for size, dim in zip(
+                    self.config.domain.size, self.config.domain.dimensions
+                )
+            ]
+        )
+
         # InterfaceOperationsの初期化
         interface_config = config.numerical.get("interface", {})
         self._interface_ops = InterfaceOperations(
-            dx=config.domain.size[0] / config.domain.dimensions[0],
+            dx=self.dx,
             epsilon=interface_config.get("epsilon", 1e-2),
         )
 
@@ -182,7 +192,7 @@ class TwoPhaseFlowSimulator:
             外力のベクトル場
         """
         # 重力の計算
-        gravity_force = VectorField(state.velocity.shape, state.velocity.dx)
+        gravity_force = VectorField(state.velocity.shape, self.dx)
         density = state.get_density(self.config.physics)
 
         for i, comp in enumerate(gravity_force.components):

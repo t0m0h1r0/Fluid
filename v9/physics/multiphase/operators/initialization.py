@@ -13,11 +13,11 @@ from core.field import ScalarField
 class InitializationOperator:
     """界面の初期化を実行するクラス"""
 
-    def __init__(self, dx: float):
+    def __init__(self, dx: np.ndarray):
         """初期化演算子を初期化
 
         Args:
-            dx: グリッド間隔
+            dx: グリッド間隔（ベクトル）
         """
         self.dx = dx
 
@@ -39,8 +39,10 @@ class InitializationOperator:
         # 座標グリッドの生成
         coords = np.meshgrid(*[np.linspace(0, 1, s) for s in shape], indexing="ij")
 
-        # 中心からの距離を計算
-        squared_distance = sum((x - c) ** 2 for x, c in zip(coords, center))
+        # 中心からの距離を計算（各方向のスケーリングを考慮）
+        squared_distance = sum(
+            ((x - c) / d) ** 2 for x, c, d in zip(coords, center, np.ones_like(self.dx))
+        )
         distance = np.sqrt(squared_distance)
 
         # 符号付き距離関数として設定
@@ -65,12 +67,15 @@ class InitializationOperator:
         # 座標グリッドの生成
         coords = np.meshgrid(*[np.linspace(0, 1, s) for s in shape], indexing="ij")
 
-        # 法線ベクトルの正規化
+        # 法線ベクトルの正規化（グリッド間隔を考慮）
         normal = np.array(normal)
-        normal = normal / np.linalg.norm(normal)
+        normal = normal / np.sqrt(np.sum((normal / self.dx) ** 2))
 
-        # 平面からの符号付き距離を計算
-        distance = sum(n * (x - p) for x, p, n in zip(coords, point, normal))
+        # 平面からの符号付き距離を計算（各方向のスケーリングを考慮）
+        distance = sum(
+            n * (x - p) / d
+            for x, p, n, d in zip(coords, point, normal, np.ones_like(self.dx))
+        )
 
         result.data = distance
         return result

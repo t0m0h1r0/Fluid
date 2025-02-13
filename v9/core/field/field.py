@@ -5,7 +5,7 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Union
 import numpy as np
 
 
@@ -17,19 +17,29 @@ class Field(ABC):
 
     Attributes:
         shape (Tuple[int, ...]): グリッドの形状
-        dx (float): グリッド間隔
+        dx (Union[float, np.ndarray]): グリッド間隔（スカラーまたはベクトル）
         time (float): 現在の時刻
     """
 
-    def __init__(self, shape: Tuple[int, ...], dx: float = 1.0):
+    def __init__(self, shape: Tuple[int, ...], dx: Union[float, np.ndarray] = 1.0):
         """場を初期化
 
         Args:
             shape: グリッドの形状
-            dx: グリッド間隔
+            dx: グリッド間隔（スカラーまたはベクトル）
         """
         self._data = np.zeros(shape)
-        self._dx = dx
+
+        # dxの処理：スカラーの場合はベクトルに変換
+        if isinstance(dx, (int, float)):
+            self._dx = np.full(len(shape), float(dx))
+        else:
+            self._dx = np.asarray(dx, dtype=float)
+            if len(self._dx) != len(shape):
+                raise ValueError(
+                    f"dxの次元数({len(self._dx)})がshapeの次元数({len(shape)})と一致しません"
+                )
+
         self._time = 0.0
 
     @property
@@ -62,7 +72,7 @@ class Field(ABC):
         return self._data.ndim
 
     @property
-    def dx(self) -> float:
+    def dx(self) -> Union[float, np.ndarray]:
         """グリッド間隔を取得"""
         return self._dx
 
@@ -96,7 +106,13 @@ class Field(ABC):
         Returns:
             計算された勾配
         """
-        return np.gradient(self._data, self._dx, axis=axis)
+        if not 0 <= axis < self.ndim:
+            raise ValueError(f"無効な軸です: {axis}")
+
+        # スライスを使って各方向の勾配を計算
+        dx = self._dx[axis]
+        grad = np.gradient(self._data, dx, axis=axis)
+        return grad
 
     def divergence(self) -> np.ndarray:
         """発散を計算
@@ -108,7 +124,7 @@ class Field(ABC):
         """
         div = np.zeros_like(self._data)
         for i in range(self.ndim):
-            div += np.gradient(self._data, self._dx, axis=i)
+            div += self.gradient(i)
         return div
 
     def laplacian(self) -> np.ndarray:
@@ -119,7 +135,10 @@ class Field(ABC):
         Returns:
             計算されたラプラシアン
         """
-        return np.gradient(self.divergence(), self._dx)
+        lap = np.zeros_like(self._data)
+        for i in range(self.ndim):
+            lap += np.gradient(self.gradient(i), self._dx[i], axis=i)
+        return lap
 
     def copy(self) -> "Field":
         """場の深いコピーを作成

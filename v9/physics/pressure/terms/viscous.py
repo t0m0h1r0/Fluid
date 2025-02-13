@@ -1,17 +1,18 @@
 """
-圧力ポアソン方程式の粘性項を計算するモジュール
+粘性項（拡散項）の計算を提供するモジュール
 
-粘性項 -∇⋅(∇ν⋅∇u) の計算を実装します。
+Navier-Stokes方程式における粘性項 ∇⋅(ν∇u) を計算します。
 """
 
 import numpy as np
 
 from core.field import VectorField, ScalarField
 from .base import PoissonTerm
+from typing import Dict, Any
 
 
 class ViscousTerm(PoissonTerm):
-    """粘性項の計算クラス"""
+    """粘性項（拡散項）を計算するクラス"""
 
     def __init__(self, name: str = "Viscous", enabled: bool = True):
         """
@@ -23,61 +24,63 @@ class ViscousTerm(PoissonTerm):
 
     def compute(
         self, velocity: VectorField, viscosity: ScalarField, **kwargs
-    ) -> ScalarField:
-        """
-        粘性項 -∇⋅(∇ν⋅∇u) を計算
+    ) -> VectorField:
+        """粘性項 ∇⋅(ν∇u) を計算
 
         Args:
             velocity: 速度場
-            viscosity: 粘性場
+            viscosity: 粘性係数場
 
         Returns:
-            粘性項の発散を表すScalarField
+            粘性項をVectorFieldとして返す
         """
         if not self.enabled:
-            return ScalarField(velocity.shape, velocity.dx)
+            return VectorField(velocity.shape, velocity.dx)
 
-        result = ScalarField(velocity.shape, velocity.dx)
-        dx = velocity.dx
+        result = VectorField(velocity.shape, velocity.dx)
 
         # 各方向成分について
-        for i in range(velocity.ndim):
-            # ∇u_i を計算
-            velocity_grad = np.zeros_like(velocity.components[i].data)
-
+        for i, v_i in enumerate(velocity.components):
+            viscous_term = np.zeros_like(v_i.data)
             for j in range(velocity.ndim):
                 # ∂u_i/∂x_j を計算
-                dui_dxj = velocity.components[i].gradient(j)
+                du_dx = v_i.gradient(j)
+                # ν * ∂u_i/∂x_j を計算
+                viscous_flux = viscosity.data * du_dx
+                # ∂/∂x_j(ν * ∂u_i/∂x_j) を計算
+                viscous_term += np.gradient(viscous_flux, velocity.dx[j], axis=j)
 
-                # ∇ν⋅∇u_i の計算
-                viscous_term = viscosity.gradient(j) * dui_dxj
-
-                # 発散の計算
-                velocity_grad += np.gradient(viscous_term, dx, axis=j)
-
-            result.data -= velocity_grad  # 符号に注意
+            result.components[i].data = viscous_term
 
         # 診断情報の更新
         self._update_diagnostics(result, viscosity)
 
         return result
 
-    def _update_diagnostics(self, result: ScalarField, viscosity: ScalarField):
-        """
-        診断情報を更新
+    def _update_diagnostics(self, result: VectorField, viscosity: ScalarField):
+        """診断情報を更新
 
         Args:
             result: 計算された粘性項
-            viscosity: 粘性場
+            viscosity: 粘性係数場
         """
         self._diagnostics = {
-            "max_value": float(np.max(np.abs(result.data))),
-            "min_value": float(np.min(result.data)),
-            "mean_value": float(np.mean(result.data)),
-            "norm": float(np.linalg.norm(result.data)),
+            "max_viscous": float(
+                max(np.max(np.abs(comp.data)) for comp in result.components)
+            ),
             "viscosity_range": {
                 "min": float(np.min(viscosity.data)),
                 "max": float(np.max(viscosity.data)),
                 "mean": float(np.mean(viscosity.data)),
             },
+            "component_max": {
+                f"component_{i}": float(np.max(np.abs(comp.data)))
+                for i, comp in enumerate(result.components)
+            },
         }
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """診断情報を取得"""
+        diag = super().get_diagnostics()
+        diag.update(self._diagnostics)
+        return diag

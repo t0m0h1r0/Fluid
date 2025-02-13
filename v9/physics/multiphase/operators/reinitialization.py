@@ -13,15 +13,17 @@ from core.field import ScalarField
 class ReinitializationOperator:
     """距離関数の再構築を実行するクラス"""
 
-    def __init__(self, dx: float, epsilon: float = 1.0e-6):
+    def __init__(self, dx: np.ndarray, epsilon: float = 1.0e-6):
         """再構築演算子を初期化
 
         Args:
-            dx: グリッド間隔
+            dx: グリッド間隔（ベクトル）
             epsilon: 数値計算の安定化パラメータ
         """
         self.dx = dx
         self.epsilon = epsilon
+        # 最小のグリッド間隔を計算
+        self.min_dx = np.min(dx)
 
     def execute(
         self, phi: ScalarField, n_steps: int = 5, dt: float = 0.1
@@ -55,7 +57,7 @@ class ReinitializationOperator:
             result.data -= dt * correction
 
             # 数値的安定化のためにガウシアンフィルタを適用
-            result.data = gaussian_filter(result.data, sigma=0.5 * self.dx)
+            result.data = gaussian_filter(result.data, sigma=0.5 * self.min_dx)
 
         return result
 
@@ -75,7 +77,10 @@ class ReinitializationOperator:
         grad_norm = np.sqrt(np.sum(grad**2, axis=0))
 
         # 界面近傍での |∇φ| = 1 からのずれを計算
-        interface_region = np.abs(phi.data) < (5.0 * self.dx)
+        # 最小グリッド間隔の5倍を界面幅として使用
+        interface_width = 5.0 * self.min_dx
+        interface_region = np.abs(phi.data) < interface_width
+
         if np.any(interface_region):
             deviation = np.mean((grad_norm[interface_region] - 1.0) ** 2)
             return float(deviation)
@@ -91,4 +96,5 @@ class ReinitializationOperator:
         Returns:
             安定化された符号関数の値
         """
-        return phi.data / np.sqrt(phi.data**2 + (width * self.dx) ** 2)
+        transition_width = width * self.min_dx
+        return phi.data / np.sqrt(phi.data**2 + transition_width**2)

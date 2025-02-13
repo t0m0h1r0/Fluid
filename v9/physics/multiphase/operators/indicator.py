@@ -75,4 +75,6 @@ class IndicatorOperator:
             界面の面積（3D）または長さ（2D）
         """
         delta = self.compute_delta(phi)
-        return float(np.sum(delta.data) * phi.dx**phi.ndim)
+        # グリッド体積要素を計算（非等方グリッドに対応）
+        dv = np.prod(phi.dx)
+        return float(np.sum(delta.data) * dv)

@@ -25,11 +25,27 @@ class SimulationInitializer:
         self.config = config
         self._validate_config()
 
+        # グリッド間隔の計算
+        self.dx = np.array(
+            [
+                size / (dim - 1)
+                for size, dim in zip(
+                    self.config.domain.size, self.config.domain.dimensions
+                )
+            ]
+        )
+
         # InterfaceOperationsの初期化
         self._interface_ops = InterfaceOperations(
-            dx=self.config.domain.size[0] / self.config.domain.dimensions[0],
+            dx=self.dx,
             epsilon=self.config.numerical.get("interface", {}).get("epsilon", 1e-2),
         )
+
+        # 追加の初期化パラメータ
+        self._init_parameters = {
+            "time": 0.0,
+            "shape": tuple(self.config.domain.dimensions),
+        }
 
     def _validate_config(self):
         """設定の妥当性を検証"""
@@ -46,40 +62,33 @@ class SimulationInitializer:
         Returns:
             初期化されたシミュレーション状態
         """
-        # グリッドの設定
-        shape = tuple(self.config.domain.dimensions)
-        dx = self.config.domain.size[0] / shape[0]  # 等方グリッドを仮定
+        # 基本フィールドの初期化
+        velocity = VectorField(self._init_parameters["shape"], self.dx)
+        levelset = ScalarField(self._init_parameters["shape"], self.dx)
+        pressure = ScalarField(self._init_parameters["shape"], self.dx)
 
         # 速度場の初期化
-        velocity = self._initialize_velocity(shape, dx)
+        self._initialize_velocity(velocity)
 
         # 界面関数の初期化
-        levelset = self._initialize_interface(shape, dx)
-
-        # 圧力場の初期化
-        pressure = ScalarField(shape, dx)
+        self._initialize_interface(levelset)
 
         # 状態の構築
         state = SimulationState(
-            time=0.0,
+            time=self._init_parameters["time"],
             velocity=velocity,
-            levelset=levelset,  # ScalarFieldとして渡す
+            levelset=levelset,
             pressure=pressure,
         )
 
         return state
 
-    def _initialize_velocity(self, shape: tuple, dx: float) -> VectorField:
+    def _initialize_velocity(self, velocity: VectorField) -> None:
         """速度場を初期化
 
         Args:
-            shape: グリッドの形状
-            dx: グリッド間隔
-
-        Returns:
-            初期化された速度場
+            velocity: 初期化対象の速度場
         """
-        velocity = VectorField(shape, dx)
         velocity_config = self.config.initial_conditions.velocity
 
         if velocity_config["type"] == "zero":
@@ -95,24 +104,20 @@ class SimulationInitializer:
             # 渦流れ
             center = velocity_config.get("center", [0.5, 0.5, 0.5])
             strength = velocity_config.get("strength", 1.0)
-            coords = np.meshgrid(*[np.linspace(0, 1, s) for s in shape], indexing="ij")
+            coords = np.meshgrid(
+                *[np.linspace(0, 1, s) for s in velocity.shape], indexing="ij"
+            )
             r = np.sqrt(
                 sum((c - cent) ** 2 for c, cent in zip(coords[:-1], center[:-1]))
             )
             velocity.components[0].data = -strength * (coords[1] - center[1]) / r
             velocity.components[1].data = strength * (coords[0] - center[0]) / r
 
-        return velocity
-
-    def _initialize_interface(self, shape: tuple, dx: float) -> ScalarField:
+    def _initialize_interface(self, levelset: ScalarField) -> None:
         """界面関数を初期化
 
         Args:
-            shape: グリッドの形状
-            dx: グリッド間隔
-
-        Returns:
-            初期化された界面関数（ScalarField）
+            levelset: 初期化対象の界面関数
         """
         # 界面設定の取得
         initial_conditions = self.config.initial_conditions
@@ -132,9 +137,10 @@ class SimulationInitializer:
                 else:
                     normal = [0, 0, -1]  # 背景相と異なる場合、負の高さ
                 point = [0.5, 0.5, height]
-                levelset = self._interface_ops.create_plane(
-                    shape=shape, normal=normal, point=point
+                levelset_data = self._interface_ops.create_plane(
+                    shape=levelset.shape, normal=normal, point=point
                 )
+                levelset.data = levelset_data.data
             elif first_obj.get("type") == "sphere":
                 center = first_obj.get("center", [0.5, 0.5, 0.5])
                 radius = first_obj.get("radius", 0.1)
@@ -144,14 +150,16 @@ class SimulationInitializer:
                 sign = (
                     1.0 if phase != background_phase else -1.0
                 )  # 背景相と異なる場合は正の距離関数
-                levelset = sign * self._interface_ops.create_sphere(
-                    shape=shape, center=center, radius=radius
+                levelset_data = sign * self._interface_ops.create_sphere(
+                    shape=levelset.shape, center=center, radius=radius
                 )
+                levelset.data = levelset_data.data
         else:
             # フォールバック: デフォルトの平面界面
-            levelset = self._interface_ops.create_plane(
-                shape=shape, normal=[0, 0, 1], point=[0.5, 0.5, 0.5]
+            levelset_data = self._interface_ops.create_plane(
+                shape=levelset.shape, normal=[0, 0, 1], point=[0.5, 0.5, 0.5]
             )
+            levelset.data = levelset_data.data
 
         # 残りのオブジェクトを組み合わせる
         for obj in objects[1:]:
@@ -164,21 +172,21 @@ class SimulationInitializer:
                     normal = [0, 0, -1]
                 point = [0.5, 0.5, height]
                 plate = self._interface_ops.create_plane(
-                    shape=shape, normal=normal, point=point
+                    shape=levelset.shape, normal=normal, point=point
                 )
-                levelset = self._interface_ops.combine_interfaces(
+                levelset_data = self._interface_ops.combine_interfaces(
                     levelset, plate, "union"
                 )
+                levelset.data = levelset_data.data
             elif obj.get("type") == "sphere":
                 center = obj.get("center", [0.5, 0.5, 0.5])
                 radius = obj.get("radius", 0.1)
                 phase = obj.get("phase", background_phase)  # オブジェクトの相を取得
                 sign = 1.0 if phase != background_phase else -1.0
                 sphere = sign * self._interface_ops.create_sphere(
-                    shape=shape, center=center, radius=radius
+                    shape=levelset.shape, center=center, radius=radius
                 )
-                levelset = self._interface_ops.combine_interfaces(
+                levelset_data = self._interface_ops.combine_interfaces(
                     levelset, sphere, "union"
                 )
-
-        return levelset
+                levelset.data = levelset_data.data

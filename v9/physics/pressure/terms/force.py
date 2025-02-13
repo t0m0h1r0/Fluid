@@ -1,7 +1,7 @@
 """
-圧力ポアソン方程式の外力項を計算するモジュール
+外力項の計算を提供するモジュール
 
-外力項 ∇⋅f の計算を実装します。
+Navier-Stokes方程式における外力項 ∇⋅f を計算します。
 """
 
 import numpy as np
@@ -9,6 +9,7 @@ from typing import Optional
 
 from core.field import VectorField, ScalarField
 from .base import PoissonTerm
+from typing import Dict, Any
 
 
 class ForceTerm(PoissonTerm):
@@ -25,7 +26,7 @@ class ForceTerm(PoissonTerm):
     def compute(
         self,
         shape: tuple,
-        dx: float,
+        dx: np.ndarray,
         external_force: Optional[VectorField] = None,
         **kwargs,
     ) -> ScalarField:
@@ -34,17 +35,23 @@ class ForceTerm(PoissonTerm):
 
         Args:
             shape: 計算領域の形状
-            dx: グリッド間隔
+            dx: グリッド間隔（ベクトル）
             external_force: 外力場（オプション）
 
         Returns:
-            外力項の発散を表すScalarField
+            外力項の発散を表すスカラー場
         """
         if not self.enabled or external_force is None:
             return ScalarField(shape, dx)
 
-        # 外力場の発散を計算
-        result = external_force.divergence()
+        # 各方向成分の発散の計算
+        divergence = np.zeros(shape)
+        for i, force_comp in enumerate(external_force.components):
+            divergence += np.gradient(force_comp.data, dx[i], axis=i)
+
+        # 結果の設定
+        result = ScalarField(shape, dx)
+        result.data = divergence
 
         # 診断情報の更新
         self._update_diagnostics(result, external_force)
@@ -52,8 +59,7 @@ class ForceTerm(PoissonTerm):
         return result
 
     def _update_diagnostics(self, result: ScalarField, force: VectorField):
-        """
-        診断情報を更新
+        """診断情報を更新
 
         Args:
             result: 計算された外力項
@@ -74,3 +80,9 @@ class ForceTerm(PoissonTerm):
                 for i, comp in enumerate(force.components)
             },
         }
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """診断情報を取得"""
+        diag = super().get_diagnostics()
+        diag.update(self._diagnostics)
+        return diag

@@ -17,11 +17,11 @@ from .operators.indicator import IndicatorOperator
 class InterfaceOperations:
     """多相流体の界面計算機能を提供するクラス"""
 
-    def __init__(self, dx: float, epsilon: float = 1.0e-6):
+    def __init__(self, dx: np.ndarray, epsilon: float = 1.0e-6):
         """界面計算機能を初期化
 
         Args:
-            dx: グリッド間隔
+            dx: グリッド間隔（ベクトル）
             epsilon: 数値計算の安定化パラメータ
         """
         self.dx = dx
@@ -111,8 +111,14 @@ class InterfaceOperations:
         # 界面の曲率を計算（標準精度で十分）
         kappa = self.compute_curvature(phi, high_order=False)
 
+        # グリッド体積要素を計算
+        dv = np.prod(self.dx)
+
         # 界面近傍の点のみを考慮
-        interface_region = np.abs(phi.data) < self.epsilon
+        min_dx = np.min(self.dx)
+        interface_region = np.abs(phi.data) < (5.0 * min_dx)
+
+        # 界面上の曲率統計の計算
         if np.any(interface_region):
             kappa_interface = kappa.data[interface_region]
             kappa_min = float(np.min(kappa_interface))
@@ -126,7 +132,7 @@ class InterfaceOperations:
         return {
             "volume_fraction": float(np.mean(phase.data)),
             "interface_points": int(np.sum(interface_region)),
-            "interface_area": float(np.sum(delta.data) * self.dx**phi.ndim),
+            "interface_area": float(np.sum(delta.data) * dv),
             "distance_error": distance_error,
             "curvature": {
                 "min": kappa_min,
@@ -155,8 +161,8 @@ class InterfaceOperations:
         phase = self.get_phase_distribution(phi)
         delta = self.get_interface_delta(phi)
 
-        # グリッド体積要素
-        dv = self.dx**phi.ndim
+        # グリッド体積要素の計算
+        dv = np.prod(self.dx)
 
         # 体積の計算
         volume = float(np.sum(phase.data) * dv)

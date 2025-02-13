@@ -13,7 +13,7 @@ class VectorField:
     """ベクトル場クラス
 
     速度、運動量などのベクトル量を表現するためのクラスです。
-    各成分をスカラー場として保持し、ベクトル演算のメソッドを提供します。
+    NumPyスタイルの演算子と数値計算メソッドを提供します。
     """
 
     def __init__(self, shape: Tuple[int, ...], dx: float = 1.0):
@@ -67,6 +67,55 @@ class VectorField:
         """次元数を取得"""
         return len(self._shape)
 
+    def __add__(self, other: 'VectorField') -> 'VectorField':
+        """NumPyの+演算子に準じた加算"""
+        if not isinstance(other, VectorField):
+            raise TypeError(f"サポートされていない型との加算: {type(other)}")
+        
+        result = VectorField(self.shape, self.dx)
+        for i, (c1, c2) in enumerate(zip(self.components, other.components)):
+            result.components[i] = c1 + c2
+        return result
+
+    def __sub__(self, other: 'VectorField') -> 'VectorField':
+        """NumPyの-演算子に準じた減算"""
+        if not isinstance(other, VectorField):
+            raise TypeError(f"サポートされていない型との減算: {type(other)}")
+        
+        result = VectorField(self.shape, self.dx)
+        for i, (c1, c2) in enumerate(zip(self.components, other.components)):
+            result.components[i] = c1 - c2
+        return result
+
+    def __mul__(self, other):
+        """NumPyの*演算子に準じた乗算（スカラー倍）"""
+        if isinstance(other, (int, float, np.ndarray)):
+            result = VectorField(self.shape, self.dx)
+            for i, comp in enumerate(self.components):
+                result.components[i] = comp * other
+            return result
+        elif isinstance(other, ScalarField):
+            result = VectorField(self.shape, self.dx)
+            for i, comp in enumerate(self.components):
+                result.components[i] = comp * other
+            return result
+        else:
+            raise TypeError(f"サポートされていない型との乗算: {type(other)}")
+
+    def __rmul__(self, other):
+        """右側からの乗算"""
+        return self.__mul__(other)
+
+    def __matmul__(self, other: ScalarField) -> 'VectorField':
+        """NumPyの@演算子に準じた重み付け"""
+        if not isinstance(other, ScalarField):
+            raise TypeError("@演算子はScalarFieldとの演算のみ可能です")
+        
+        result = VectorField(self.shape, self.dx)
+        for i, comp in enumerate(self.components):
+            result.components[i] = comp * other
+        return result
+
     def magnitude(self) -> ScalarField:
         """ベクトル場の大きさを計算
 
@@ -77,17 +126,36 @@ class VectorField:
         result.data = np.sqrt(sum(c.data**2 for c in self._components))
         return result
 
-    def divergence(self) -> ScalarField:
-        """発散を計算
-
-        Returns:
-            計算された発散を表すスカラー場
-        """
+    def div(self) -> ScalarField:
+        """NumPyスタイルの発散計算"""
         result = ScalarField(self.shape, self.dx)
-        result.data = sum(c.gradient(i) for i, c in enumerate(self._components))
+        result.data = sum(comp.gradient(i) for i, comp in enumerate(self.components))
         return result
 
-    def curl(self) -> Optional["VectorField"]:
+    def dot(self, other: 'VectorField') -> ScalarField:
+        """NumPyのdot演算に準じた内積計算"""
+        result = ScalarField(self.shape, self.dx)
+        result.data = sum(
+            c1.data * c2.data for c1, c2 in zip(self.components, other.components)
+        )
+        return result
+
+    def cross(self, other: 'VectorField') -> Optional['VectorField']:
+        """NumPyのcross演算に準じた外積計算（3次元のみ）"""
+        if self.ndim != 3:
+            return None
+        
+        result = VectorField(self.shape, self.dx)
+        u1, v1, w1 = [c.data for c in self.components]
+        u2, v2, w2 = [c.data for c in other.components]
+
+        result.components[0].data = v1 * w2 - w1 * v2
+        result.components[1].data = w1 * u2 - u1 * w2
+        result.components[2].data = u1 * v2 - v1 * u2
+
+        return result
+
+    def curl(self) -> Optional['VectorField']:
         """回転を計算
 
         Returns:
@@ -132,79 +200,6 @@ class VectorField:
         result = VectorField(self.shape, self.dx)
         for i, component in enumerate(self._components):
             result.components[i] = component.copy()
-        return result
-
-    def __add__(self, other: "VectorField") -> "VectorField":
-        """加算演算子の実装"""
-        if not isinstance(other, VectorField):
-            raise TypeError("ベクトル場同士の演算のみ可能です")
-        if self.shape != other.shape:
-            raise ValueError("場の形状が一致しません")
-
-        result = VectorField(self.shape, self.dx)
-        for i, (c1, c2) in enumerate(zip(self.components, other.components)):
-            result.components[i] = c1 + c2
-        return result
-
-    def __mul__(self, other) -> "VectorField":
-        """スカラー倍の実装"""
-        if not isinstance(other, (int, float)):
-            raise TypeError("スカラー倍のみ可能です")
-
-        result = VectorField(self.shape, self.dx)
-        for i, component in enumerate(self.components):
-            result.components[i] = component * other
-        return result
-
-    def __rmul__(self, other) -> "VectorField":
-        """右スカラー倍の実装"""
-        return self.__mul__(other)
-
-    def dot(self, other: "VectorField") -> ScalarField:
-        """内積を計算
-
-        Args:
-            other: 内積を取るベクトル場
-
-        Returns:
-            計算された内積を表すスカラー場
-        """
-        if not isinstance(other, VectorField):
-            raise TypeError("ベクトル場同士の演算のみ可能です")
-        if self.shape != other.shape:
-            raise ValueError("場の形状が一致しません")
-
-        result = ScalarField(self.shape, self.dx)
-        result.data = sum(
-            c1.data * c2.data for c1, c2 in zip(self.components, other.components)
-        )
-        return result
-
-    def cross(self, other: "VectorField") -> Optional["VectorField"]:
-        """外積を計算（3次元のみ）
-
-        Args:
-            other: 外積を取るベクトル場
-
-        Returns:
-            3次元の場合は計算された外積を表すベクトル場
-            2次元の場合はNone
-        """
-        if self.ndim != 3:
-            return None
-        if not isinstance(other, VectorField):
-            raise TypeError("ベクトル場同士の演算のみ可能です")
-        if self.shape != other.shape:
-            raise ValueError("場の形状が一致しません")
-
-        result = VectorField(self.shape, self.dx)
-        u1, v1, w1 = [c.data for c in self.components]
-        u2, v2, w2 = [c.data for c in other.components]
-
-        result.components[0].data = v1 * w2 - w1 * v2
-        result.components[1].data = w1 * u2 - u1 * w2
-        result.components[2].data = u1 * v2 - v1 * u2
-
         return result
 
     def save_state(self) -> Dict[str, Any]:
