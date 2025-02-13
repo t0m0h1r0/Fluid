@@ -12,9 +12,6 @@ import numpy as np
 
 from core.field import VectorField, ScalarField
 from numerics.poisson import PoissonConfig
-
-# from numerics.poisson import PoissonSolver
-# from numerics.poisson import SORSolver as PoissonSolver
 from numerics.poisson import ConjugateGradientSolver as PoissonSolver
 
 
@@ -34,8 +31,7 @@ class PressurePoissonSolver:
         velocity: VectorField,
         density: ScalarField,
         viscosity: ScalarField,
-        force: Optional[VectorField] = None,
-        initial_solution: Optional[ScalarField] = None,
+        external_force: Optional[VectorField] = None,
         **kwargs
     ) -> Tuple[ScalarField, Dict[str, Any]]:
         """
@@ -45,8 +41,7 @@ class PressurePoissonSolver:
             velocity: 速度場
             density: 密度場
             viscosity: 粘性場
-            force: 外力場（オプション）
-            initial_solution: 初期推定解（オプション）
+            external_force: 外力場（オプション）
 
         Returns:
             (圧力場, 診断情報)のタプル
@@ -57,33 +52,22 @@ class PressurePoissonSolver:
         ndim = velocity.ndim
 
         # 右辺の非密度項の計算
-        rhs = np.zeros_like(rho)
+        rhs = ScalarField(velocity.shape, velocity.dx)
 
         # 速度の発散項（密度スケールなし）
-        for i in range(ndim):
-            flux = np.zeros_like(rho)
-            for j in range(ndim):
-                # u_j * ∂u_i/∂x_j の計算
-                flux += (
-                    velocity.components[j].data * 
-                    np.gradient(velocity.components[i].data, dx, axis=j)
-                )
-            rhs += flux
+        velocity_divergence = velocity.divergence()
+        rhs.data += velocity_divergence.data
 
         # 外力項の追加（オプション、密度スケールなし）
-        if force is not None:
-            for i in range(ndim):
-                rhs += np.gradient(force.components[i].data, force.dx, axis=i)
+        if external_force is not None:
+            external_force_divergence = external_force.divergence()
+            rhs.data += external_force_divergence.data
 
         # 最後に密度をかける
-        rhs *= rho
-
-        # 初期解のセットアップ
-        if initial_solution is None:
-            initial_solution = ScalarField(velocity.shape, velocity.dx)
+        rhs.data *= rho
 
         # ポアソンソルバーの実行
-        result_data = self._poisson_solver.solve(rhs, initial_solution=initial_solution.data)
+        result_data = self._poisson_solver.solve(rhs.data)
 
         # 圧力場の作成
         pressure = ScalarField(velocity.shape, velocity.dx)
@@ -112,14 +96,10 @@ class PressurePoissonSolver:
             計算された残差
         """
         # ラプラシアンの計算
-        laplacian = np.zeros_like(solution.data)
-        for axis in range(solution.ndim):
-            forward = np.roll(solution.data, 1, axis=axis)
-            backward = np.roll(solution.data, -1, axis=axis)
-            laplacian += (forward + backward - 2 * solution.data) / (solution.dx ** 2)
+        laplacian = solution.laplacian()
 
         # 残差の計算
-        residual = laplacian - rhs
+        residual = laplacian.data - rhs
 
         # L2ノルムを計算
         residual_norm = np.sqrt(np.mean(residual**2))

@@ -207,7 +207,7 @@ class TwoPhaseFlowSimulator:
         )
 
         # 速度とレベルセットの時間微分を計算
-        velocity_derivative = self._navier_stokes_solver.compute_velocity_derivative(
+        velocity_derivative = self._navier_stokes_solver.compute(
             velocity=state.velocity,
             density=density,
             viscosity=viscosity,

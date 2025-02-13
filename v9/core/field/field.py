@@ -98,6 +98,19 @@ class Field(ABC):
         """
         return np.gradient(self._data, self._dx, axis=axis)
 
+    def divergence(self) -> np.ndarray:
+        """発散を計算
+
+        中心差分による2次精度の発散計算を行います。
+
+        Returns:
+            計算された発散
+        """
+        div = np.zeros_like(self._data)
+        for i in range(self.ndim):
+            div += np.gradient(self._data, self._dx, axis=i)
+        return div
+
     def laplacian(self) -> np.ndarray:
         """ラプラシアンを計算
 
@@ -106,10 +119,7 @@ class Field(ABC):
         Returns:
             計算されたラプラシアン
         """
-        return sum(
-            np.gradient(np.gradient(self._data, self._dx, axis=i), self._dx, axis=i)
-            for i in range(self.ndim)
-        )
+        return np.gradient(self.divergence(), self._dx)
 
     def copy(self) -> "Field":
         """場の深いコピーを作成
