@@ -1,7 +1,10 @@
 """
 二相流シミュレーションの統合的な実装
 
-このモジュールは、二相流シミュレーションの物理過程を統合的に扱います：
+このモジュールは、Level Set法を用いた二相流体シミュレーションの
+物理過程を統合的に取り扱います。
+
+主な機能:
 1. レベルセット関数からの物性値計算
 2. 外力（表面張力・重力）の計算
 3. 圧力ポアソン方程式の解法
@@ -9,11 +12,13 @@
 5. レベルセット方程式の時間発展
 """
 
-from typing import Dict, Any, Optional, Tuple
+from __future__ import annotations
+from typing import Optional, Dict, Any, Tuple
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from numerics.time_evolution.euler import ForwardEuler
+from core.solver import TemporalSolver
+from numerics.time_evolution import ForwardEuler, RungeKutta4
 
 from physics.levelset import LevelSetField
 from physics.navier_stokes import NavierStokesSolver
@@ -27,50 +32,72 @@ from simulations.initializer import SimulationInitializer
 
 
 class TwoPhaseFlowSimulator:
-    """二相流シミュレーションの統合的なソルバー"""
+    """
+    二相流シミュレーションの統合的なソルバー
 
-    def __init__(self, config: SimulationConfig):
-        """シミュレータを初期化
+    複雑な物理過程を統合的に解くための高度なシミュレーションフレームワーク。
+    """
+
+    def __init__(
+        self, config: SimulationConfig, time_integrator: Optional[TemporalSolver] = None
+    ):
+        """
+        シミュレータを初期化
 
         Args:
             config: シミュレーション設定
+            time_integrator: 時間積分器（指定しない場合は自動選択）
         """
         self.config = config
+        self._state: Optional[SimulationState] = None
+        self._diagnostics: Dict[str, Any] = {}
 
+        # 時間積分器の選択
+        if time_integrator is None:
+            time_integrator_name = config.numerical.time_integrator.lower()
+            if time_integrator_name == "rk4":
+                self._time_solver = RungeKutta4(
+                    cfl=config.numerical.cfl,
+                    min_dt=config.numerical.min_dt,
+                    max_dt=config.numerical.max_dt,
+                )
+            else:
+                self._time_solver = ForwardEuler(
+                    cfl=config.numerical.cfl,
+                    min_dt=config.numerical.min_dt,
+                    max_dt=config.numerical.max_dt,
+                )
+        else:
+            self._time_solver = time_integrator
+
+        # ソルバーの初期化
+        self._setup_solvers()
+
+    def _setup_solvers(self):
+        """
+        物理計算用のソルバーを初期化
+        """
         # 表面張力係数の計算
-        surface_tension_coefficient = 0.0
-        if len(config.physics.phases) >= 2:
-            surface_tension_coefficient = abs(
-                config.physics.phases[0].surface_tension
-                - config.physics.phases[1].surface_tension
+        surface_tension_coeff = 0.0
+        if len(self.config.physics.phases) >= 2:
+            surface_tension_coeff = abs(
+                self.config.physics.phases[0].surface_tension
+                - self.config.physics.phases[1].surface_tension
             )
-
-        # デフォルトの時間積分器
-        self._time_solver = ForwardEuler(
-            cfl=config.numerical.cfl,
-            min_dt=config.numerical.min_dt,
-            max_dt=config.numerical.max_dt,
-        )
-
-        # 表面張力係数の保存
-        self._surface_tension_coefficient = surface_tension_coefficient
 
         # ソルバーの初期化
         self._navier_stokes_solver = NavierStokesSolver()
         self._pressure_solver = PressurePoissonSolver()
         self._continuity_solver = ContinuityEquation()
         self._surface_tension_calculator = SurfaceTensionCalculator(
-            surface_tension_coefficient=surface_tension_coefficient
+            surface_tension_coefficient=surface_tension_coeff
         )
-
-        # 現在の状態
-        self._current_state = None
-        self._diagnostics = {}
 
     def compute_material_properties(
         self, levelset: LevelSetField
     ) -> Tuple[ScalarField, ScalarField]:
-        """レベルセット関数から物性値を計算
+        """
+        レベルセット関数から物性値を計算
 
         Args:
             levelset: レベルセット関数場
@@ -84,12 +111,10 @@ class TwoPhaseFlowSimulator:
             rho2=self.config.physics.phases[1].density,
         )
 
-        # 粘性場も同様に計算
-        viscosity = ScalarField(levelset.shape, levelset.dx)
-        viscosity.data = levelset.get_density(
+        viscosity = levelset.get_density(
             rho1=self.config.physics.phases[0].viscosity,
             rho2=self.config.physics.phases[1].viscosity,
-        ).data
+        )
 
         return density, viscosity
 
@@ -98,7 +123,8 @@ class TwoPhaseFlowSimulator:
         levelset: LevelSetField,
         density: ScalarField,
     ) -> Tuple[VectorField, Dict[str, Any]]:
-        """外力（重力と表面張力）を計算
+        """
+        外力（重力と表面張力）を計算
 
         Args:
             levelset: レベルセット関数場
@@ -129,7 +155,7 @@ class TwoPhaseFlowSimulator:
             "surface_tension": surface_tension_info,
             "gravity_max": float(np.max(np.abs(gravity_force.components[-1].data))),
             "total_force_max": float(
-                np.max([np.abs(f.data).max() for f in total_force.components])
+                max(np.max(np.abs(f.data)) for f in total_force.components)
             ),
         }
 
@@ -142,7 +168,8 @@ class TwoPhaseFlowSimulator:
         viscosity: ScalarField,
         external_force: VectorField,
     ) -> Tuple[ScalarField, Dict[str, Any]]:
-        """圧力場を計算
+        """
+        圧力場を計算
 
         Args:
             velocity: 速度場
@@ -154,14 +181,12 @@ class TwoPhaseFlowSimulator:
             (圧力場, 診断情報)のタプル
         """
         # 圧力場の計算
-        pressure = ScalarField(velocity.shape, velocity.dx)
-        pressure_data, solver_diagnostics = self._pressure_solver.solve(
+        pressure, solver_diagnostics = self._pressure_solver.solve(
+            density=density.data,
             velocity=velocity,
-            density=density,
             viscosity=viscosity,
             external_force=external_force,
         )
-        pressure.data = pressure_data
 
         # 診断情報の更新
         self._diagnostics.update(solver_diagnostics)
@@ -171,7 +196,8 @@ class TwoPhaseFlowSimulator:
     def step_forward(
         self, state: Optional[SimulationState] = None, dt: Optional[float] = None
     ) -> Tuple[SimulationState, Dict[str, Any]]:
-        """シミュレーションを1ステップ進める
+        """
+        シミュレーションを1ステップ進める
 
         Args:
             state: 現在の状態（Noneの場合は内部状態を使用）
@@ -180,8 +206,9 @@ class TwoPhaseFlowSimulator:
         Returns:
             (更新された状態, 診断情報)のタプル
         """
+        # 状態の確認と取得
         if state is None:
-            state = self._current_state
+            state = self._state
             if state is None:
                 raise ValueError("シミュレーション状態が初期化されていません")
 
@@ -190,7 +217,7 @@ class TwoPhaseFlowSimulator:
             dt = self._time_solver.compute_timestep(state=state)
 
         # 物性値の計算
-        density, viscosity = self.compute_material_properties(state.levelset)
+        density, viscosity = self.compute_material_properties(levelset=state.levelset)
 
         # 外力の計算
         external_forces, force_diagnostics = self.compute_external_forces(
@@ -227,7 +254,7 @@ class TwoPhaseFlowSimulator:
             state.levelset, dt, levelset_derivative
         )
 
-        # 必要に応じてレベルセット関数の再初期化
+        # レベルセット関数の再初期化
         if self._should_reinitialize(new_levelset):
             new_levelset.reinitialize()
 
@@ -249,12 +276,13 @@ class TwoPhaseFlowSimulator:
         self._diagnostics = diagnostics
 
         # 現在の状態を更新
-        self._current_state = new_state
+        self._state = new_state
 
         return new_state, diagnostics
 
     def _should_reinitialize(self, state: SimulationState) -> bool:
-        """Level Set関数の再初期化が必要か判定
+        """
+        Level Set関数の再初期化が必要か判定
 
         Args:
             state: シミュレーション状態
@@ -262,7 +290,7 @@ class TwoPhaseFlowSimulator:
         Returns:
             再初期化が必要かどうか
         """
-        reinit_interval = self.config.numerical.get("level_set_reinit_interval", 10)
+        reinit_interval = self.config.numerical.level_set.get("reinit_interval", 10)
         if reinit_interval <= 0:
             return False
 
@@ -271,24 +299,68 @@ class TwoPhaseFlowSimulator:
         return current_step % reinit_interval == 0
 
     def initialize(self, state: Optional[SimulationState] = None):
-        """シミュレーションを初期化"""
+        """
+        シミュレーションを初期化
+
+        Args:
+            state: 初期状態（Noneの場合は設定から自動生成）
+        """
         if state is None:
             initializer = SimulationInitializer(self.config)
             state = initializer.create_initial_state()
-        self._current_state = state
+
+        self._state = state
 
     def get_state(self) -> Tuple[SimulationState, Dict[str, Any]]:
-        """現在のシミュレーション状態を取得"""
-        if self._current_state is None:
+        """
+        現在のシミュレーション状態を取得
+
+        Returns:
+            (現在の状態, 診断情報)のタプル
+        """
+        if self._state is None:
             raise ValueError("シミュレーション状態が初期化されていません")
-        return self._current_state, self._current_state.get_diagnostics()
+
+        return self._state, self._state.get_diagnostics()
 
     def save_checkpoint(self, filepath: str):
-        """チェックポイントを保存"""
-        if self._current_state is None:
+        """
+        現在の状態をチェックポイントとして保存
+
+        Args:
+            filepath: 保存先のファイルパス
+        """
+        if self._state is None:
             raise ValueError("シミュレーション状態が初期化されていません")
-        self._current_state.save_state(filepath)
+
+        self._state.save_state(filepath)
 
     def load_checkpoint(self, filepath: str) -> SimulationState:
-        """チェックポイントから状態を読み込み"""
+        """
+        チェックポイントから状態を読み込み
+
+        Args:
+            filepath: 読み込むチェックポイントファイルのパス
+
+        Returns:
+            読み込まれた状態
+        """
         return SimulationState.load_state(filepath)
+
+
+# 将来の拡張性のためのファクトリメソッド
+def create_simulator(
+    config: SimulationConfig, time_integrator: Optional[TemporalSolver] = None
+) -> TwoPhaseFlowSimulator:
+    """
+    シミュレータのファクトリメソッド
+
+    Args:
+        config: シミュレーション設定
+        time_integrator: オプションの時間積分器
+
+    Returns:
+        初期化されたTwoPhaseFlowSimulatorインスタンス
+    """
+    simulator = TwoPhaseFlowSimulator(config, time_integrator)
+    return simulator
