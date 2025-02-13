@@ -207,3 +207,14 @@ class ScalarField(Field):
         # グリッド間隔の確認（必要に応じて）
         if abs(state["dx"] - self.dx) > 1e-10:
             raise ValueError("グリッド間隔が一致しません")
+
+    def norm(self, ord=2) -> float:
+        """場のノルムを計算
+
+        Args:
+            ord: ノルムの種類（デフォルトはL2ノルム）
+
+        Returns:
+            計算されたノルム
+        """
+        return np.linalg.norm(self._data.ravel(), ord=ord)

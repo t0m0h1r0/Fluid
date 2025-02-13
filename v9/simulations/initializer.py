@@ -24,11 +24,11 @@ class SimulationInitializer:
         """
         self.config = config
         self._validate_config()
-        
+
         # InterfaceOperationsの初期化
         self._interface_ops = InterfaceOperations(
             dx=self.config.domain.size[0] / self.config.domain.dimensions[0],
-            epsilon=self.config.numerical.get('interface', {}).get('epsilon', 1e-2)
+            epsilon=self.config.numerical.get("interface", {}).get("epsilon", 1e-2),
         )
 
     def _validate_config(self):
@@ -121,35 +121,27 @@ class SimulationInitializer:
         # デフォルトの平面界面を生成
         if not objects:
             levelset = self._interface_ops.create_plane(
-                shape=shape, 
-                normal=[0, 0, 1], 
-                point=[0.5, 0.5, 0.5]
+                shape=shape, normal=[0, 0, 1], point=[0.5, 0.5, 0.5]
             )
         else:
             # 最初のオブジェクトに基づいて界面を生成
             first_obj = objects[0]
-            
+
             if first_obj.get("type") == "plate":
                 height = first_obj.get("height", 0.5)
                 levelset = self._interface_ops.create_plane(
-                    shape=shape, 
-                    normal=[0, 0, 1], 
-                    point=[0.5, 0.5, height]
+                    shape=shape, normal=[0, 0, 1], point=[0.5, 0.5, height]
                 )
             elif first_obj.get("type") == "sphere":
                 center = first_obj.get("center", [0.5, 0.5, 0.5])
                 radius = first_obj.get("radius", 0.1)
                 levelset = self._interface_ops.create_sphere(
-                    shape=shape, 
-                    center=center, 
-                    radius=radius
+                    shape=shape, center=center, radius=radius
                 )
             else:
                 # フォールバック: デフォルトの平面界面
                 levelset = self._interface_ops.create_plane(
-                    shape=shape, 
-                    normal=[0, 0, 1], 
-                    point=[0.5, 0.5, 0.5]
+                    shape=shape, normal=[0, 0, 1], point=[0.5, 0.5, 0.5]
                 )
 
         # 残りのオブジェクトを組み合わせる
@@ -157,19 +149,19 @@ class SimulationInitializer:
             if obj.get("type") == "plate":
                 height = obj.get("height", 0.5)
                 plate = self._interface_ops.create_plane(
-                    shape=shape, 
-                    normal=[0, 0, 1], 
-                    point=[0.5, 0.5, height]
+                    shape=shape, normal=[0, 0, 1], point=[0.5, 0.5, height]
                 )
-                levelset = self._interface_ops.combine_interfaces(levelset, plate, "union")
+                levelset = self._interface_ops.combine_interfaces(
+                    levelset, plate, "union"
+                )
             elif obj.get("type") == "sphere":
                 center = obj.get("center", [0.5, 0.5, 0.5])
                 radius = obj.get("radius", 0.1)
                 sphere = self._interface_ops.create_sphere(
-                    shape=shape, 
-                    center=center, 
-                    radius=radius
+                    shape=shape, center=center, radius=radius
                 )
-                levelset = self._interface_ops.combine_interfaces(levelset, sphere, "union")
+                levelset = self._interface_ops.combine_interfaces(
+                    levelset, sphere, "union"
+                )
 
         return levelset

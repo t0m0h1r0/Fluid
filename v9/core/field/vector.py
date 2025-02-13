@@ -243,9 +243,6 @@ class VectorField:
             全成分のL2ノルムの最大値
         """
         # 各成分のL2ノルムを計算
-        component_norms = [
-            np.sqrt(np.mean(comp.data ** 2))
-            for comp in self.components
-        ]
+        component_norms = [np.sqrt(np.mean(comp.data**2)) for comp in self.components]
         # 最大のノルムを返す
         return max(component_norms)

@@ -6,7 +6,7 @@
 """
 
 from dataclasses import dataclass
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import numpy as np
 
 from core.field import VectorField, ScalarField
@@ -30,11 +30,11 @@ class SimulationState:
         """初期化後の処理"""
         if self.diagnostics is None:
             self.diagnostics = {}
-        
+
         # 界面演算子の初期化
         self._interface_ops = InterfaceOperations(
             dx=self.velocity.dx,
-            epsilon=1e-2  # デフォルトのepsilon値
+            epsilon=1e-2,  # デフォルトのepsilon値
         )
 
     def validate(self) -> None:
@@ -67,9 +67,7 @@ class SimulationState:
         # 相の物性値から粘性場を計算
         phases = physics_config.phases
         return self._interface_ops.get_property_field(
-            self.levelset, 
-            value1=phases[0].viscosity, 
-            value2=phases[1].viscosity
+            self.levelset, value1=phases[0].viscosity, value2=phases[1].viscosity
         )
 
     def get_density(self, physics_config) -> ScalarField:
@@ -84,9 +82,7 @@ class SimulationState:
         # 相の物性値から密度場を計算
         phases = physics_config.phases
         return self._interface_ops.get_property_field(
-            self.levelset, 
-            value1=phases[0].density, 
-            value2=phases[1].density
+            self.levelset, value1=phases[0].density, value2=phases[1].density
         )
 
     def get_diagnostics(self) -> Dict[str, Any]:
@@ -115,7 +111,9 @@ class SimulationState:
         return SimulationState(
             time=self.time,
             velocity=self.velocity.copy(),
-            levelset=ScalarField(self.levelset.shape, self.levelset.dx, self.levelset.data.copy()),
+            levelset=ScalarField(
+                self.levelset.shape, self.levelset.dx, self.levelset.data.copy()
+            ),
             pressure=self.pressure.copy(),
             diagnostics=self.diagnostics.copy() if self.diagnostics else None,
         )

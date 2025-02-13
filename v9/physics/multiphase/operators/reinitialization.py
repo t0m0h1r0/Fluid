@@ -15,7 +15,7 @@ class ReinitializationOperator:
 
     def __init__(self, dx: float, epsilon: float = 1.0e-6):
         """再構築演算子を初期化
-        
+
         Args:
             dx: グリッド間隔
             epsilon: 数値計算の安定化パラメータ
@@ -27,15 +27,15 @@ class ReinitializationOperator:
         self, phi: ScalarField, n_steps: int = 5, dt: float = 0.1
     ) -> ScalarField:
         """距離関数の性質を回復
-        
+
         高速行進法を用いて以下の発展方程式を解きます：
         ∂φ/∂τ = sign(φ₀)(1 - |∇φ|)
-        
+
         Args:
             phi: 入力スカラー場
             n_steps: 反復回数
             dt: 疑似時間の時間刻み幅
-            
+
         Returns:
             再構築されたスカラー場
         """
@@ -61,12 +61,12 @@ class ReinitializationOperator:
 
     def validate(self, phi: ScalarField) -> float:
         """距離関数の性質を検証
-        
+
         |∇φ| = 1 からのずれを計算します。
-        
+
         Args:
             phi: 検証するスカラー場
-            
+
         Returns:
             勾配ノルムの1からの平均二乗偏差
         """
@@ -83,12 +83,12 @@ class ReinitializationOperator:
 
     def _compute_stable_sign(self, phi: ScalarField, width: float = 5.0) -> np.ndarray:
         """安定化された符号関数を計算
-        
+
         Args:
             phi: スカラー場
             width: 遷移領域の幅（グリッド間隔の倍数）
-            
+
         Returns:
             安定化された符号関数の値
         """
-        return phi.data / np.sqrt(phi.data**2 + (width * self.dx)**2)
+        return phi.data / np.sqrt(phi.data**2 + (width * self.dx) ** 2)

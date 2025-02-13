@@ -12,7 +12,7 @@ class GeometryOperator:
 
     def __init__(self, dx: float, epsilon: float = 1.0e-6):
         """幾何演算子を初期化
-        
+
         Args:
             dx: グリッド間隔
             epsilon: 数値計算の安定化パラメータ
@@ -22,16 +22,16 @@ class GeometryOperator:
 
     def compute_normal(self, phi: ScalarField) -> VectorField:
         """法線ベクトルを計算: n = ∇φ/|∇φ|
-        
+
         Args:
             phi: 距離関数
-            
+
         Returns:
             法線ベクトル場
         """
         # 勾配の計算
         grad_components = [phi.gradient(i) for i in range(phi.ndim)]
-        
+
         # 勾配ノルムの計算
         grad_norm = np.sqrt(sum(g * g for g in grad_components))
         grad_norm = np.maximum(grad_norm, self.epsilon)
@@ -45,13 +45,15 @@ class GeometryOperator:
 
         return normal
 
-    def compute_curvature(self, phi: ScalarField, method: str = "standard") -> ScalarField:
+    def compute_curvature(
+        self, phi: ScalarField, method: str = "standard"
+    ) -> ScalarField:
         """曲率を計算: κ = ∇⋅n = ∇⋅(∇φ/|∇φ|)
-        
+
         Args:
             phi: 距離関数
             method: 計算手法 ('standard' または 'high_order')
-            
+
         Returns:
             曲率場
         """
@@ -90,7 +92,7 @@ class GeometryOperator:
                 else:
                     # 交差微分項の4次精度差分
                     d2 = self._compute_4th_order_cross_derivative(phi, i, j)
-                
+
                 result.data += d2
 
         return result
@@ -101,16 +103,16 @@ class GeometryOperator:
         """4次精度の2階微分を計算"""
         data = phi.data
         dx = self.dx
-        
+
         # 4次精度の係数
-        c = [-1/12, 4/3, -5/2, 4/3, -1/12]
-        
+        c = [-1 / 12, 4 / 3, -5 / 2, 4 / 3, -1 / 12]
+
         # 2階微分の計算
         result = np.zeros_like(data)
         for k in range(5):
-            shifted = np.roll(data, k-2, axis=i)
+            shifted = np.roll(data, k - 2, axis=i)
             result += c[k] * shifted
-            
+
         return result / (dx * dx)
 
     def _compute_4th_order_cross_derivative(
@@ -119,17 +121,19 @@ class GeometryOperator:
         """4次精度の交差微分を計算"""
         data = phi.data
         dx = self.dx
-        
+
         # まず i 方向の1階微分を計算
         di = np.zeros_like(data)
         for k in range(-2, 3):
             shifted = np.roll(data, k, axis=i)
-            di += (-1/12 if abs(k) == 2 else 2/3 if abs(k) == 1 else 0) * shifted
-            
+            di += (-1 / 12 if abs(k) == 2 else 2 / 3 if abs(k) == 1 else 0) * shifted
+
         # 次に j 方向の1階微分を計算
         result = np.zeros_like(data)
         for k in range(-2, 3):
             shifted = np.roll(di, k, axis=j)
-            result += (-1/12 if abs(k) == 2 else 2/3 if abs(k) == 1 else 0) * shifted
-            
+            result += (
+                -1 / 12 if abs(k) == 2 else 2 / 3 if abs(k) == 1 else 0
+            ) * shifted
+
         return result / (dx * dx)

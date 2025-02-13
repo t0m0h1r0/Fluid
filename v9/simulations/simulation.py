@@ -52,10 +52,10 @@ class TwoPhaseFlowSimulator:
         self._diagnostics: Dict[str, Any] = {}
 
         # InterfaceOperationsの初期化
-        interface_config = config.numerical.get('interface', {})
+        interface_config = config.numerical.get("interface", {})
         self._interface_ops = InterfaceOperations(
             dx=config.domain.size[0] / config.domain.dimensions[0],
-            epsilon=interface_config.get('epsilon', 1e-2)
+            epsilon=interface_config.get("epsilon", 1e-2),
         )
 
         # 時間積分器の設定
@@ -144,8 +144,10 @@ class TwoPhaseFlowSimulator:
         # レベルセット関数の再初期化
         if self._should_reinitialize(state):
             new_levelset.data = self._interface_ops.reinitialize(
-                new_levelset, 
-                n_steps=self.config.numerical.get('interface', {}).get('reinit_steps', 2)
+                new_levelset,
+                n_steps=self.config.numerical.get("interface", {}).get(
+                    "reinit_steps", 2
+                ),
             ).data
 
         # 新しい状態の作成
@@ -235,8 +237,8 @@ class TwoPhaseFlowSimulator:
         Returns:
             再初期化が必要かどうか
         """
-        interface_config = self.config.numerical.get('interface', {})
-        reinit_interval = interface_config.get('reinit_interval', 10)
+        interface_config = self.config.numerical.get("interface", {})
+        reinit_interval = interface_config.get("reinit_interval", 10)
         if reinit_interval <= 0:
             return False
 

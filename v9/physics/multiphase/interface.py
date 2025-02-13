@@ -4,7 +4,7 @@
 相識別などの機能を統合的に提供します。
 """
 
-from typing import Tuple, List, Dict, Any, Optional
+from typing import Tuple, List, Dict, Any
 import numpy as np
 
 from core.field import ScalarField, VectorField
@@ -19,14 +19,14 @@ class InterfaceOperations:
 
     def __init__(self, dx: float, epsilon: float = 1.0e-6):
         """界面計算機能を初期化
-        
+
         Args:
             dx: グリッド間隔
             epsilon: 数値計算の安定化パラメータ
         """
         self.dx = dx
         self.epsilon = epsilon
-        
+
         # 各演算子の初期化
         self._init_op = InitializationOperator(dx)
         self._reinit_op = ReinitializationOperator(dx, epsilon)
@@ -93,7 +93,7 @@ class InterfaceOperations:
     # 診断情報の取得メソッド
     def get_diagnostics(self, phi: ScalarField) -> Dict[str, Any]:
         """界面に関する診断情報を取得
-        
+
         以下の情報を含む辞書を返します：
         - volume_fraction: 第1相の体積分率
         - interface_points: 界面近傍の格子点数
@@ -126,7 +126,7 @@ class InterfaceOperations:
         return {
             "volume_fraction": float(np.mean(phase.data)),
             "interface_points": int(np.sum(interface_region)),
-            "interface_area": float(np.sum(delta.data) * self.dx ** phi.ndim),
+            "interface_area": float(np.sum(delta.data) * self.dx**phi.ndim),
             "distance_error": distance_error,
             "curvature": {
                 "min": kappa_min,
@@ -138,32 +138,32 @@ class InterfaceOperations:
 
     def compute_interface_measures(self, phi: ScalarField) -> Dict[str, float]:
         """界面の各種測度を計算
-        
+
         以下の測度を計算します：
         - volume: 第1相の体積
         - area: 界面の面積
         - length: 界面の長さ（2Dの場合）
         - perimeter: 界面の周長（3Dの場合）
-        
+
         Args:
             phi: 距離関数
-            
+
         Returns:
             各種測度を含む辞書
         """
         # 相分布とデルタ関数
         phase = self.get_phase_distribution(phi)
         delta = self.get_interface_delta(phi)
-        
+
         # グリッド体積要素
-        dv = self.dx ** phi.ndim
-        
+        dv = self.dx**phi.ndim
+
         # 体積の計算
         volume = float(np.sum(phase.data) * dv)
-        
+
         # 界面の面積/長さの計算
         interface_measure = float(np.sum(delta.data) * dv)
-        
+
         return {
             "volume": volume,
             "area": interface_measure if phi.ndim == 3 else None,
