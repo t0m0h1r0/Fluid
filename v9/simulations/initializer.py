@@ -116,40 +116,55 @@ class SimulationInitializer:
         """
         # 界面設定の取得
         initial_conditions = self.config.initial_conditions
+        background_phase = initial_conditions.background.get("phase")  # 背景相の取得
+
+        # 最初のオブジェクトに基づいて界面を生成
         objects = initial_conditions.objects if initial_conditions.objects else []
-
-        # デフォルトの平面界面を生成
-        if not objects:
-            levelset = self._interface_ops.create_plane(
-                shape=shape, normal=[0, 0, 1], point=[0.5, 0.5, 0.5]
-            )
-        else:
-            # 最初のオブジェクトに基づいて界面を生成
+        if objects:
             first_obj = objects[0]
-
             if first_obj.get("type") == "plate":
                 height = first_obj.get("height", 0.5)
+                phase = first_obj.get(
+                    "phase", background_phase
+                )  # オブジェクトの相を取得
+                if phase == background_phase:
+                    normal = [0, 0, 1]  # 背景相と同じ場合、正の高さ
+                else:
+                    normal = [0, 0, -1]  # 背景相と異なる場合、負の高さ
+                point = [0.5, 0.5, height]
                 levelset = self._interface_ops.create_plane(
-                    shape=shape, normal=[0, 0, 1], point=[0.5, 0.5, height]
+                    shape=shape, normal=normal, point=point
                 )
             elif first_obj.get("type") == "sphere":
                 center = first_obj.get("center", [0.5, 0.5, 0.5])
                 radius = first_obj.get("radius", 0.1)
-                levelset = self._interface_ops.create_sphere(
+                phase = first_obj.get(
+                    "phase", background_phase
+                )  # オブジェクトの相を取得
+                sign = (
+                    1.0 if phase != background_phase else -1.0
+                )  # 背景相と異なる場合は正の距離関数
+                levelset = sign * self._interface_ops.create_sphere(
                     shape=shape, center=center, radius=radius
                 )
-            else:
-                # フォールバック: デフォルトの平面界面
-                levelset = self._interface_ops.create_plane(
-                    shape=shape, normal=[0, 0, 1], point=[0.5, 0.5, 0.5]
-                )
+        else:
+            # フォールバック: デフォルトの平面界面
+            levelset = self._interface_ops.create_plane(
+                shape=shape, normal=[0, 0, 1], point=[0.5, 0.5, 0.5]
+            )
 
         # 残りのオブジェクトを組み合わせる
         for obj in objects[1:]:
             if obj.get("type") == "plate":
                 height = obj.get("height", 0.5)
+                phase = obj.get("phase", background_phase)  # オブジェクトの相を取得
+                if phase == background_phase:
+                    normal = [0, 0, 1]
+                else:
+                    normal = [0, 0, -1]
+                point = [0.5, 0.5, height]
                 plate = self._interface_ops.create_plane(
-                    shape=shape, normal=[0, 0, 1], point=[0.5, 0.5, height]
+                    shape=shape, normal=normal, point=point
                 )
                 levelset = self._interface_ops.combine_interfaces(
                     levelset, plate, "union"
@@ -157,7 +172,9 @@ class SimulationInitializer:
             elif obj.get("type") == "sphere":
                 center = obj.get("center", [0.5, 0.5, 0.5])
                 radius = obj.get("radius", 0.1)
-                sphere = self._interface_ops.create_sphere(
+                phase = obj.get("phase", background_phase)  # オブジェクトの相を取得
+                sign = 1.0 if phase != background_phase else -1.0
+                sphere = sign * self._interface_ops.create_sphere(
                     shape=shape, center=center, radius=radius
                 )
                 levelset = self._interface_ops.combine_interfaces(
