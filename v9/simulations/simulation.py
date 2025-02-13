@@ -13,12 +13,12 @@
 """
 
 from __future__ import annotations
-from typing import Optional, Dict, Any, Tuple
+from typing import Dict, Any, Optional, Tuple
 import numpy as np
 
 from core.field import VectorField, ScalarField
 from core.solver import TemporalSolver
-from numerics.time_evolution import ForwardEuler, RungeKutta4
+from numerics.time_evolution import ForwardEuler
 
 from physics.levelset import LevelSetField
 from physics.navier_stokes import NavierStokesSolver
@@ -52,23 +52,12 @@ class TwoPhaseFlowSimulator:
         self._state: Optional[SimulationState] = None
         self._diagnostics: Dict[str, Any] = {}
 
-        # 時間積分器の選択
-        if time_integrator is None:
-            time_integrator_name = config.numerical.time_integrator.lower()
-            if time_integrator_name == "rk4":
-                self._time_solver = RungeKutta4(
-                    cfl=config.numerical.cfl,
-                    min_dt=config.numerical.min_dt,
-                    max_dt=config.numerical.max_dt,
-                )
-            else:
-                self._time_solver = ForwardEuler(
-                    cfl=config.numerical.cfl,
-                    min_dt=config.numerical.min_dt,
-                    max_dt=config.numerical.max_dt,
-                )
-        else:
-            self._time_solver = time_integrator
+        # 時間積分器の設定
+        self._time_solver = time_integrator or ForwardEuler(
+            cfl=config.numerical.cfl,
+            min_dt=config.numerical.min_dt,
+            max_dt=config.numerical.max_dt,
+        )
 
         # ソルバーの初期化
         self._setup_solvers()
@@ -212,9 +201,9 @@ class TwoPhaseFlowSimulator:
             if state is None:
                 raise ValueError("シミュレーション状態が初期化されていません")
 
-        # 時間刻み幅の計算
+        # 時間刻み幅の計算（新しい時間発展インターフェースに対応）
         if dt is None:
-            dt = self._time_solver.compute_timestep(state=state)
+            dt = self._time_solver.compute_timestep(state.velocity)
 
         # 物性値の計算
         density, viscosity = self.compute_material_properties(levelset=state.levelset)
@@ -246,16 +235,16 @@ class TwoPhaseFlowSimulator:
             field=state.levelset, velocity=state.velocity
         )
 
-        # 時間積分器による更新
+        # 時間積分による状態の更新（新しいインターフェースに対応）
         new_velocity = self._time_solver.integrate(
-            state.velocity, dt, velocity_derivative
+            field=state.velocity, derivative=velocity_derivative, dt=dt
         )
         new_levelset = self._time_solver.integrate(
-            state.levelset, dt, levelset_derivative
+            field=state.levelset, derivative=levelset_derivative, dt=dt
         )
 
         # レベルセット関数の再初期化
-        if self._should_reinitialize(new_levelset):
+        if self._should_reinitialize(state):
             new_levelset.reinitialize()
 
         # 新しい状態の作成
