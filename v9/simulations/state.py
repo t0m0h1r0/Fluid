@@ -1,15 +1,16 @@
-"""シミュレーションの状態を管理するモジュール
+"""
+シミュレーションの状態を管理するモジュール
 
-このモジュールは、二相流シミュレーションの状態（速度場、レベルセット場、圧力場など）を
+このモジュールは、二相流シミュレーションの状態（速度場、界面関数、圧力場など）を
 管理するためのデータクラスを提供します。
 """
 
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from physics.levelset import LevelSetField
+from physics.multiphase import InterfaceOperations
 
 
 @dataclass
@@ -21,7 +22,7 @@ class SimulationState:
 
     time: float
     velocity: VectorField
-    levelset: LevelSetField
+    levelset: ScalarField  # ScalarFieldとして定義
     pressure: ScalarField
     diagnostics: Dict[str, Any] = None
 
@@ -29,6 +30,12 @@ class SimulationState:
         """初期化後の処理"""
         if self.diagnostics is None:
             self.diagnostics = {}
+        
+        # 界面演算子の初期化
+        self._interface_ops = InterfaceOperations(
+            dx=self.velocity.dx,
+            epsilon=1e-2  # デフォルトのepsilon値
+        )
 
     def validate(self) -> None:
         """状態の妥当性を検証"""
@@ -43,20 +50,50 @@ class SimulationState:
         if len(set(shapes.values())) > 1:
             raise ValueError(f"場の形状が一致しません: {shapes}")
 
-    def get_density(self) -> ScalarField:
+    def get_phase_distribution(self) -> ScalarField:
         """密度場を計算"""
-        density = ScalarField(self.levelset.shape, self.levelset.dx)
-        density.data = self.levelset.get_heaviside().data
-        return density
+        # InterfaceOperationsのメソッドを使用
+        return self._interface_ops.get_phase_distribution(self.levelset)
 
-    def get_viscosity(self) -> ScalarField:
-        """粘性場を計算"""
-        viscosity = ScalarField(self.levelset.shape, self.levelset.dx)
-        viscosity.data = self.levelset.get_heaviside().data
-        return viscosity
+    def get_viscosity(self, physics_config) -> ScalarField:
+        """粘性場を計算
+
+        Args:
+            physics_config: 物理設定
+
+        Returns:
+            粘性場
+        """
+        # 相の物性値から粘性場を計算
+        phases = physics_config.phases
+        return self._interface_ops.get_property_field(
+            self.levelset, 
+            value1=phases[0].viscosity, 
+            value2=phases[1].viscosity
+        )
+
+    def get_density(self, physics_config) -> ScalarField:
+        """密度場を計算
+
+        Args:
+            physics_config: 物理設定
+
+        Returns:
+            密度場
+        """
+        # 相の物性値から密度場を計算
+        phases = physics_config.phases
+        return self._interface_ops.get_property_field(
+            self.levelset, 
+            value1=phases[0].density, 
+            value2=phases[1].density
+        )
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""
+        # 界面の診断情報を取得
+        interface_diagnostics = self._interface_ops.get_diagnostics(self.levelset)
+
         return {
             "time": self.time,
             "velocity_max": float(
@@ -65,7 +102,7 @@ class SimulationState:
             "pressure_max": float(np.abs(self.pressure.data).max()),
             "levelset_min": float(self.levelset.data.min()),
             "levelset_max": float(self.levelset.data.max()),
-            "interface_geometry": self.levelset.get_geometry_info(),
+            "interface_geometry": interface_diagnostics,
             **self.diagnostics,
         }
 
@@ -78,7 +115,7 @@ class SimulationState:
         return SimulationState(
             time=self.time,
             velocity=self.velocity.copy(),
-            levelset=self.levelset.copy(),
+            levelset=ScalarField(self.levelset.shape, self.levelset.dx, self.levelset.data.copy()),
             pressure=self.pressure.copy(),
             diagnostics=self.diagnostics.copy() if self.diagnostics else None,
         )
@@ -129,8 +166,8 @@ class SimulationState:
         for i, v_data in enumerate(data["velocity_data"]):
             velocity.components[i].data = v_data
 
-        # レベルセット場の再構築
-        levelset = LevelSetField(shape=data["levelset_data"].shape)
+        # 界面関数の再構築
+        levelset = ScalarField(data["levelset_data"].shape)
         levelset.data = data["levelset_data"]
 
         # 圧力場の再構築

@@ -1,16 +1,16 @@
 """シミュレーションの初期化を担当するモジュール
 
 このモジュールは、二相流シミュレーションの初期状態を設定します。
-設定ファイルに基づいて、速度場、圧力場、レベルセット関数などを
+設定ファイルに基づいて、速度場、圧力場、界面関数などを
 適切に初期化します。
 """
 
 import numpy as np
 
 from core.field import VectorField, ScalarField
-from physics.levelset import LevelSetField, LevelSetParameters
-from simulations.config import SimulationConfig
-from simulations.state import SimulationState
+from physics.multiphase import InterfaceOperations
+from .config import SimulationConfig
+from .state import SimulationState
 
 
 class SimulationInitializer:
@@ -24,6 +24,12 @@ class SimulationInitializer:
         """
         self.config = config
         self._validate_config()
+        
+        # InterfaceOperationsの初期化
+        self._interface_ops = InterfaceOperations(
+            dx=self.config.domain.size[0] / self.config.domain.dimensions[0],
+            epsilon=self.config.numerical.get('interface', {}).get('epsilon', 1e-2)
+        )
 
     def _validate_config(self):
         """設定の妥当性を検証"""
@@ -47,8 +53,8 @@ class SimulationInitializer:
         # 速度場の初期化
         velocity = self._initialize_velocity(shape, dx)
 
-        # レベルセット関数の初期化
-        levelset = self._initialize_levelset(shape, dx)
+        # 界面関数の初期化
+        levelset = self._initialize_interface(shape, dx)
 
         # 圧力場の初期化
         pressure = ScalarField(shape, dx)
@@ -57,7 +63,7 @@ class SimulationInitializer:
         state = SimulationState(
             time=0.0,
             velocity=velocity,
-            levelset=levelset,
+            levelset=levelset,  # ScalarFieldとして渡す
             pressure=pressure,
         )
 
@@ -98,32 +104,72 @@ class SimulationInitializer:
 
         return velocity
 
-    def _initialize_levelset(self, shape: tuple, dx: float) -> LevelSetField:
-        """レベルセット関数を初期化
+    def _initialize_interface(self, shape: tuple, dx: float) -> ScalarField:
+        """界面関数を初期化
 
         Args:
             shape: グリッドの形状
             dx: グリッド間隔
 
         Returns:
-            初期化されたレベルセット場
+            初期化された界面関数（ScalarField）
         """
-        # Level Set パラメータの設定
-        params = LevelSetParameters(
-            epsilon=self.config.numerical.level_set_epsilon,
-            reinit_interval=self.config.numerical.level_set_reinit_interval,
-            reinit_steps=self.config.numerical.level_set_reinit_steps,
-        )
+        # 界面設定の取得
+        initial_conditions = self.config.initial_conditions
+        objects = initial_conditions.objects if initial_conditions.objects else []
 
-        levelset = LevelSetField(shape, dx, params)
+        # デフォルトの平面界面を生成
+        if not objects:
+            levelset = self._interface_ops.create_plane(
+                shape=shape, 
+                normal=[0, 0, 1], 
+                point=[0.5, 0.5, 0.5]
+            )
+        else:
+            # 最初のオブジェクトに基づいて界面を生成
+            first_obj = objects[0]
+            
+            if first_obj.get("type") == "plate":
+                height = first_obj.get("height", 0.5)
+                levelset = self._interface_ops.create_plane(
+                    shape=shape, 
+                    normal=[0, 0, 1], 
+                    point=[0.5, 0.5, height]
+                )
+            elif first_obj.get("type") == "sphere":
+                center = first_obj.get("center", [0.5, 0.5, 0.5])
+                radius = first_obj.get("radius", 0.1)
+                levelset = self._interface_ops.create_sphere(
+                    shape=shape, 
+                    center=center, 
+                    radius=radius
+                )
+            else:
+                # フォールバック: デフォルトの平面界面
+                levelset = self._interface_ops.create_plane(
+                    shape=shape, 
+                    normal=[0, 0, 1], 
+                    point=[0.5, 0.5, 0.5]
+                )
 
-        # レベルセット関数を初期化（背景相情報とオブジェクトリストを一括で渡す）
-        levelset.initialize(
-            background_phase=self.config.initial_conditions.background["phase"],
-            objects=self.config.initial_conditions.objects,
-        )
-
-        # 符号付き距離関数として再初期化
-        levelset.reinitialize()
+        # 残りのオブジェクトを組み合わせる
+        for obj in objects[1:]:
+            if obj.get("type") == "plate":
+                height = obj.get("height", 0.5)
+                plate = self._interface_ops.create_plane(
+                    shape=shape, 
+                    normal=[0, 0, 1], 
+                    point=[0.5, 0.5, height]
+                )
+                levelset = self._interface_ops.combine_interfaces(levelset, plate, "union")
+            elif obj.get("type") == "sphere":
+                center = obj.get("center", [0.5, 0.5, 0.5])
+                radius = obj.get("radius", 0.1)
+                sphere = self._interface_ops.create_sphere(
+                    shape=shape, 
+                    center=center, 
+                    radius=radius
+                )
+                levelset = self._interface_ops.combine_interfaces(levelset, sphere, "union")
 
         return levelset

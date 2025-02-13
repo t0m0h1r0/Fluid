@@ -36,18 +36,22 @@ boundary_conditions:
 # 初期条件
 initial_conditions:
   background:
-    phase: nitrogen
+    phase: nitrogen  # デフォルトの背景相
+
+  # 界面オブジェクトの設定
   objects:
-    - type: plate
+    - type: plate  # プレート（平面）界面の例
       phase: water
       height: 0.70  # 0から1の間の値を使用
-    - type: sphere
+    
+    - type: sphere  # 球形界面の例
       phase: nitrogen
       center: [0.5, 0.5, 0.4]
       radius: 0.2
 
+  # 初期速度場の設定
   velocity:
-    type: zero
+    type: zero  # または "uniform", "vortex"
 
 # 数値スキーム
 numerical:
@@ -59,10 +63,17 @@ numerical:
   min_dt: 1.0e-6
   max_dt: 1.0e-2
 
-  level_set:
-    epsilon: 1.0e-2
-    reinit_interval: 5
-    reinit_steps: 2
+  # 界面関数の設定
+  interface:
+    epsilon: 1.0e-2  # 界面厚さパラメータ
+    reinit_interval: 5  # 再初期化の間隔（ステップ数）
+    reinit_steps: 2  # 再初期化の反復回数
+    reinit_method: "fast_marching"  # 再初期化の手法
+    
+    # 界面追跡のパラメータ
+    smoothing: true  # 界面の平滑化を有効化
+    smoothing_iterations: 1  # 平滑化の反復回数
+    smoothing_factor: 0.1  # 平滑化の強度
 
 # 可視化設定
 output:
@@ -83,10 +94,10 @@ output:
     positions: 
       - 0.5    # 中央
 
-  # 可視化する物理量を選択（全てtrueに変更）
+  # 可視化する物理量を選択
   fields:
     velocity:
-      enabled: false   # 速度場を可視化
+      enabled: true   # 速度場を可視化
       plot_types: ["vector", "magnitude"]
       scale: 1.0
       density: 20
@@ -98,7 +109,7 @@ output:
       levels: 20
       alpha: 0.5
     levelset:
-      enabled: true   # レベルセット場を可視化
+      enabled: true   # 界面関数を可視化
       plot_types: ["interface", "contour"]
       levels: [0]
       colors: ["black"]

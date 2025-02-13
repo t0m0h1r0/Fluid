@@ -11,7 +11,11 @@ from pathlib import Path
 from typing import Optional, Tuple, Dict
 import logging
 
-from simulations import TwoPhaseFlowSimulator, SimulationConfig, SimulationInitializer
+from simulations import (
+    TwoPhaseFlowSimulator, 
+    SimulationConfig, 
+    SimulationInitializer
+)
 from visualization import visualize_simulation_state
 
 
@@ -136,7 +140,6 @@ class SimulationManager:
                         self._save_diagnostics(step_info, current_state.time)
 
                         next_save_time += save_interval
-                        return 0
 
                 except Exception as step_error:
                     self.logger.error(
@@ -157,7 +160,7 @@ class SimulationManager:
 def parse_args() -> Tuple[str, Optional[str], bool]:
     """コマンドライン引数をパース"""
     parser = argparse.ArgumentParser(
-        description="Level Set法による二相流シミュレーション"
+        description="Level Set法による二相流体シミュレーション"
     )
     parser.add_argument("--config", type=str, required=True, help="設定ファイルのパス")
     parser.add_argument("--checkpoint", type=str, help="チェックポイントファイルのパス")

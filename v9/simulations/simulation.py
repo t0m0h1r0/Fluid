@@ -5,11 +5,11 @@
 物理過程を統合的に取り扱います。
 
 主な機能:
-1. レベルセット関数からの物性値計算
+1. ScalarFieldからの物性値計算
 2. 外力（表面張力・重力）の計算
 3. 圧力ポアソン方程式の解法
 4. Navier-Stokes方程式の解法
-5. レベルセット方程式の時間発展
+5. 界面関数の時間発展
 """
 
 from __future__ import annotations
@@ -20,15 +20,14 @@ from core.field import VectorField, ScalarField
 from core.solver import TemporalSolver
 from numerics.time_evolution import ForwardEuler
 
-from physics.levelset import LevelSetField
+from physics.multiphase import InterfaceOperations
 from physics.navier_stokes import NavierStokesSolver
 from physics.pressure import PressurePoissonSolver
-from physics.surface_tension import SurfaceTensionCalculator
 from physics.continuity import ContinuityEquation
 
-from simulations.config import SimulationConfig
-from simulations.state import SimulationState
-from simulations.initializer import SimulationInitializer
+from .config import SimulationConfig
+from .state import SimulationState
+from .initializer import SimulationInitializer
 
 
 class TwoPhaseFlowSimulator:
@@ -51,6 +50,13 @@ class TwoPhaseFlowSimulator:
         self.config = config
         self._state: Optional[SimulationState] = None
         self._diagnostics: Dict[str, Any] = {}
+
+        # InterfaceOperationsの初期化
+        interface_config = config.numerical.get('interface', {})
+        self._interface_ops = InterfaceOperations(
+            dx=config.domain.size[0] / config.domain.dimensions[0],
+            epsilon=interface_config.get('epsilon', 1e-2)
+        )
 
         # 時間積分器の設定
         self._time_solver = time_integrator or ForwardEuler(
@@ -78,79 +84,116 @@ class TwoPhaseFlowSimulator:
         self._navier_stokes_solver = NavierStokesSolver()
         self._pressure_solver = PressurePoissonSolver()
         self._continuity_solver = ContinuityEquation()
-        self._surface_tension_calculator = SurfaceTensionCalculator(
-            surface_tension_coefficient=surface_tension_coeff
-        )
 
-    def compute_material_properties(
-        self, levelset: LevelSetField
-    ) -> Tuple[ScalarField, ScalarField]:
+    def step_forward(
+        self, state: Optional[SimulationState] = None, dt: Optional[float] = None
+    ) -> Tuple[SimulationState, Dict[str, Any]]:
         """
-        レベルセット関数から物性値を計算
+        シミュレーションを1ステップ進める
 
         Args:
-            levelset: レベルセット関数場
+            state: 現在の状態（Noneの場合は内部状態を使用）
+            dt: 時間刻み幅（Noneの場合は自動計算）
 
         Returns:
-            (密度場, 粘性場)のタプル
+            (更新された状態, 診断情報)のタプル
         """
-        # Heaviside関数を使用して物性値を計算
-        density = levelset.get_density(
-            rho1=self.config.physics.phases[0].density,
-            rho2=self.config.physics.phases[1].density,
+        # 状態の確認と取得
+        if state is None:
+            state = self._state
+            if state is None:
+                raise ValueError("シミュレーション状態が初期化されていません")
+
+        # 時間刻み幅の計算
+        if dt is None:
+            dt = self._time_solver.compute_timestep(state.velocity)
+
+        # 物性値の計算
+        density = state.get_density(self.config.physics)
+        viscosity = state.get_viscosity(self.config.physics)
+
+        # 外力の計算
+        external_forces = self._compute_external_forces(state)
+
+        # 圧力場の計算
+        pressure, pressure_diagnostics = self._compute_pressure(
+            state.velocity, density, viscosity, external_forces
         )
 
-        viscosity = levelset.get_density(
-            rho1=self.config.physics.phases[0].viscosity,
-            rho2=self.config.physics.phases[1].viscosity,
+        # 速度とレベルセットの時間微分を計算
+        velocity_derivative = self._navier_stokes_solver.compute(
+            velocity=state.velocity,
+            density=density,
+            viscosity=viscosity,
+            pressure=pressure,
+            force=external_forces,
         )
 
-        return density, viscosity
+        levelset_derivative = self._continuity_solver.compute_derivative(
+            field=state.levelset, velocity=state.velocity
+        )
 
-    def compute_external_forces(
-        self,
-        levelset: LevelSetField,
-        density: ScalarField,
-    ) -> Tuple[VectorField, Dict[str, Any]]:
+        # 時間積分
+        new_velocity = self._time_solver.integrate(
+            field=state.velocity, derivative=velocity_derivative, dt=dt
+        )
+        new_levelset = self._time_solver.integrate(
+            field=state.levelset, derivative=levelset_derivative, dt=dt
+        )
+
+        # レベルセット関数の再初期化
+        if self._should_reinitialize(state):
+            new_levelset.data = self._interface_ops.reinitialize(
+                new_levelset, 
+                n_steps=self.config.numerical.get('interface', {}).get('reinit_steps', 2)
+            ).data
+
+        # 新しい状態の作成
+        new_state = SimulationState(
+            time=state.time + dt,
+            velocity=new_velocity,
+            levelset=new_levelset,
+            pressure=pressure,
+        )
+
+        # 診断情報の更新
+        diagnostics = {
+            "time": new_state.time,
+            "dt": dt,
+            **pressure_diagnostics,
+        }
+        self._diagnostics = diagnostics
+
+        # 現在の状態を更新
+        self._state = new_state
+
+        return new_state, diagnostics
+
+    def _compute_external_forces(self, state: SimulationState) -> VectorField:
         """
-        外力（重力と表面張力）を計算
+        外力（重力と界面張力）を計算
 
         Args:
-            levelset: レベルセット関数場
-            density: 密度場
+            state: シミュレーション状態
 
         Returns:
-            (外力のベクトル場, 診断情報)のタプル
+            外力のベクトル場
         """
-        # 重力項の計算
-        gravity_force = VectorField(levelset.shape, levelset.dx)
+        # 重力の計算
+        gravity_force = VectorField(state.velocity.shape, state.velocity.dx)
+        density = state.get_density(self.config.physics)
+
         for i, comp in enumerate(gravity_force.components):
             # 最後の次元（z方向）にのみ重力を適用
-            if i == len(levelset.shape) - 1:
+            if i == len(state.velocity.shape) - 1:
                 comp.data = -self.config.physics.gravity * density.data
             else:
                 comp.data = np.zeros(density.shape)
 
-        # 表面張力項の計算
-        surface_tension_force, surface_tension_info = (
-            self._surface_tension_calculator.compute_force(levelset=levelset)
-        )
+        # TODO: 界面張力の計算が必要な場合は追加
+        return gravity_force
 
-        # 外力を統合
-        total_force = gravity_force + surface_tension_force
-
-        # 診断情報の更新
-        diagnostics = {
-            "surface_tension": surface_tension_info,
-            "gravity_max": float(np.max(np.abs(gravity_force.components[-1].data))),
-            "total_force_max": float(
-                max(np.max(np.abs(f.data)) for f in total_force.components)
-            ),
-        }
-
-        return total_force, diagnostics
-
-    def compute_pressure(
+    def _compute_pressure(
         self,
         velocity: VectorField,
         density: ScalarField,
@@ -182,96 +225,9 @@ class TwoPhaseFlowSimulator:
 
         return pressure, solver_diagnostics
 
-    def step_forward(
-        self, state: Optional[SimulationState] = None, dt: Optional[float] = None
-    ) -> Tuple[SimulationState, Dict[str, Any]]:
-        """
-        シミュレーションを1ステップ進める
-
-        Args:
-            state: 現在の状態（Noneの場合は内部状態を使用）
-            dt: 時間刻み幅（Noneの場合は自動計算）
-
-        Returns:
-            (更新された状態, 診断情報)のタプル
-        """
-        # 状態の確認と取得
-        if state is None:
-            state = self._state
-            if state is None:
-                raise ValueError("シミュレーション状態が初期化されていません")
-
-        # 時間刻み幅の計算（新しい時間発展インターフェースに対応）
-        if dt is None:
-            dt = self._time_solver.compute_timestep(state.velocity)
-
-        # 物性値の計算
-        density, viscosity = self.compute_material_properties(levelset=state.levelset)
-
-        # 外力の計算
-        external_forces, force_diagnostics = self.compute_external_forces(
-            levelset=state.levelset,
-            density=density,
-        )
-
-        # 圧力場の計算
-        pressure, pressure_diagnostics = self.compute_pressure(
-            velocity=state.velocity,
-            density=density,
-            viscosity=viscosity,
-            external_force=external_forces,
-        )
-
-        # 速度とレベルセットの時間微分を計算
-        velocity_derivative = self._navier_stokes_solver.compute(
-            velocity=state.velocity,
-            density=density,
-            viscosity=viscosity,
-            pressure=pressure,
-            external_force=external_forces,
-        )
-
-        levelset_derivative = self._continuity_solver.compute_derivative(
-            field=state.levelset, velocity=state.velocity
-        )
-
-        # 時間積分による状態の更新（新しいインターフェースに対応）
-        new_velocity = self._time_solver.integrate(
-            field=state.velocity, derivative=velocity_derivative, dt=dt
-        )
-        new_levelset = self._time_solver.integrate(
-            field=state.levelset, derivative=levelset_derivative, dt=dt
-        )
-
-        # レベルセット関数の再初期化
-        if self._should_reinitialize(state):
-            new_levelset.reinitialize()
-
-        # 新しい状態の作成
-        new_state = SimulationState(
-            time=state.time + dt,
-            velocity=new_velocity,
-            levelset=new_levelset,
-            pressure=pressure,
-        )
-
-        # 診断情報の更新
-        diagnostics = {
-            **force_diagnostics,
-            **pressure_diagnostics,
-            "time": new_state.time,
-            "dt": dt,
-        }
-        self._diagnostics = diagnostics
-
-        # 現在の状態を更新
-        self._state = new_state
-
-        return new_state, diagnostics
-
     def _should_reinitialize(self, state: SimulationState) -> bool:
         """
-        Level Set関数の再初期化が必要か判定
+        界面関数の再初期化が必要か判定
 
         Args:
             state: シミュレーション状態
@@ -279,7 +235,8 @@ class TwoPhaseFlowSimulator:
         Returns:
             再初期化が必要かどうか
         """
-        reinit_interval = self.config.numerical.level_set.get("reinit_interval", 10)
+        interface_config = self.config.numerical.get('interface', {})
+        reinit_interval = interface_config.get('reinit_interval', 10)
         if reinit_interval <= 0:
             return False
 
