@@ -3,13 +3,22 @@
 
 このモジュールは、Level Set関数とそのデルタ関数を用いて、
 二相流体における表面張力を計算するためのクラスを提供します。
+
+表面張力の計算の理論:
+F_st = σκδ(φ)n
+
+ここで:
+- σ: 表面張力係数
+- κ: 平均曲率 (= -∇・(∇φ/|∇φ|))
+- δ(φ): デルタ関数
+- n: 界面の法線ベクトル (= ∇φ/|∇φ|)
 """
 
 from typing import Dict, Any, Optional, Tuple
 import numpy as np
 
 from physics.levelset import LevelSetField
-from core.field import VectorField
+from core.field import VectorField, ScalarField
 
 
 class SurfaceTensionCalculator:
@@ -51,29 +60,25 @@ class SurfaceTensionCalculator:
         # デルタ関数のパラメータ設定
         epsilon = self._epsilon or levelset.params.epsilon
 
-        # Level Set関数の勾配と勾配の大きさを計算
-        grad_values = []
-        grad_norm = np.zeros_like(levelset.data)
+        # 界面の法線ベクトルを計算
+        normal = levelset.get_normal()  # これは既に正規化されている
 
-        for axis in range(levelset.ndim):
-            grad_ax = np.gradient(levelset.data, levelset.dx, axis=axis)
-            grad_values.append(grad_ax)
-            grad_norm += grad_ax**2
+        # 平均曲率の計算
+        kappa = self._compute_mean_curvature(levelset)
 
-        grad_norm = np.sqrt(grad_norm + 1e-10)
+        # デルタ関数の計算
+        delta_field = levelset.get_delta()
 
-        # デルタ関数と法線ベクトルの計算
-        delta = 0.5 / epsilon * (1.0 - np.tanh(levelset.data / epsilon) ** 2)
-        normals = [g / grad_norm for g in grad_values]
-
-        # 曲率の計算
-        kappa = self._compute_curvature(levelset, grad_norm)
-
-        # 表面張力の計算（法線方向に垂直）
+        # 表面張力の計算: F_st = σκδ(φ)n
         force = VectorField(levelset.shape, levelset.dx)
         for i in range(levelset.ndim):
             # デルタ関数, 曲率, 表面張力係数を用いた力の計算
-            force.components[i].data = -self._sigma * delta * kappa * normals[i]
+            force.components[i] = (
+                -self._sigma
+                * delta_field
+                * ScalarField(levelset.shape, levelset.dx, kappa)
+                * normal.components[i]
+            )
 
         # 診断情報の作成
         diagnostics = {
@@ -82,31 +87,22 @@ class SurfaceTensionCalculator:
                 max(np.abs(comp.data).max() for comp in force.components)
             ),
             "max_curvature": float(np.max(np.abs(kappa))),
+            "max_delta": float(np.max(delta_field.data)),
             "epsilon": epsilon,
         }
 
         return force, diagnostics
 
-    def _compute_curvature(
-        self, levelset: LevelSetField, grad_norm: np.ndarray
-    ) -> np.ndarray:
+    def _compute_mean_curvature(self, levelset: LevelSetField) -> np.ndarray:
         """
-        界面の曲率を計算
+        界面の平均曲率を計算: κ = -∇・(∇φ/|∇φ|)
 
         Args:
             levelset: Level Set関数場
-            grad_norm: 勾配の大きさ
 
         Returns:
-            曲率の配列
+            平均曲率の配列
         """
-        # 勾配の発散（曲率）の計算
-        kappa = np.zeros_like(levelset.data)
-        for i in range(levelset.ndim):
-            # 各次元の曲率成分を計算
-            grad_norm_derivative = np.gradient(
-                grad_norm / (grad_norm + 1e-10), levelset.dx, axis=i
-            )
-            kappa += grad_norm_derivative
-
-        return kappa
+        # 既存の曲率計算メソッドを使用
+        curvature_field = levelset.get_curvature(method="high_order")
+        return curvature_field.data

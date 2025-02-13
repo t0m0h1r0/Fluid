@@ -1,14 +1,17 @@
 """
 連続の方程式（移流方程式）を解くためのモジュール
 
-支配方程式: ∂t∂f + u⋅∇f = 0
+保存則の形式での移流方程式: ∂f/∂t + ∇⋅(uf) = 0
+非保存形式での移流方程式: ∂f/∂t + u⋅∇f = 0
 
 このモジュールは、任意のスカラー場の移流を計算し、時間発展を追跡します。
+スカラー場は物質（レベルセット関数）や状態量（温度など）を表現できます。
 """
 
 from typing import Dict, Any
-from core.field import VectorField, ScalarField
 import numpy as np
+
+from core.field import VectorField, ScalarField
 
 
 class ContinuityEquation:
@@ -16,25 +19,15 @@ class ContinuityEquation:
     連続の方程式（移流方程式）を解くためのクラス
 
     この実装は、スカラー場の移流を計算し、時間発展を追跡します。
-    レベルセット法、温度場、密度場など、様々なスカラー場の移流に使用できます。
+    レベルセット関数、温度場、密度場など、様々なスカラー場の移流に使用できます。
     """
 
-    def __init__(
-        self,
-        use_weno: bool = True,
-        weno_order: int = 5,
-        name: str = "Continuity",
-    ):
-        """
-        連続の方程式クラスを初期化
+    def __init__(self, name: str = "Continuity"):
+        """連続の方程式クラスを初期化
 
         Args:
-            use_weno: WENO（Weighted Essentially Non-Oscillatory）スキームを使用するかどうか
-            weno_order: WENOスキームの次数
-            name: 方程式の名前
+            name: 方程式の名前（デフォルト: "Continuity"）
         """
-        self.use_weno = use_weno
-        self.weno_order = weno_order
         self.name = name
 
     def compute_derivative(
@@ -43,7 +36,9 @@ class ContinuityEquation:
         velocity: VectorField,
     ) -> ScalarField:
         """
-        スカラー場の時間微分を計算
+        スカラー場の時間微分を計算（非保存形式）
+
+        中心差分により ∂f/∂t = -u⋅∇f を計算します。
 
         Args:
             field: 移流される任意のスカラー場
@@ -55,17 +50,50 @@ class ContinuityEquation:
         # 結果を格納するScalarFieldを作成
         result = ScalarField(field.shape, field.dx)
 
-        # 移流項 u⋅∇f の計算
-        advection = result.data  # 直接データ配列を参照
+        # field の勾配を計算: ∇f
+        grad_f = [field.gradient(i) for i in range(field.ndim)]
 
-        # 各方向の速度成分による寄与を計算
-        for i in range(velocity.ndim):
-            # 速度場とスカラー場の勾配の積を計算
-            # 将来的にはWENOスキームを使用する
-            advection += velocity.components[i].data * field.gradient(i)
+        # 速度場との内積を計算: u⋅∇f
+        advection = sum(
+            velocity.components[i].data * grad_f[i] for i in range(field.ndim)
+        )
 
-        # 移流の符号を反転（移流方程式の形式）
+        # 移流の符号を反転: -u⋅∇f
         result.data = -advection
+
+        return result
+
+    def compute_derivative_conservative(
+        self,
+        field: ScalarField,
+        velocity: VectorField,
+    ) -> ScalarField:
+        """
+        スカラー場の時間微分を計算（保存形式）
+
+        中心差分により ∂f/∂t = -∇⋅(uf) を計算します。
+
+        Args:
+            field: 移流される任意のスカラー場
+            velocity: 速度場
+
+        Returns:
+            スカラー場の時間微分をScalarFieldとして返す
+        """
+        # 結果を格納するScalarFieldを作成
+        result = ScalarField(field.shape, field.dx)
+        dx = field.dx
+
+        # 各方向のフラックスを計算して発散を求める: ∇⋅(uf)
+        flux_divergence = np.zeros_like(field.data)
+        for i in range(field.ndim):
+            # フラックスの計算: u_i * f
+            flux = velocity.components[i].data * field.data
+            # フラックスの勾配を加算: ∂(u_i * f)/∂x_i
+            flux_divergence += np.gradient(flux, dx, axis=i)
+
+        # フラックス発散の符号を反転: -∇⋅(uf)
+        result.data = -flux_divergence
 
         return result
 
@@ -75,10 +103,13 @@ class ContinuityEquation:
         """
         移流のための時間刻み幅を計算
 
+        CFL条件に基づいて安定な時間刻み幅を計算します。
+        dt ≤ CFL * dx / max(|u|)
+
         Args:
             velocity: 速度場
             field: スカラー場
-            **kwargs: 追加のパラメータ
+            **kwargs: 追加のパラメータ（cfl係数など）
 
         Returns:
             計算された時間刻み幅
@@ -86,11 +117,16 @@ class ContinuityEquation:
         # CFLベースの時間刻み幅計算
         cfl = kwargs.get("cfl", 0.5)
 
-        # 最大速度の取得
+        # 各方向の最大速度を計算
         max_velocity = max(np.max(np.abs(comp.data)) for comp in velocity.components)
 
         # CFL条件に基づく時間刻み幅の計算
-        return cfl * field.dx / (max_velocity + 1e-10)
+        if max_velocity > 0:
+            dt = cfl * field.dx / max_velocity
+        else:
+            dt = float("inf")
+
+        return dt
 
     def get_diagnostics(
         self, field: ScalarField, velocity: VectorField
@@ -105,18 +141,24 @@ class ContinuityEquation:
         Returns:
             診断情報の辞書
         """
-        # 移流項の最大値と特性を計算
-        advection_terms = []
-        for i in range(velocity.ndim):
-            advection_term = velocity.components[i].data * field.gradient(i)
-            advection_terms.append(advection_term)
+        # 移流速度の特性を計算
+        velocity_info = {
+            f"max_velocity_{dim}": float(np.max(np.abs(comp.data)))
+            for dim, comp in zip(["x", "y", "z"], velocity.components)
+        }
+
+        # スカラー場の統計情報
+        field_info = {
+            "mean": float(np.mean(field.data)),
+            "max": float(np.max(field.data)),
+            "min": float(np.min(field.data)),
+            "std": float(np.std(field.data)),
+        }
 
         return {
             "name": self.name,
-            "max_advection": float(max(np.max(np.abs(r)) for r in advection_terms)),
-            "method": "WENO" if self.use_weno else "Central",
-            "weno_order": self.weno_order if self.use_weno else None,
-            "field_mean": float(np.mean(field.data)),
-            "field_max": float(np.max(field.data)),
-            "field_min": float(np.min(field.data)),
+            "scheme": "central_difference",
+            "velocities": velocity_info,
+            "field": field_info,
+            "grid_spacing": field.dx,
         }

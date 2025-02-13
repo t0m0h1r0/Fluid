@@ -1,11 +1,8 @@
-"""前進オイラー法による時間積分を提供するモジュール
+"""前進オイラー法による時間積分を提供するモジュール"""
 
-このモジュールは、1次精度の前進オイラー法による時間積分を実装します。
-"""
-
-from typing import Callable, TypeVar
-import numpy as np
+from typing import Callable, TypeVar, Union
 from .base import TimeIntegrator, StateLike
+from core.field import ScalarField, VectorField
 
 T = TypeVar("T", bound=StateLike)
 
@@ -24,14 +21,7 @@ class ForwardEuler(TimeIntegrator[T]):
         max_dt: float = 1.0,
         tolerance: float = 1e-6,
     ):
-        """前進オイラー法の積分器を初期化
-
-        Args:
-            cfl: CFL条件の係数（0 < cfl <= 1）
-            min_dt: 最小時間刻み幅
-            max_dt: 最大時間刻み幅
-            tolerance: 収束判定の許容誤差
-        """
+        """前進オイラー法の積分器を初期化"""
         super().__init__(
             cfl=cfl,
             min_dt=min_dt,
@@ -41,54 +31,58 @@ class ForwardEuler(TimeIntegrator[T]):
         )
 
     def integrate(self, state: T, dt: float, derivative_fn: Callable[[T], T]) -> T:
-        """前進オイラー法で時間積分を実行
+        """前進オイラー法で時間積分を実行"""
+        try:
+            # Field型の場合の特別処理
+            if isinstance(state, (ScalarField, VectorField)):
+                return self._integrate_field(state, dt, derivative_fn)
+            else:
+                return self._integrate_state(state, dt, derivative_fn)
+        except Exception as e:
+            raise RuntimeError(f"Euler積分中にエラー: {e}")
 
-        Args:
-            state: 現在の状態
-            dt: 時間刻み幅
-            derivative_fn: 時間微分を計算する関数
+    def _integrate_field(
+        self,
+        field: Union[ScalarField, VectorField],
+        dt: float,
+        derivative_fn: Callable[
+            [Union[ScalarField, VectorField]], Union[ScalarField, VectorField]
+        ],
+    ) -> Union[ScalarField, VectorField]:
+        """ScalarFieldまたはVectorFieldの時間積分"""
+        # 時間微分の計算
+        derivative = derivative_fn(field)
 
-        Returns:
-            更新された状態
+        # 演算子を使用した更新
+        new_field = field + dt * derivative
 
-        Notes:
-            前進オイラー法: u^{n+1} = u^n + dt * f(u^n)
-        """
+        # 誤差の推定
+        if isinstance(derivative, (ScalarField, VectorField)):
+            error = dt * derivative.norm()
+            self._error_history.append(error)
+
+        return new_field
+
+    def _integrate_state(
+        self, state: T, dt: float, derivative_fn: Callable[[T], T]
+    ) -> T:
+        """一般的な状態オブジェクトの時間積分"""
         # 時間微分の計算
         derivative = derivative_fn(state)
 
-        # numpy配列の場合の特別処理
-        if isinstance(state, np.ndarray):
-            new_state = state + dt * derivative
-        else:
-            # StateLike オブジェクトの場合
-            new_state = state.copy()
-            new_state.update(derivative, dt)
+        # 状態の更新
+        new_state = state.copy()
+        new_state.update(derivative, dt)
 
         # 誤差の推定
         if hasattr(derivative, "norm"):
             error = dt * derivative.norm()
             self._error_history.append(error)
-        elif isinstance(derivative, np.ndarray):
-            error = dt * np.linalg.norm(derivative)
-            self._error_history.append(error)
 
         return new_state
 
     def compute_timestep(self, state: T, **kwargs) -> float:
-        """安定な時間刻み幅を計算
-
-        Args:
-            state: 現在の状態
-            **kwargs: 追加のパラメータ
-
-        Returns:
-            計算された時間刻み幅
-
-        Notes:
-            前進オイラー法の安定条件: dt <= 2/λ_max
-            ここで λ_max は右辺の演算子の最大固有値
-        """
+        """安定な時間刻み幅を計算"""
         # デフォルトのCFL条件による計算
         dt = super().compute_timestep(state, **kwargs)
 
@@ -98,25 +92,9 @@ class ForwardEuler(TimeIntegrator[T]):
             if lambda_max > 0:
                 dt = min(dt, self._stability_limit / lambda_max)
 
+        # オプションのパラメータ処理
+        if "characteristic_speed" in kwargs:
+            speed = kwargs["characteristic_speed"]
+            dt = min(dt, self.cfl * state.dx / speed)
+
         return self._clip_timestep(dt)
-
-    def get_order(self) -> int:
-        """数値スキームの次数を取得
-
-        Returns:
-            スキームの次数 (= 1)
-        """
-        return 1
-
-    def get_error_estimate(self) -> float:
-        """誤差の推定値を取得
-
-        Returns:
-            推定された誤差
-
-        Notes:
-            前進オイラー法の局所打ち切り誤差は O(dt²)
-        """
-        if not self._error_history:
-            return float("inf")
-        return max(self._error_history[-10:]) if self._error_history else float("inf")
