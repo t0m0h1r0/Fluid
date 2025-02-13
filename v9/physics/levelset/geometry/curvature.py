@@ -70,35 +70,51 @@ class CurvatureCalculator(BaseGeometryCalculator):
         kappa = np.zeros_like(phi)
         ndim = len(grad)
 
+        # まず内部領域で計算
         for i in range(ndim):
             for j in range(ndim):
-                # 2階微分を4次精度で計算
                 if i == j:
                     # 対角項の4次精度の差分
-                    # f''''(x) ≈ (-f[x+2] + 16f[x+1] - 30f[x] + 16f[x-1] - f[x-2]) / (12dx²)
-                    d2 = (
-                        -phi[..., :-4]
-                        + 16 * phi[..., 1:-3]
-                        - 30 * phi[..., 2:-2]
-                        + 16 * phi[..., 3:-1]
-                        - phi[..., 4:]
+                    d2 = np.zeros_like(phi)
+                    d2[2:-2, 2:-2, 2:-2] = (
+                        -phi[4:, 2:-2, 2:-2]
+                        + 16 * phi[3:-1, 2:-2, 2:-2]
+                        - 30 * phi[2:-2, 2:-2, 2:-2]
+                        + 16 * phi[1:-3, 2:-2, 2:-2]
+                        - phi[:-4, 2:-2, 2:-2]
                     ) / (12 * self.dx**2)
                 else:
                     # 交差微分項の4次精度の差分
-                    # f''_xy(x,y) ≈ (f[x+1,y+1] - f[x+1,y-1] - f[x-1,y+1] + f[x-1,y-1]) / (4dx²)
-                    d2 = (
-                        phi[..., 2:, 2:]
-                        - phi[..., :-2, 2:]
-                        - phi[..., 2:, :-2]
-                        + phi[..., :-2, :-2]
-                    ) / (4 * self.dx**2)
+                    d2 = np.zeros_like(phi)
+                    if i == 0 and j == 1:
+                        d2[2:-2, 2:-2, 2:-2] = (
+                            phi[3:-1, 3:-1, 2:-2]
+                            - phi[3:-1, 1:-3, 2:-2]
+                            - phi[1:-3, 3:-1, 2:-2]
+                            + phi[1:-3, 1:-3, 2:-2]
+                        ) / (4 * self.dx**2)
+                    elif i == 0 and j == 2:
+                        d2[2:-2, 2:-2, 2:-2] = (
+                            phi[3:-1, 2:-2, 3:-1]
+                            - phi[3:-1, 2:-2, 1:-3]
+                            - phi[1:-3, 2:-2, 3:-1]
+                            + phi[1:-3, 2:-2, 1:-3]
+                        ) / (4 * self.dx**2)
+                    elif i == 1 and j == 2:
+                        d2[2:-2, 2:-2, 2:-2] = (
+                            phi[2:-2, 3:-1, 3:-1]
+                            - phi[2:-2, 3:-1, 1:-3]
+                            - phi[2:-2, 1:-3, 3:-1]
+                            + phi[2:-2, 1:-3, 1:-3]
+                        ) / (4 * self.dx**2)
 
-                kappa += d2 / grad_norm
+                kappa += d2 / (grad_norm + 1e-10)
 
-        # パディングの処理
-        # 高次差分により失われた境界部分を補完
-        pad_width = 2
-        kappa = np.pad(kappa, pad_width, mode="edge")
+        # 境界領域は2次精度で補完
+        kappa_boundary = self._compute_standard_curvature(phi)
+        mask = np.zeros_like(phi, dtype=bool)
+        mask[2:-2, 2:-2, 2:-2] = True
+        kappa = np.where(mask, kappa, kappa_boundary)
 
         return kappa
 

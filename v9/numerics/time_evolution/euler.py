@@ -98,3 +98,24 @@ class ForwardEuler(TimeIntegrator[T]):
             dt = min(dt, self.cfl * state.dx / speed)
 
         return self._clip_timestep(dt)
+
+    def get_order(self) -> int:
+        """数値スキームの次数を取得
+
+        Returns:
+            スキームの次数 (= 1)
+        """
+        return 1
+
+    def get_error_estimate(self) -> float:
+        """誤差の推定値を取得
+
+        Returns:
+            推定された誤差
+
+        Notes:
+            前進オイラー法の局所打ち切り誤差は O(dt²)
+        """
+        if not self._error_history:
+            return float("inf")
+        return max(self._error_history[-10:]) if self._error_history else float("inf")
