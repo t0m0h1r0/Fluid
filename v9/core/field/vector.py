@@ -236,4 +236,16 @@ class VectorField:
         if tuple(state["shape"]) != self.shape:
             raise ValueError("形状が一致しません")
 
-        # dx値の確認は省略可（必要に応じて追加）
+    def norm(self) -> float:
+        """ベクトル場のノルムを計算
+
+        Returns:
+            全成分のL2ノルムの最大値
+        """
+        # 各成分のL2ノルムを計算
+        component_norms = [
+            np.sqrt(np.mean(comp.data ** 2))
+            for comp in self.components
+        ]
+        # 最大のノルムを返す
+        return max(component_norms)

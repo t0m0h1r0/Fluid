@@ -6,14 +6,13 @@
 - RungeKutta4: 4次精度のRunge-Kutta法
 """
 
-from .base import TimeIntegrator, StateLike
+from .base import TimeIntegrator
 from .euler import ForwardEuler
 from .runge_kutta import RungeKutta4
 
 __all__ = [
     # 基底クラス
     "TimeIntegrator",
-    "StateLike",
     # 具体的な実装
     "ForwardEuler",
     "RungeKutta4",
