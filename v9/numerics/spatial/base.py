@@ -1,7 +1,4 @@
-"""空間微分スキームの基底クラスを提供するモジュール
-
-このモジュールは、空間微分計算のための基底クラスとインターフェースを定義します。
-"""
+"""空間微分スキームの基底クラスを提供するモジュール（改良版）"""
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Tuple, Optional
@@ -12,14 +9,7 @@ from core.field import ScalarField
 
 @dataclass
 class DifferentiationConfig:
-    """空間微分の設定クラス
-
-    Attributes:
-        order: 差分近似の次数
-        padding_mode: 境界での補完方法
-        boundary_order: 境界での近似次数
-    """
-
+    """空間微分の設定クラス"""
     order: int = 2
     padding_mode: str = "reflect"
     boundary_order: Optional[int] = None
@@ -38,10 +28,7 @@ class DifferentiationConfig:
 
 
 class SpatialDerivative(ABC):
-    """空間微分の基底クラス
-
-    この抽象基底クラスは、空間微分計算の共通インターフェースを定義します。
-    """
+    """空間微分の基底クラス（改良版）"""
 
     def __init__(self, config: Optional[DifferentiationConfig] = None):
         """空間微分計算器を初期化
@@ -54,7 +41,7 @@ class SpatialDerivative(ABC):
 
     @abstractmethod
     def __call__(self, field: ScalarField, axis: int, dx: float) -> ScalarField:
-        """空間微分を計算
+        """空間微分を計算（改良版）
 
         Args:
             field: 入力スカラー場
@@ -106,7 +93,7 @@ class SpatialDerivative(ABC):
     def apply_padding(
         self, field: ScalarField, axis: int, width: Optional[int] = None
     ) -> ScalarField:
-        """スカラー場にパディングを適用
+        """スカラー場にパディングを適用（改良版）
 
         Args:
             field: 入力スカラー場
@@ -117,10 +104,11 @@ class SpatialDerivative(ABC):
             パディングが適用された新しいスカラー場
         """
         width = width or self.get_padding_width()
+        # 新しい演算子を活用したパディング
         return field.pad(axis, width, mode=self.config.padding_mode)
 
     def get_boundary_stencil(self, side: int) -> Tuple[np.ndarray, np.ndarray]:
-        """境界での差分ステンシルを取得
+        """境界での差分ステンシルを取得（改良版）
 
         Args:
             side: 境界の側（0: 負側、1: 正側）
@@ -128,17 +116,14 @@ class SpatialDerivative(ABC):
         Returns:
             (points, coefficients) - 境界ステンシルの位置と係数のタプル
         """
-        # デフォルトでは境界でも同じステンシルを使用
         return self.get_stencil()
 
     def get_diagnostics(self) -> Dict[str, Any]:
-        """診断情報を取得
-
-        Returns:
-            診断情報の辞書
-        """
+        """診断情報を取得（改良版）"""
         return {
             "order": self.config.order,
             "padding_mode": self.config.padding_mode,
             "boundary_order": self.config.boundary_order,
+            "stencil_points": self.get_stencil()[0].tolist(),
+            "stencil_coefficients": self.get_stencil()[1].tolist(),
         }

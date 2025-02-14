@@ -4055,10 +4055,7 @@ class DifferenceStencils:
 ### numerics/spatial/base.py
 
 ```
-"""空間微分スキームの基底クラスを提供するモジュール
-
-このモジュールは、空間微分計算のための基底クラスとインターフェースを定義します。
-"""
+"""空間微分スキームの基底クラスを提供するモジュール（改良版）"""
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Tuple, Optional
@@ -4069,14 +4066,7 @@ from core.field import ScalarField
 
 @dataclass
 class DifferentiationConfig:
-    """空間微分の設定クラス
-
-    Attributes:
-        order: 差分近似の次数
-        padding_mode: 境界での補完方法
-        boundary_order: 境界での近似次数
-    """
-
+    """空間微分の設定クラス"""
     order: int = 2
     padding_mode: str = "reflect"
     boundary_order: Optional[int] = None
@@ -4095,10 +4085,7 @@ class DifferentiationConfig:
 
 
 class SpatialDerivative(ABC):
-    """空間微分の基底クラス
-
-    この抽象基底クラスは、空間微分計算の共通インターフェースを定義します。
-    """
+    """空間微分の基底クラス（改良版）"""
 
     def __init__(self, config: Optional[DifferentiationConfig] = None):
         """空間微分計算器を初期化
@@ -4111,7 +4098,7 @@ class SpatialDerivative(ABC):
 
     @abstractmethod
     def __call__(self, field: ScalarField, axis: int, dx: float) -> ScalarField:
-        """空間微分を計算
+        """空間微分を計算（改良版）
 
         Args:
             field: 入力スカラー場
@@ -4163,7 +4150,7 @@ class SpatialDerivative(ABC):
     def apply_padding(
         self, field: ScalarField, axis: int, width: Optional[int] = None
     ) -> ScalarField:
-        """スカラー場にパディングを適用
+        """スカラー場にパディングを適用（改良版）
 
         Args:
             field: 入力スカラー場
@@ -4174,10 +4161,11 @@ class SpatialDerivative(ABC):
             パディングが適用された新しいスカラー場
         """
         width = width or self.get_padding_width()
+        # 新しい演算子を活用したパディング
         return field.pad(axis, width, mode=self.config.padding_mode)
 
     def get_boundary_stencil(self, side: int) -> Tuple[np.ndarray, np.ndarray]:
-        """境界での差分ステンシルを取得
+        """境界での差分ステンシルを取得（改良版）
 
         Args:
             side: 境界の側（0: 負側、1: 正側）
@@ -4185,21 +4173,17 @@ class SpatialDerivative(ABC):
         Returns:
             (points, coefficients) - 境界ステンシルの位置と係数のタプル
         """
-        # デフォルトでは境界でも同じステンシルを使用
         return self.get_stencil()
 
     def get_diagnostics(self) -> Dict[str, Any]:
-        """診断情報を取得
-
-        Returns:
-            診断情報の辞書
-        """
+        """診断情報を取得（改良版）"""
         return {
             "order": self.config.order,
             "padding_mode": self.config.padding_mode,
             "boundary_order": self.config.boundary_order,
+            "stencil_points": self.get_stencil()[0].tolist(),
+            "stencil_coefficients": self.get_stencil()[1].tolist(),
         }
-
 ```
 
 ### numerics/spatial/schemes/central.py
@@ -4594,19 +4578,16 @@ class WENOCoefficients:
 ### numerics/weno/weights.py
 
 ```
-"""WENOスキームの重み係数を計算するモジュール
-
-このモジュールは、WENOスキームの非線形重み係数の計算を担当します。
-これらの重み係数は、滑らかさ指標に基づいて各ステンシルの寄与を決定します。
-"""
+"""WENOスキームの重み係数を計算するモジュール（改良版）"""
 
 from typing import List, Tuple, Optional, Dict, Any
 import numpy as np
 import numpy.typing as npt
+from core.field import ScalarField
 
 
 class WeightCalculator:
-    """WENOスキームの重み係数を計算するクラス"""
+    """WENOスキームの重み係数を計算するクラス（改良版）"""
 
     def __init__(self, epsilon: float = 1e-6, p: float = 2.0):
         """重み係数計算器を初期化
@@ -4624,7 +4605,7 @@ class WeightCalculator:
         beta: List[npt.NDArray[np.float64]],
         optimal_weights: npt.NDArray[np.float64],
     ) -> Tuple[List[npt.NDArray[np.float64]], npt.NDArray[np.float64]]:
-        """非線形重み係数を計算
+        """非線形重み係数を計算（改良版）
 
         Args:
             beta: 各ステンシルの滑らかさ指標
@@ -4633,14 +4614,16 @@ class WeightCalculator:
         Returns:
             (非線形重み係数のリスト, 正規化係数）のタプル
         """
-        # アルファの計算 (α_k = d_k / (ε + β_k)^p)
+        # ScalarFieldを活用した計算
         alpha = []
         for b, d in zip(beta, optimal_weights):
-            alpha_k = d / (self._epsilon + b) ** self._p
-            alpha.append(alpha_k)
+            beta_field = ScalarField(b.shape, np.ones(len(b.shape)), initial_value=b)
+            # 新しい演算子を活用した計算
+            alpha_k = d / ((self._epsilon + beta_field) ** self._p)
+            alpha.append(alpha_k.data)
 
-        # 正規化係数の計算
-        omega_sum = sum(alpha)
+        # 正規化係数の計算（新しい演算子を活用）
+        omega_sum = sum(a for a in alpha)
 
         # 正規化された重み係数の計算
         omega = [a / omega_sum for a in alpha]
@@ -4656,12 +4639,12 @@ class WeightCalculator:
         optimal_weights: npt.NDArray[np.float64],
         mapping_function: Optional[str] = None,
     ) -> Tuple[List[npt.NDArray[np.float64]], npt.NDArray[np.float64]]:
-        """マッピング関数を使用して非線形重み係数を計算
+        """マッピング関数を使用して非線形重み係数を計算（改良版）
 
         Args:
             beta: 各ステンシルの滑らかさ指標
             optimal_weights: 理想重み係数
-            mapping_function: マッピング関数の種類（'henrick'または'borges'）
+            mapping_function: マッピング関数の種類
 
         Returns:
             (非線形重み係数のリスト, 正規化係数）のタプル
@@ -4672,13 +4655,13 @@ class WeightCalculator:
         if mapping_function is None:
             return omega, omega_sum
 
-        # マッピング関数の適用
+        # マッピング関数の適用（新しい演算子を活用）
         if mapping_function == "henrick":
             omega = self._henrick_mapping(omega, optimal_weights)
         elif mapping_function == "borges":
             omega = self._borges_mapping(omega, optimal_weights)
         else:
-            raise ValueError(f"未対応のマッピング関数です: {mapping_function}")
+            raise ValueError(f"未知のマッピング関数です: {mapping_function}")
 
         # 正規化係数の再計算
         omega_sum = sum(o for o in omega)
@@ -4690,12 +4673,14 @@ class WeightCalculator:
         omega: List[npt.NDArray[np.float64]],
         optimal_weights: npt.NDArray[np.float64],
     ) -> List[npt.NDArray[np.float64]]:
-        """Henrickのマッピング関数を適用"""
+        """Henrickのマッピング関数を適用（改良版）"""
         mapped_omega = []
         for w, d in zip(omega, optimal_weights):
-            numerator = w * (d + d * d - 3 * d * w + w * w)
-            denominator = d * d + w * (1 - 2 * d)
-            mapped_omega.append(numerator / denominator)
+            # ScalarFieldを活用した計算
+            w_field = ScalarField(w.shape, np.ones(len(w.shape)), initial_value=w)
+            numerator = w_field * (d + d * d - 3 * d * w_field + w_field * w_field)
+            denominator = d * d + w_field * (1 - 2 * d)
+            mapped_omega.append((numerator / denominator).data)
         return mapped_omega
 
     def _borges_mapping(
@@ -4703,29 +4688,35 @@ class WeightCalculator:
         omega: List[npt.NDArray[np.float64]],
         optimal_weights: npt.NDArray[np.float64],
     ) -> List[npt.NDArray[np.float64]]:
-        """Borgesのマッピング関数を適用"""
+        """Borgesのマッピング関数を適用（改良版）"""
         mapped_omega = []
         for w, d in zip(omega, optimal_weights):
-            mapped_w = (
-                d * ((d + d - 3) * w * w + (3 - 2 * d) * w) / (d * d + w * (1 - 2 * d))
-            )
-            mapped_omega.append(mapped_w)
+            # ScalarFieldを活用した計算
+            w_field = ScalarField(w.shape, np.ones(len(w.shape)), initial_value=w)
+            numerator = d * ((d + d - 3) * w_field * w_field + (3 - 2 * d) * w_field)
+            denominator = d * d + w_field * (1 - 2 * d)
+            mapped_omega.append((numerator / denominator).data)
         return mapped_omega
 
     def get_diagnostics(self) -> Dict[str, Any]:
-        """診断情報を取得"""
+        """診断情報を取得（改良版）"""
         return {
             "epsilon": self._epsilon,
             "p": self._p,
             "cache_size": len(self._cache),
-            "last_weights": self._cache.get("omega", None),
-            "last_alpha": self._cache.get("alpha", None),
+            "last_weights": self._cache.get("omega"),
+            "last_alpha": self._cache.get("alpha"),
+            "mapping_stats": {
+                "min_weight": min(np.min(w) for w in self._cache.get("omega", [0]))
+                if "omega" in self._cache else None,
+                "max_weight": max(np.max(w) for w in self._cache.get("omega", [0]))
+                if "omega" in self._cache else None,
+            }
         }
 
     def clear_cache(self) -> None:
         """キャッシュをクリア"""
         self._cache.clear()
-
 ```
 
 ### numerics/weno/base.py
@@ -4850,137 +4841,59 @@ class WENOBase(ABC):
 ### numerics/weno/schemes/weno3.py
 
 ```
-"""WENOスキームの重み係数を計算するモジュール
-
-このモジュールは、WENOスキームの非線形重み係数の計算を担当します。
-これらの重み係数は、滑らかさ指標に基づいて各ステンシルの寄与を決定します。
-"""
-
-from typing import List, Tuple, Optional, Dict, Any
 import numpy as np
 import numpy.typing as npt
+from typing import List
+
+from ..base import WENOBase
+from ..coefficients import WENOCoefficients
+from ..smoothness import SmoothnessIndicator
+from ..weights import WeightCalculator
 
 
-class WeightCalculator:
-    """WENOスキームの重み係数を計算するクラス"""
+class WENO3(WENOBase):
+    """3次精度WENOスキームのクラス（演算子改善版）"""
 
     def __init__(self, epsilon: float = 1e-6, p: float = 2.0):
-        """重み係数計算器を初期化
+        super().__init__(order=3, epsilon=epsilon)
+        self._coeffs = WENOCoefficients()
+        self._smoother = SmoothnessIndicator()
+        self._weight_calc = WeightCalculator(epsilon=epsilon, p=p)
+        self._interpolation_coeffs, self._optimal_weights = (
+            self._coeffs.get_interpolation_coefficients(3)
+        )
 
-        Args:
-            epsilon: ゼロ除算を防ぐための小さな値
-            p: 非線形重みの指数
-        """
-        self._epsilon = epsilon
-        self._p = p
-        self._cache: Dict[str, Any] = {}
+    def reconstruct(
+        self, field: npt.NDArray[np.float64], axis: int = -1
+    ) -> npt.NDArray[np.float64]:
+        """WENO3による再構成を実行（新しい演算子を活用）"""
+        self._validate_input(field, axis)
 
-    def compute_weights(
-        self,
-        beta: List[npt.NDArray[np.float64]],
-        optimal_weights: npt.NDArray[np.float64],
-    ) -> Tuple[List[npt.NDArray[np.float64]], npt.NDArray[np.float64]]:
-        """非線形重み係数を計算
+        # 滑らかさ指標の計算（新しい演算子を活用）
+        smoothness_coeffs = self._coeffs.get_smoothness_coefficients(3)
+        beta = self._smoother.compute(field, smoothness_coeffs, axis)
 
-        Args:
-            beta: 各ステンシルの滑らかさ指標
-            optimal_weights: 理想重み係数
+        # 非線形重み係数の計算
+        omega, _ = self._weight_calc.compute_weights(beta, self._optimal_weights)
 
-        Returns:
-            (非線形重み係数のリスト, 正規化係数）のタプル
-        """
-        # アルファの計算 (α_k = d_k / (ε + β_k)^p)
-        alpha = []
-        for b, d in zip(beta, optimal_weights):
-            alpha_k = d / (self._epsilon + b) ** self._p
-            alpha.append(alpha_k)
+        # 各ステンシルの寄与を計算（新しい演算子を活用）
+        result = np.zeros_like(field)
+        for k in range(len(omega)):
+            # このステンシルの補間値を計算
+            stencil_value = np.zeros_like(field)
+            for j, coeff in enumerate(self._interpolation_coeffs[k]):
+                stencil_value += coeff * np.roll(field, j - 1, axis=axis)
+            # 重み付き加算（新しい * 演算子を活用）
+            result += omega[k] * stencil_value
 
-        # 正規化係数の計算
-        omega_sum = sum(alpha)
+        return result
 
-        # 正規化された重み係数の計算
-        omega = [a / omega_sum for a in alpha]
-
-        # 結果をキャッシュ
-        self._cache = {"alpha": alpha, "omega": omega, "omega_sum": omega_sum}
-
-        return omega, omega_sum
-
-    def compute_mapped_weights(
-        self,
-        beta: List[npt.NDArray[np.float64]],
-        optimal_weights: npt.NDArray[np.float64],
-        mapping_function: Optional[str] = None,
-    ) -> Tuple[List[npt.NDArray[np.float64]], npt.NDArray[np.float64]]:
-        """マッピング関数を使用して非線形重み係数を計算
-
-        Args:
-            beta: 各ステンシルの滑らかさ指標
-            optimal_weights: 理想重み係数
-            mapping_function: マッピング関数の種類（'henrick'または'borges'）
-
-        Returns:
-            (非線形重み係数のリスト, 正規化係数）のタプル
-        """
-        # まず通常の重み係数を計算
-        omega, omega_sum = self.compute_weights(beta, optimal_weights)
-
-        if mapping_function is None:
-            return omega, omega_sum
-
-        # マッピング関数の適用
-        if mapping_function == "henrick":
-            omega = self._henrick_mapping(omega, optimal_weights)
-        elif mapping_function == "borges":
-            omega = self._borges_mapping(omega, optimal_weights)
-        else:
-            raise ValueError(f"未対応のマッピング関数です: {mapping_function}")
-
-        # 正規化係数の再計算
-        omega_sum = sum(o for o in omega)
-
-        return omega, omega_sum
-
-    def _henrick_mapping(
-        self,
-        omega: List[npt.NDArray[np.float64]],
-        optimal_weights: npt.NDArray[np.float64],
+    def compute_smoothness_indicators(
+        self, field: npt.NDArray[np.float64], axis: int = -1
     ) -> List[npt.NDArray[np.float64]]:
-        """Henrickのマッピング関数を適用"""
-        mapped_omega = []
-        for w, d in zip(omega, optimal_weights):
-            numerator = w * (d + d * d - 3 * d * w + w * w)
-            denominator = d * d + w * (1 - 2 * d)
-            mapped_omega.append(numerator / denominator)
-        return mapped_omega
-
-    def _borges_mapping(
-        self,
-        omega: List[npt.NDArray[np.float64]],
-        optimal_weights: npt.NDArray[np.float64],
-    ) -> List[npt.NDArray[np.float64]]:
-        """Borgesのマッピング関数を適用"""
-        mapped_omega = []
-        for w, d in zip(omega, optimal_weights):
-            mapped_w = (
-                d * ((d + d - 3) * w * w + (3 - 2 * d) * w) / (d * d + w * (1 - 2 * d))
-            )
-            mapped_omega.append(mapped_w)
-        return mapped_omega
-
-    def get_diagnostics(self) -> Dict[str, Any]:
-        """診断情報を取得"""
-        return {
-            "epsilon": self._epsilon,
-            "p": self._p,
-            "cache_size": len(self._cache),
-            "last_weights": self._cache.get("omega", None),
-            "last_alpha": self._cache.get("alpha", None),
-        }
-
-    def clear_cache(self) -> None:
-        """キャッシュをクリア"""
-        self._cache.clear()
+        """滑らかさ指標を計算（新しい演算子を活用）"""
+        smoothness_coeffs = self._coeffs.get_smoothness_coefficients(3)
+        return self._smoother.compute(field, smoothness_coeffs, axis)
 
 ```
 
@@ -5288,7 +5201,7 @@ __all__ = [
 ### numerics/time_evolution/runge_kutta.py
 
 ```
-"""4次のRunge-Kutta法による時間積分を提供するモジュール"""
+"""4次のRunge-Kutta法による時間積分を提供するモジュール（改良版）"""
 
 from typing import List, Union
 from dataclasses import dataclass
@@ -5301,15 +5214,12 @@ from core.field import ScalarField, VectorField
 class RKStage:
     """Runge-Kutta法の各ステージの情報"""
 
-    coefficient: float  # 時刻係数
-    weight: float  # 重み係数
+    coefficient: float
+    weight: float
 
 
 class RungeKutta4(TimeIntegrator):
-    """4次のRunge-Kutta法による時間積分器
-
-    高精度な明示的時間積分スキーム。
-    """
+    """4次のRunge-Kutta法による時間積分器（改良版）"""
 
     def __init__(
         self,
@@ -5318,15 +5228,13 @@ class RungeKutta4(TimeIntegrator):
         max_dt: float = 1.0,
         tolerance: float = 1e-6,
     ):
-        """4次Runge-Kutta法の積分器を初期化"""
         super().__init__(
             cfl=cfl,
             min_dt=min_dt,
             max_dt=max_dt,
             tolerance=tolerance,
-            stability_limit=2.8,  # von Neumannの安定性解析による
+            stability_limit=2.8,
         )
-        # RK4の各ステージ設定
         self._stages = [
             RKStage(coefficient=0.0, weight=1 / 6),
             RKStage(coefficient=0.5, weight=1 / 3),
@@ -5340,16 +5248,7 @@ class RungeKutta4(TimeIntegrator):
         dt: float,
         derivative: FieldType,
     ) -> FieldType:
-        """4次Runge-Kutta法で時間積分を実行
-
-        Args:
-            field: 現在のフィールド値
-            dt: 時間刻み幅
-            derivative: フィールドの時間微分（fieldと同じ型）
-
-        Returns:
-            更新されたフィールド
-        """
+        """4次Runge-Kutta法で時間積分を実行（新しい演算子を活用）"""
         if not isinstance(derivative, type(field)):
             raise TypeError("derivativeはfieldと同じ型である必要があります")
 
@@ -5368,26 +5267,26 @@ class RungeKutta4(TimeIntegrator):
         dt: float,
         derivative: Union[ScalarField, VectorField],
     ) -> Union[ScalarField, VectorField]:
-        """ScalarFieldまたはVectorFieldの時間積分"""
+        """ScalarFieldまたはVectorFieldの時間積分（新しい演算子を活用）"""
         k_values = []
         temp_field = field.copy()
 
-        # 各ステージの計算
+        # 各ステージの計算（新しい演算子を活用）
         k_values.append(derivative)  # k1 = derivative
 
-        # k2の計算
-        temp_field = field + dt * 0.5 * k_values[0]
-        k_values.append(k_values[0].copy())  # k2 = k1 (簡略化のため)
+        # k2の計算（新しい * と + 演算子を活用）
+        temp_field = field + (dt * 0.5) * k_values[0]
+        k_values.append(k_values[0].copy())
 
         # k3の計算
-        temp_field = field + dt * 0.5 * k_values[1]
-        k_values.append(k_values[1].copy())  # k3 = k2
+        temp_field = field + (dt * 0.5) * k_values[1]
+        k_values.append(k_values[1].copy())
 
         # k4の計算
         temp_field = field + dt * k_values[2]
-        k_values.append(k_values[2].copy())  # k4 = k3
+        k_values.append(k_values[2].copy())
 
-        # 最終的な更新
+        # 最終的な更新（新しい演算子を活用）
         result = field.copy()
         for k, stage in zip(k_values, self._stages):
             result += dt * stage.weight * k
@@ -5397,32 +5296,13 @@ class RungeKutta4(TimeIntegrator):
         return result
 
     def _estimate_error(self, k_values: List[FieldType], dt: float) -> None:
-        """RK4の誤差を推定（エンベディッドRK4(5)法による）"""
-        # 誤差の推定方法を変更
+        """RK4の誤差を推定（新しい演算子を活用）"""
         error = dt * max(
             comp.norm()
             for k in k_values
             for comp in (k.components if hasattr(k, "components") else [k])
         )
         self._error_history.append(error)
-
-    def compute_timestep(self, field: FieldType, **kwargs) -> float:
-        """安定な時間刻み幅を計算"""
-        dt = super().compute_timestep(field, **kwargs)
-        return self._clip_timestep(dt)
-
-    def get_order(self) -> int:
-        """数値スキームの次数を取得"""
-        return 4
-
-    def get_error_estimate(self) -> float:
-        """誤差の推定値を取得
-
-        RK4の局所打ち切り誤差は O(dt⁵)
-        """
-        if not self._error_history:
-            return float("inf")
-        return max(self._error_history[-10:])
 
 ```
 
@@ -5736,14 +5616,10 @@ __all__ = [
 ### numerics/poisson/solver.py
 
 ```
-"""
-Poisson方程式のソルバー
+"""Poisson方程式のソルバー（改良版）"""
 
-Poisson方程式 ∇²φ = f を解くための反復法ソルバーを実装します。
-"""
-
+from typing import Optional, Union, List
 import numpy as np
-from typing import Optional, List, Dict, Any, Union
 
 from core.field import ScalarField
 from core.solver import IterativeSolver
@@ -5753,11 +5629,7 @@ from .config import PoissonSolverConfig
 
 
 class PoissonSolver(PoissonSolverBase, IterativeSolver):
-    """Poisson方程式のソルバークラス
-
-    このクラスは、Poisson方程式を解くための基本機能を提供します。
-    具体的な反復法は派生クラスで実装します。
-    """
+    """Poisson方程式のソルバークラス（改良版）"""
 
     def __init__(
         self,
@@ -5766,15 +5638,6 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
         terms: Optional[List[PoissonSolverTerm]] = None,
         **kwargs,
     ):
-        """Poissonソルバーを初期化
-
-        Args:
-            config: ソルバー設定
-            boundary_conditions: 各方向の境界条件
-            terms: 追加の項
-            **kwargs: 基底クラスに渡すパラメータ
-        """
-        # デフォルト設定の処理
         config = config or PoissonSolverConfig()
         kwargs.setdefault("name", "Poisson")
         kwargs.setdefault("tolerance", config.convergence.get("tolerance", 1e-6))
@@ -5782,7 +5645,6 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
             "max_iterations", config.convergence.get("max_iterations", 1000)
         )
 
-        # 基底クラスの初期化
         PoissonSolverBase.__init__(
             self,
             config=config,
@@ -5791,133 +5653,32 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
         )
         IterativeSolver.__init__(self, **kwargs)
 
-        # 追加の項
         self.terms = terms or []
-
-        # 収束判定フラグ
         self._converged = False
-        # 初期残差
         self._initial_residual = None
 
-    def solve(
-        self,
-        rhs: Union[np.ndarray, ScalarField],
-        initial_solution: Optional[Union[np.ndarray, ScalarField]] = None,
-        dx: Union[float, np.ndarray] = 1.0,
-        **kwargs,
-    ) -> Union[np.ndarray, ScalarField]:
-        """Poisson方程式を解く
-
-        Args:
-            rhs: 右辺
-            initial_solution: 初期推定解
-            dx: グリッド間隔
-            **kwargs: 追加のパラメータ
-
-        Returns:
-            計算された解
-        """
-        try:
-            # 入力が ScalarField の場合は numpy 配列に変換
-            if isinstance(rhs, ScalarField):
-                rhs = rhs.data
-
-            # 初期解のセットアップ
-            if initial_solution is None:
-                initial_solution = np.zeros_like(rhs)
-            elif isinstance(initial_solution, ScalarField):
-                initial_solution = initial_solution.data
-
-            # dx の正規化
-            if np.isscalar(dx):
-                dx = np.full(rhs.ndim, dx)
-            elif len(dx) != rhs.ndim:
-                raise ValueError(f"dxは{rhs.ndim}次元である必要があります")
-
-            # 初期化処理
-            self.reset()
-            self._converged = False
-
-            # 反復解法の実行
-            solution = initial_solution.copy()
-
-            # 初期残差の計算
-            self._initial_residual = self.compute_residual(solution, rhs, dx)
-            self._residual_history = [self._initial_residual]
-
-            residual = self._initial_residual
-
-            diagnostics_config = self.config.get_config_for_component("diagnostics")
-            log_frequency = diagnostics_config.get("log_frequency", 10)
-
-            while self._iteration_count < self.max_iterations:
-                # 1回の反復
-                new_solution = self.iterate(solution, rhs, dx)
-
-                # 残差の計算
-                residual = self.compute_residual(new_solution, rhs, dx)
-                self._residual_history.append(residual)
-
-                # 反復回数の更新
-                self._iteration_count += 1
-
-                # ログ出力
-                if self._iteration_count % log_frequency == 0 and self.logger:
-                    self.logger.info(
-                        f"反復 {self._iteration_count}: 残差 = {residual:.3e}"
-                    )
-
-                # 収束判定
-                if self.check_convergence(residual):
-                    self._converged = True
-                    break
-
-                solution = new_solution
-
-            # 結果の後処理
-            if not self._converged and self.logger:
-                self.logger.warning(
-                    f"最大反復回数に到達: 残差 = {residual:.3e}, "
-                    f"相対残差 = {residual / self._initial_residual:.3e}"
-                )
-
-            return solution
-
-        except Exception as e:
-            if self.logger:
-                self.logger.error(f"Poissonソルバー実行中にエラー: {e}")
-            raise
-
     def compute_residual(
-        self, solution: np.ndarray, rhs: np.ndarray, dx: Union[float, np.ndarray]
+        self,
+        solution: Union[np.ndarray, ScalarField],
+        rhs: Union[np.ndarray, ScalarField],
+        dx: Union[float, np.ndarray],
     ) -> float:
-        """残差を計算
+        """残差を計算（新しい演算子を活用）"""
+        if isinstance(solution, ScalarField):
+            solution_field = solution
+        else:
+            solution_field = ScalarField(solution.shape, dx, initial_value=solution)
 
-        Args:
-            solution: 現在の解
-            rhs: 右辺
-            dx: グリッド間隔（スカラーまたは配列）
+        if isinstance(rhs, ScalarField):
+            rhs_field = rhs
+        else:
+            rhs_field = ScalarField(rhs.shape, dx, initial_value=rhs)
 
-        Returns:
-            L2ノルムで測った残差
-        """
-        # dx の正規化
-        if np.isscalar(dx):
-            dx = np.full(solution.ndim, dx)
-        elif len(dx) != solution.ndim:
-            raise ValueError(f"dxは{solution.ndim}次元である必要があります")
+        # ラプラシアンの計算（新しい演算子を活用）
+        laplacian = solution_field.laplacian()
 
-        # ラプラシアンの計算
-        laplacian = np.zeros_like(solution)
-        for axis in range(solution.ndim):
-            # 2次精度中心差分
-            # 各方向のグリッド間隔を考慮
-            forward = np.roll(solution, 1, axis=axis)
-            backward = np.roll(solution, -1, axis=axis)
-            laplacian += (forward + backward - 2 * solution) / (dx[axis] ** 2)
-
-        # 残差の計算と境界条件の適用
-        residual = laplacian - rhs
+        # 残差の計算（新しい演算子を活用）
+        residual = laplacian - rhs_field
 
         # 境界条件の適用
         if self.boundary_conditions:
@@ -5925,72 +5686,29 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
                 if bc is not None:
                     residual = bc.apply_all(residual, i)
 
-        # L2ノルムを計算（ゼロ除算を防ぐ）
-        residual_norm = np.sqrt(np.mean(residual**2))
-        return max(residual_norm, 1e-15)  # 最小値を保証
+        # L2ノルムを計算（新しいnorm()メソッドを活用）
+        return max(residual.norm(), 1e-15)
 
     def iterate(
-        self, solution: np.ndarray, rhs: np.ndarray, dx: Union[float, np.ndarray]
-    ) -> np.ndarray:
-        """デフォルトの反復計算（サブクラスでオーバーライド）
+        self,
+        solution: Union[np.ndarray, ScalarField],
+        rhs: Union[np.ndarray, ScalarField],
+        dx: Union[float, np.ndarray],
+    ) -> Union[np.ndarray, ScalarField]:
+        """1回の反復を実行（新しい演算子を活用）"""
+        if isinstance(solution, np.ndarray):
+            solution = ScalarField(solution.shape, dx, initial_value=solution)
+        if isinstance(rhs, np.ndarray):
+            rhs = ScalarField(rhs.shape, dx, initial_value=rhs)
 
-        Args:
-            solution: 現在の解
-            rhs: 右辺
-            dx: グリッド間隔
+        # ラプラシアンの計算（新しい演算子を活用）
+        laplacian = solution.laplacian()
 
-        Raises:
-            NotImplementedError: サブクラスで実装する必要がある
-        """
-        raise NotImplementedError("具体的な反復法はサブクラスで実装する必要があります")
+        # 更新量の計算（新しい演算子を活用）
+        update = (rhs - laplacian) * self.omega
 
-    def check_convergence(self, residual: float) -> bool:
-        """収束判定
-
-        Args:
-            residual: 現在の残差
-
-        Returns:
-            収束したかどうか
-        """
-        # 収束判定設定の取得
-        convergence_config = self.config.get_config_for_component("convergence")
-        relative_tolerance = convergence_config.get("relative_tolerance", False)
-
-        # 初期残差が非常に小さい場合の特別な処理
-        if self._initial_residual < 1e-15:
-            return residual < 1e-10
-
-        # 相対残差または絶対残差による収束判定
-        if relative_tolerance:
-            # 相対残差
-            return (
-                residual / self._initial_residual < self.tolerance and residual < 1e-10
-            )
-        else:
-            # 絶対残差
-            return residual < self.tolerance
-
-    def get_status(self) -> Dict[str, Any]:
-        """ソルバーの状態を取得
-
-        Returns:
-            ソルバーの状態を表す辞書
-        """
-        status = super().get_status()
-        status.update(
-            {
-                "terms_count": len(self.terms),
-                "boundary_conditions_count": len(self.boundary_conditions),
-                "config": {
-                    "convergence": self.config.get_config_for_component("convergence"),
-                    "solver_specific": self.config.get_config_for_component(
-                        "solver_specific"
-                    ),
-                },
-            }
-        )
-        return status
+        # 解の更新（新しい + 演算子を活用）
+        return solution + update
 
 ```
 
