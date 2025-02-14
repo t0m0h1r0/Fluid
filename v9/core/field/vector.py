@@ -296,3 +296,57 @@ class VectorField:
         component_norms = [np.sqrt(np.mean(comp.data**2)) for comp in self.components]
         # 最大のノルムを返す
         return max(component_norms)
+    
+    def __matmul__(self, other):
+        """
+        '@' 演算子のオーバーロード
+        
+        以下のような演算をサポート:
+        1. ベクトル場同士の内積
+        2. ベクトル場と任意のオブジェクトの積
+        - NumPy配列
+        - ScalarField
+        - その他互換性のあるオブジェクト
+        """
+        # 既存のベクトル場同士の内積
+        if isinstance(other, VectorField):
+            return self.dot(other)
+        
+        # NumPy配列との演算
+        if isinstance(other, np.ndarray):
+            result = ScalarField(self.shape, self.dx)
+            
+            # 配列の次元に応じて異なる演算
+            if other.ndim == 1 and len(other) == len(self.components):
+                # ベクトルとの内積
+                result.data = sum(
+                    comp.data * val for comp, val in zip(self.components, other)
+                )
+            elif other.ndim == self.ndim + 1:
+                # テンソルとの内積
+                result.data = sum(
+                    sum(
+                        self.components[j].data * other[j, i]
+                        for j in range(self.ndim)
+                    )
+                    for i in range(self.ndim)
+                )
+            else:
+                # スカラー倍や他の演算
+                result = ScalarField(self.shape, self.dx)
+                result.data = sum(comp.data * other for comp in self.components)
+            
+            return result
+        
+        # ScalarFieldとの演算
+        if isinstance(other, ScalarField):
+            result = VectorField(self.shape, self.dx)
+            for i, comp in enumerate(self.components):
+                result.components[i] = comp * other
+            return result
+        
+        # その他の型（スカラー値など）
+        if isinstance(other, (int, float)):
+            return self * other
+        
+        raise TypeError(f"無効な型との演算: {type(other)}")

@@ -102,28 +102,8 @@
   - config.yaml
   - results/
     - visualization/
-      - simulation_state_pressure_xy_slice_0.50_0.000_0.000000.png (binary file)
-      - simulation_state_levelset_yz_slice_0.50_0.000_0.000000.png (binary file)
-      - simulation_state_pressure_yz_slice_0.50_0.000_0.000000.json
-      - simulation_state_velocity_xz_slice_0.50_0.000_0.000000.json
-      - simulation_state_pressure_xz_slice_0.50_0.000_0.000000.png (binary file)
-      - simulation_state_velocity_yz_slice_0.50_0.000_0.000000.png (binary file)
       - checkpoints/
-        - initial_checkpoint.npz (binary file)
-      - simulation_state_pressure_xz_slice_0.50_0.000_0.000000.json
-      - simulation_state_velocity_xz_slice_0.50_0.000_0.000000.png (binary file)
-      - simulation_state_velocity_xy_slice_0.50_0.000_0.000000.png (binary file)
-      - simulation_state_levelset_xy_slice_0.50_0.000_0.000000.json
-      - simulation_state_pressure_xy_slice_0.50_0.000_0.000000.json
-      - simulation_state_levelset_xy_slice_0.50_0.000_0.000000.png (binary file)
-      - simulation_state_pressure_yz_slice_0.50_0.000_0.000000.png (binary file)
       - diagnostics/
-        - diagnostics_0.000000.json
-      - simulation_state_levelset_yz_slice_0.50_0.000_0.000000.json
-      - simulation_state_levelset_xz_slice_0.50_0.000_0.000000.png (binary file)
-      - simulation_state_velocity_xy_slice_0.50_0.000_0.000000.json
-      - simulation_state_levelset_xz_slice_0.50_0.000_0.000000.json
-      - simulation_state_velocity_yz_slice_0.50_0.000_0.000000.json
   - physics/
     - pressure/
       - poisson.py
@@ -7444,35 +7424,36 @@ __all__ = ["Solver", "TemporalSolver", "IterativeSolver"]
 このモジュールは、スカラー量（圧力、温度など）を表現するための場のクラスを定義します。
 """
 
-from typing import Tuple, Optional, Union, List
+from typing import Tuple, Optional, Union
 import numpy as np
 from .field import Field
-from typing import Dict, Any, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .vector import VectorField
+from typing import Dict, Any, List
 
 
 class ScalarField(Field):
     """スカラー場クラス
 
     温度、圧力などのスカラー量を表現するためのクラスです。
-    NumPyスタイルの演算子と数値計算メソッドを提供します。
+    基本的な微分演算や補間機能を提供します。
     """
 
     def __init__(
         self,
         shape: Tuple[int, ...],
-        dx: float = 1.0,
+        dx: Union[float, np.ndarray] = 1.0,
         initial_value: Union[float, np.ndarray] = 0.0,
     ):
         """スカラー場を初期化
 
         Args:
             shape: グリッドの形状
-            dx: グリッド間隔
+            dx: グリッド間隔（スカラーまたはベクトル）
             initial_value: 初期値（スカラーまたは配列）
         """
+        # dxの正規化：スカラーの場合はベクトルに変換
+        if np.isscalar(dx):
+            dx = np.full(len(shape), float(dx))
+
         super().__init__(shape, dx)
         if isinstance(initial_value, np.ndarray):
             # 配列の場合は直接代入
@@ -7488,91 +7469,13 @@ class ScalarField(Field):
         else:
             raise TypeError(f"Unsupported initial_value type: {type(initial_value)}")
 
-    def __add__(self, other):
-        """NumPyの+演算子に準じた加算"""
-        if isinstance(other, (int, float, np.ndarray)):
-            result = self.copy()
-            result.data += other
-            return result
-        elif isinstance(other, ScalarField):
-            result = self.copy()
-            result.data += other.data
-            return result
-        else:
-            raise TypeError(f"サポートされていない型との加算: {type(other)}")
+    def __neg__(self) -> "ScalarField":
+        """単項マイナス演算子の実装
 
-    def __radd__(self, other):
-        """右側からの加算"""
-        return self.__add__(other)
-
-    def __sub__(self, other):
-        """NumPyの-演算子に準じた減算"""
-        if isinstance(other, (int, float, np.ndarray)):
-            result = self.copy()
-            result.data -= other
-            return result
-        elif isinstance(other, ScalarField):
-            result = self.copy()
-            result.data -= other.data
-            return result
-        else:
-            raise TypeError(f"サポートされていない型との減算: {type(other)}")
-
-    def __rsub__(self, other):
-        """右側からの減算"""
-        result = self.copy()
-        result.data = other - result.data
-        return result
-
-    def __mul__(self, other):
-        """NumPyの*演算子に準じた乗算"""
-        if isinstance(other, (int, float, np.ndarray)):
-            result = self.copy()
-            result.data *= other
-            return result
-        elif isinstance(other, ScalarField):
-            result = self.copy()
-            result.data *= other.data
-            return result
-        else:
-            raise TypeError(f"サポートされていない型との乗算: {type(other)}")
-
-    def __rmul__(self, other):
-        """右側からの乗算"""
-        return self.__mul__(other)
-
-    def __truediv__(self, other):
-        """NumPyの/演算子に準じた除算"""
-        if isinstance(other, (int, float, np.ndarray)):
-            result = self.copy()
-            result.data /= other
-            return result
-        elif isinstance(other, ScalarField):
-            result = self.copy()
-            result.data /= other.data
-            return result
-        else:
-            raise TypeError(f"サポートされていない型との除算: {type(other)}")
-
-    def __rtruediv__(self, other):
-        """右側からの除算"""
-        result = self.copy()
-        result.data = other / result.data
-        return result
-
-    def gradient(self, axis: int = None) -> Union[np.ndarray, List[np.ndarray]]:
-        """NumPyのgradientに準じた勾配計算"""
-        if axis is None:
-            return [np.gradient(self.data, self.dx, axis=i) for i in range(self.ndim)]
-        return np.gradient(self.data, self.dx, axis=axis)
-
-    def dot(self, other: "VectorField") -> "ScalarField":
-        """内積計算（NumPyのdot演算に準じる）"""
+        データの符号を反転したScalarFieldを返します。
+        """
         result = ScalarField(self.shape, self.dx)
-        result.data = sum(
-            comp.data * other_comp.data
-            for comp, other_comp in zip(other.components, other.components)
-        )
+        result.data = -self.data
         return result
 
     def interpolate(self, points: np.ndarray) -> np.ndarray:
@@ -7590,7 +7493,7 @@ class ScalarField(Field):
 
         for dim in range(self.ndim):
             # 座標をインデックスに変換
-            idx = points[:, dim] / self._dx
+            idx = points[:, dim] / self._dx[dim]
             idx0 = np.floor(idx).astype(int)
             idx1 = idx0 + 1
             w1 = idx - idx0
@@ -7619,9 +7522,28 @@ class ScalarField(Field):
 
         return result
 
+    def gradient(self, axis: Optional[int] = None) -> Union[np.ndarray, List[np.ndarray]]:
+        """勾配を計算
+
+        Args:
+            axis: 勾配を計算する軸（Noneの場合は全軸の勾配を返す）
+
+        Returns:
+            指定された軸の勾配、またはすべての軸の勾配のリスト
+        """
+        if axis is not None:
+            # 特定の軸の勾配を計算
+            return np.gradient(self._data, self._dx[axis], axis=axis)
+        
+        # すべての軸の勾配を計算
+        return [
+            np.gradient(self._data, self._dx[i], axis=i)
+            for i in range(self.ndim)
+        ]
+
     def integrate(self) -> float:
         """場の積分値を計算"""
-        return np.sum(self._data) * self._dx**self.ndim
+        return np.sum(self._data) * np.prod(self._dx)
 
     def mean(self) -> float:
         """場の平均値を計算"""
@@ -7664,6 +7586,49 @@ class ScalarField(Field):
 
         self._data = gaussian_filter(self._data, sigma)
 
+    def __add__(self, other):
+        """加算演算子の実装"""
+        result = self.__class__(self.shape, self.dx)
+        if isinstance(other, (int, float)):
+            result.data = self.data + other
+        elif isinstance(other, ScalarField):
+            if self.shape != other.shape:
+                raise ValueError("場の形状が一致しません")
+            result.data = self.data + other.data
+        else:
+            raise TypeError("無効な型との演算です")
+        return result
+
+    def __mul__(self, other):
+        """乗算演算子の実装"""
+        result = self.__class__(self.shape, self.dx)
+        if isinstance(other, (int, float)):
+            result.data = self.data * other
+        elif isinstance(other, ScalarField):
+            if self.shape != other.shape:
+                raise ValueError("場の形状が一致しません")
+            result.data = self.data * other.data
+        else:
+            raise TypeError("無効な型との演算です")
+        return result
+
+    def __rmul__(self, other):
+        """右乗算演算子の実装"""
+        return self.__mul__(other)
+
+    def __truediv__(self, other):
+        """除算演算子の実装"""
+        result = self.__class__(self.shape, self.dx)
+        if isinstance(other, (int, float)):
+            result.data = self.data / other
+        elif isinstance(other, ScalarField):
+            if self.shape != other.shape:
+                raise ValueError("場の形状が一致しません")
+            result.data = self.data / other.data
+        else:
+            raise TypeError("無効な型との演算です")
+        return result
+
     def save_state(self) -> Dict[str, Any]:
         """現在の状態を保存
 
@@ -7693,7 +7658,7 @@ class ScalarField(Field):
         self.time = state.get("time", 0.0)
 
         # グリッド間隔の確認（必要に応じて）
-        if abs(state["dx"] - self.dx) > 1e-10:
+        if not np.allclose(state["dx"], self.dx):
             raise ValueError("グリッド間隔が一致しません")
 
     def norm(self, ord=2) -> float:
@@ -7706,7 +7671,6 @@ class ScalarField(Field):
             計算されたノルム
         """
         return np.linalg.norm(self._data.ravel(), ord=ord)
-
 ```
 
 ### core/field/vector.py
@@ -7717,26 +7681,30 @@ class ScalarField(Field):
 このモジュールは、ベクトル量（速度、運動量など）を表現するためのベクトル場クラスを定義します。
 """
 
-from typing import List, Tuple, Optional
 import numpy as np
+from typing import List, Tuple, Optional
 from .scalar import ScalarField
-from typing import Dict, Any
+from typing import Dict, Any, Union
 
 
 class VectorField:
     """ベクトル場クラス
 
     速度、運動量などのベクトル量を表現するためのクラスです。
-    NumPyスタイルの演算子と数値計算メソッドを提供します。
+    各成分をスカラー場として保持し、ベクトル演算のメソッドを提供します。
     """
 
-    def __init__(self, shape: Tuple[int, ...], dx: float = 1.0):
+    def __init__(self, shape: Tuple[int, ...], dx: Union[float, np.ndarray] = 1.0):
         """ベクトル場を初期化
 
         Args:
             shape: グリッドの形状
-            dx: グリッド間隔
+            dx: グリッド間隔（スカラーまたはベクトル）
         """
+        # dxの正規化：スカラーの場合はベクトルに変換
+        if np.isscalar(dx):
+            dx = np.full(len(shape), float(dx))
+        
         self._components = [ScalarField(shape, dx) for _ in range(len(shape))]
         self._shape = shape
         self._dx = dx
@@ -7772,7 +7740,7 @@ class VectorField:
         return self._shape
 
     @property
-    def dx(self) -> float:
+    def dx(self) -> np.ndarray:
         """グリッド間隔を取得"""
         return self._dx
 
@@ -7781,53 +7749,14 @@ class VectorField:
         """次元数を取得"""
         return len(self._shape)
 
-    def __add__(self, other: "VectorField") -> "VectorField":
-        """NumPyの+演算子に準じた加算"""
-        if not isinstance(other, VectorField):
-            raise TypeError(f"サポートされていない型との加算: {type(other)}")
+    def __neg__(self) -> "VectorField":
+        """単項マイナス演算子の実装
 
-        result = VectorField(self.shape, self.dx)
-        for i, (c1, c2) in enumerate(zip(self.components, other.components)):
-            result.components[i] = c1 + c2
-        return result
-
-    def __sub__(self, other: "VectorField") -> "VectorField":
-        """NumPyの-演算子に準じた減算"""
-        if not isinstance(other, VectorField):
-            raise TypeError(f"サポートされていない型との減算: {type(other)}")
-
-        result = VectorField(self.shape, self.dx)
-        for i, (c1, c2) in enumerate(zip(self.components, other.components)):
-            result.components[i] = c1 - c2
-        return result
-
-    def __mul__(self, other):
-        """NumPyの*演算子に準じた乗算（スカラー倍）"""
-        if isinstance(other, (int, float, np.ndarray)):
-            result = VectorField(self.shape, self.dx)
-            for i, comp in enumerate(self.components):
-                result.components[i] = comp * other
-            return result
-        elif isinstance(other, ScalarField):
-            result = VectorField(self.shape, self.dx)
-            for i, comp in enumerate(self.components):
-                result.components[i] = comp * other
-            return result
-        else:
-            raise TypeError(f"サポートされていない型との乗算: {type(other)}")
-
-    def __rmul__(self, other):
-        """右側からの乗算"""
-        return self.__mul__(other)
-
-    def __matmul__(self, other: ScalarField) -> "VectorField":
-        """NumPyの@演算子に準じた重み付け"""
-        if not isinstance(other, ScalarField):
-            raise TypeError("@演算子はScalarFieldとの演算のみ可能です")
-
+        各成分の符号を反転したVectorFieldを返します。
+        """
         result = VectorField(self.shape, self.dx)
         for i, comp in enumerate(self.components):
-            result.components[i] = comp * other
+            result.components[i] = -comp
         return result
 
     def magnitude(self) -> ScalarField:
@@ -7840,33 +7769,48 @@ class VectorField:
         result.data = np.sqrt(sum(c.data**2 for c in self._components))
         return result
 
-    def div(self) -> ScalarField:
-        """NumPyスタイルの発散計算"""
-        result = ScalarField(self.shape, self.dx)
-        result.data = sum(comp.gradient(i) for i, comp in enumerate(self.components))
-        return result
+    def symmetric_gradient(self) -> "VectorField":
+        """対称勾配テンソルを計算
 
-    def dot(self, other: "VectorField") -> ScalarField:
-        """NumPyのdot演算に準じた内積計算"""
-        result = ScalarField(self.shape, self.dx)
-        result.data = sum(
-            c1.data * c2.data for c1, c2 in zip(self.components, other.components)
-        )
-        return result
-
-    def cross(self, other: "VectorField") -> Optional["VectorField"]:
-        """NumPyのcross演算に準じた外積計算（3次元のみ）"""
-        if self.ndim != 3:
-            return None
-
+        Returns:
+            対称勾配テンソルをVectorFieldとして返す
+        """
         result = VectorField(self.shape, self.dx)
-        u1, v1, w1 = [c.data for c in self.components]
-        u2, v2, w2 = [c.data for c in other.components]
+        for i in range(self.ndim):
+            for j in range(self.ndim):
+                # 対称勾配: 0.5 * (∂u_i/∂x_j + ∂u_j/∂x_i)
+                if i <= j:  # 対称性を利用して計算を最適化
+                    comp_data = 0.5 * (
+                        self.components[i].gradient(j) + 
+                        self.components[j].gradient(i)
+                    )
+                    result.components[i].data = comp_data
+                else:
+                    # 対称性を利用して既に計算した値をコピー
+                    result.components[i].data = result.components[j].data
+        return result
 
-        result.components[0].data = v1 * w2 - w1 * v2
-        result.components[1].data = w1 * u2 - u1 * w2
-        result.components[2].data = u1 * v2 - v1 * u2
+    def gradient(self) -> "VectorField":
+        """ベクトル場の勾配を計算
 
+        Returns:
+            勾配テンソルをVectorFieldとして返す
+        """
+        result = VectorField(self.shape, self.dx)
+        for i in range(self.ndim):
+            for j in range(self.ndim):
+                # ∂u_i/∂x_j
+                result.components[i].data = self.components[j].gradient(i)
+        return result
+
+    def divergence(self) -> ScalarField:
+        """発散を計算
+
+        Returns:
+            計算された発散を表すスカラー場
+        """
+        result = ScalarField(self.shape, self.dx)
+        result.data = sum(c.gradient(i) for i, c in enumerate(self._components))
         return result
 
     def curl(self) -> Optional["VectorField"]:
@@ -7883,17 +7827,11 @@ class VectorField:
         u, v, w = [c.data for c in self._components]
 
         # ∂w/∂y - ∂v/∂z
-        result.components[0].data = np.gradient(w, self.dx, axis=1) - np.gradient(
-            v, self.dx, axis=2
-        )
+        result.components[0].data = np.gradient(w, self.dx[1], axis=1) - np.gradient(v, self.dx[2], axis=2)
         # ∂u/∂z - ∂w/∂x
-        result.components[1].data = np.gradient(u, self.dx, axis=2) - np.gradient(
-            w, self.dx, axis=0
-        )
+        result.components[1].data = np.gradient(u, self.dx[2], axis=2) - np.gradient(w, self.dx[0], axis=0)
         # ∂v/∂x - ∂u/∂y
-        result.components[2].data = np.gradient(v, self.dx, axis=0) - np.gradient(
-            u, self.dx, axis=1
-        )
+        result.components[2].data = np.gradient(v, self.dx[0], axis=0) - np.gradient(u, self.dx[1], axis=1)
 
         return result
 
@@ -7914,6 +7852,87 @@ class VectorField:
         result = VectorField(self.shape, self.dx)
         for i, component in enumerate(self._components):
             result.components[i] = component.copy()
+        return result
+
+    def __add__(self, other: "VectorField") -> "VectorField":
+        """加算演算子の実装"""
+        if not isinstance(other, VectorField):
+            raise TypeError("ベクトル場同士の演算のみ可能です")
+        if self.shape != other.shape:
+            raise ValueError("場の形状が一致しません")
+
+        result = VectorField(self.shape, self.dx)
+        for i, (c1, c2) in enumerate(zip(self.components, other.components)):
+            result.components[i] = c1 + c2
+        return result
+
+    def __mul__(self, other) -> "VectorField":
+        """スカラー倍の実装"""
+        if not isinstance(other, (int, float, ScalarField)):
+            raise TypeError("スカラー倍のみ可能です")
+
+        result = VectorField(self.shape, self.dx)
+        
+        # スカラー値の場合
+        if isinstance(other, (int, float)):
+            for i, component in enumerate(self.components):
+                result.components[i] = component * other
+        # スカラー場の場合
+        else:
+            for i, component in enumerate(self.components):
+                result.components[i] = component * other
+
+        return result
+
+    def __rmul__(self, other) -> "VectorField":
+        """右スカラー倍の実装"""
+        return self.__mul__(other)
+
+    def dot(self, other: "VectorField") -> ScalarField:
+        """内積を計算
+
+        Args:
+            other: 内積を取るベクトル場
+
+        Returns:
+            計算された内積を表すスカラー場
+        """
+        if not isinstance(other, VectorField):
+            raise TypeError("ベクトル場同士の演算のみ可能です")
+        if self.shape != other.shape:
+            raise ValueError("場の形状が一致しません")
+
+        result = ScalarField(self.shape, self.dx)
+        result.data = sum(
+            c1.data * c2.data for c1, c2 in zip(self.components, other.components)
+        )
+        return result
+
+    def cross(self, other: "VectorField") -> Optional["VectorField"]:
+        """外積を計算（3次元のみ）
+
+        Args:
+            other: 外積を取るベクトル場
+
+        Returns:
+            3次元の場合は計算された外積を表すベクトル場
+            2次元の場合はNone
+        """
+        if self.ndim != 3:
+            return None
+        if not isinstance(other, VectorField):
+            raise TypeError("ベクトル場同士の演算のみ可能です")
+        if self.shape != other.shape:
+            raise ValueError("場の形状が一致しません")
+
+        result = VectorField(self.shape, self.dx)
+        u1, v1, w1 = [c.data for c in self.components]
+        u2, v2, w2 = [c.data for c in other.components]
+
+        result.components[0].data = v1 * w2 - w1 * v2
+        result.components[1].data = w1 * u2 - u1 * w2
+        result.components[2].data = u1 * v2 - v1 * u2
+
         return result
 
     def save_state(self) -> Dict[str, Any]:
@@ -7955,7 +7974,60 @@ class VectorField:
         component_norms = [np.sqrt(np.mean(comp.data**2)) for comp in self.components]
         # 最大のノルムを返す
         return max(component_norms)
-
+    
+    def __matmul__(self, other):
+        """
+        '@' 演算子のオーバーロード
+        
+        以下のような演算をサポート:
+        1. ベクトル場同士の内積
+        2. ベクトル場と任意のオブジェクトの積
+        - NumPy配列
+        - ScalarField
+        - その他互換性のあるオブジェクト
+        """
+        # 既存のベクトル場同士の内積
+        if isinstance(other, VectorField):
+            return self.dot(other)
+        
+        # NumPy配列との演算
+        if isinstance(other, np.ndarray):
+            result = ScalarField(self.shape, self.dx)
+            
+            # 配列の次元に応じて異なる演算
+            if other.ndim == 1 and len(other) == len(self.components):
+                # ベクトルとの内積
+                result.data = sum(
+                    comp.data * val for comp, val in zip(self.components, other)
+                )
+            elif other.ndim == self.ndim + 1:
+                # テンソルとの内積
+                result.data = sum(
+                    sum(
+                        self.components[j].data * other[j, i]
+                        for j in range(self.ndim)
+                    )
+                    for i in range(self.ndim)
+                )
+            else:
+                # スカラー倍や他の演算
+                result = ScalarField(self.shape, self.dx)
+                result.data = sum(comp.data * other for comp in self.components)
+            
+            return result
+        
+        # ScalarFieldとの演算
+        if isinstance(other, ScalarField):
+            result = VectorField(self.shape, self.dx)
+            for i, comp in enumerate(self.components):
+                result.components[i] = comp * other
+            return result
+        
+        # その他の型（スカラー値など）
+        if isinstance(other, (int, float)):
+            return self * other
+        
+        raise TypeError(f"無効な型との演算: {type(other)}")
 ```
 
 ### core/field/conserved.py
@@ -8397,177 +8469,6 @@ debug:
   profiling: false
 ```
 
-### results/visualization/simulation_state_pressure_yz_slice_0.50_0.000_0.000000.json
-
-```
-{
-  "data_range": {
-    "min": 0.0,
-    "max": 0.0
-  },
-  "display_type": [
-    "scalar",
-    "slice"
-  ]
-}
-```
-
-### results/visualization/simulation_state_velocity_xz_slice_0.50_0.000_0.000000.json
-
-```
-{
-  "data_range": {
-    "min_magnitude": 0.0,
-    "max_magnitude": 0.0
-  },
-  "display_type": [
-    "vector",
-    "slice"
-  ],
-  "slice_info": {
-    "axis": "xy",
-    "position": 0.5
-  }
-}
-```
-
-### results/visualization/simulation_state_pressure_xz_slice_0.50_0.000_0.000000.json
-
-```
-{
-  "data_range": {
-    "min": 0.0,
-    "max": 0.0
-  },
-  "display_type": [
-    "scalar",
-    "slice"
-  ]
-}
-```
-
-### results/visualization/simulation_state_levelset_xy_slice_0.50_0.000_0.000000.json
-
-```
-{
-  "data_range": {
-    "min": -0.7273618495495704,
-    "max": 0.047470310685267
-  },
-  "display_type": [
-    "scalar",
-    "slice"
-  ]
-}
-```
-
-### results/visualization/simulation_state_pressure_xy_slice_0.50_0.000_0.000000.json
-
-```
-{
-  "data_range": {
-    "min": 0.0,
-    "max": 0.0
-  },
-  "display_type": [
-    "scalar",
-    "slice"
-  ]
-}
-```
-
-### results/visualization/diagnostics/diagnostics_0.000000.json
-
-```
-{
-  "time": 0.0,
-  "velocity_max": 0.0,
-  "pressure_max": 0.0,
-  "levelset_min": -0.7273618495495704,
-  "levelset_max": 0.047470310685267,
-  "interface_geometry": {
-    "volume_fraction": 0.019987321738963382,
-    "interface_points": 508,
-    "interface_area": 0.5965751663701145,
-    "distance_error": 0.007773352912875114,
-    "curvature": {
-      "min": -15.983784122834253,
-      "max": -2.098045216945196,
-      "mean": -4.146721775680972,
-      "rms": 4.606966051633904
-    }
-  }
-}
-```
-
-### results/visualization/simulation_state_levelset_yz_slice_0.50_0.000_0.000000.json
-
-```
-{
-  "data_range": {
-    "min": -0.7273618495495704,
-    "max": 0.047470310685267
-  },
-  "display_type": [
-    "scalar",
-    "slice"
-  ]
-}
-```
-
-### results/visualization/simulation_state_velocity_xy_slice_0.50_0.000_0.000000.json
-
-```
-{
-  "data_range": {
-    "min_magnitude": 0.0,
-    "max_magnitude": 0.0
-  },
-  "display_type": [
-    "vector",
-    "slice"
-  ],
-  "slice_info": {
-    "axis": "xy",
-    "position": 0.5
-  }
-}
-```
-
-### results/visualization/simulation_state_levelset_xz_slice_0.50_0.000_0.000000.json
-
-```
-{
-  "data_range": {
-    "min": -0.7273618495495704,
-    "max": 0.047470310685267
-  },
-  "display_type": [
-    "scalar",
-    "slice"
-  ]
-}
-```
-
-### results/visualization/simulation_state_velocity_yz_slice_0.50_0.000_0.000000.json
-
-```
-{
-  "data_range": {
-    "min_magnitude": 0.0,
-    "max_magnitude": 0.0
-  },
-  "display_type": [
-    "vector",
-    "slice"
-  ],
-  "slice_info": {
-    "axis": "xy",
-    "position": 0.5
-  }
-}
-```
-
 ### physics/pressure/poisson.py
 
 ```
@@ -8879,82 +8780,97 @@ class PoissonTerm(ABC):
 
 ```
 """
-移流項（対流項）の計算を提供するモジュール
+圧力ポアソン方程式の移流項の発散を計算するモジュール
 
-Navier-Stokes方程式における移流項 u⋅∇u を計算します。
+Navier-Stokes方程式の移流項 u⋅∇u の発散 ∇⋅(u⋅∇u) を計算します。
 """
 
 from typing import Dict, Any
 import numpy as np
 
-from core.field import VectorField
+from core.field import VectorField, ScalarField
 from .base import PoissonTerm
 
 
 class AdvectionTerm(PoissonTerm):
-    """移流項（対流項）を計算するクラス"""
+    """
+    圧力ポアソン方程式の移流項の発散を計算するクラス
+
+    式: ∇⋅(u⋅∇u)
+    
+    この項は、速度場の非線形移流効果を表現し、 
+    圧力ポアソン方程式の右辺に寄与します。
+    """
 
     def __init__(
         self,
-        name: str = "Advection",
+        name: str = "AdvectionDivergence",
         enabled: bool = True,
-        scheme: str = "central",
     ):
         """
         Args:
             name: 項の名前
             enabled: 項を有効にするかどうか
-            scheme: 差分スキーム（現時点では中心差分のみ）
         """
         super().__init__(name, enabled)
-        self._scheme = scheme
 
-    def compute(self, velocity: VectorField, **kwargs) -> VectorField:
-        """移流項の寄与を計算 ∇⋅(u⋅∇u)
+    def compute(
+        self, velocity: VectorField, **kwargs
+    ) -> ScalarField:
+        """
+        移流項の発散を計算 ∇⋅(u⋅∇u)
 
         Args:
             velocity: 速度場
 
         Returns:
-            移流項をVectorFieldとして返す
+            移流項の発散をScalarFieldとして返す
         """
         if not self.enabled:
-            return VectorField(velocity.shape, velocity.dx)
+            return ScalarField(velocity.shape, velocity.dx)
 
-        result = VectorField(velocity.shape, velocity.dx)
-
-        # 各方向成分について
-        for i, v_i in enumerate(velocity.components):
-            # u⋅∇u_i の計算
-            advection = np.zeros_like(v_i.data)
-            for j, v_j in enumerate(velocity.components):
-                # v_j * ∂v_i/∂x_j を計算
-                tmp = v_j.data * v_i.gradient(j)
-                # 発散の計算: ∂/∂x_j(v_j * ∂v_i/∂x_j)
-                advection += np.gradient(tmp, velocity.dx[j], axis=j)
-
-            result.components[i].data = -advection  # 符号に注意
+        # 移流項の発散を計算
+        result = ScalarField(velocity.shape, velocity.dx)
+        
+        # u⋅∇u の各成分の発散を計算
+        for i in range(velocity.ndim):
+            # u_j * ∂u_i/∂x_j の発散
+            advection_div = np.zeros_like(velocity.components[i].data)
+            for j in range(velocity.ndim):
+                # v_j * ∂u_i/∂x_j
+                advection_term = velocity.components[j].data * velocity.components[i].gradient(j)
+                # ∂/∂x_j(v_j * ∂u_i/∂x_j)
+                advection_div += np.gradient(advection_term, velocity.dx[j], axis=j)
+            
+            # 結果に加算（移流項の発散は成分ごとに計算し、合計）
+            result.data += advection_div
 
         # 診断情報の更新
-        self._update_diagnostics(result)
+        self._update_diagnostics(result, velocity)
 
         return result
 
-    def _update_diagnostics(self, result: VectorField):
-        """診断情報を更新
+    def _update_diagnostics(self, result: ScalarField, velocity: VectorField):
+        """
+        診断情報を更新
 
         Args:
-            result: 計算された移流項
+            result: 計算された移流項の発散
+            velocity: 速度場
         """
         self._diagnostics = {
-            "scheme": self._scheme,
-            "max_advection": float(
-                max(np.max(np.abs(comp.data)) for comp in result.components)
-            ),
-            "component_max": {
+            "max_advection_divergence": float(np.max(np.abs(result.data))),
+            "velocity_max": {
                 f"component_{i}": float(np.max(np.abs(comp.data)))
-                for i, comp in enumerate(result.components)
+                for i, comp in enumerate(velocity.components)
             },
+            "velocity_ranges": {
+                f"component_{i}": {
+                    "min": float(np.min(comp.data)),
+                    "max": float(np.max(comp.data)),
+                }
+                for i, comp in enumerate(velocity.components)
+            }
         }
 
     def get_diagnostics(self) -> Dict[str, Any]:
@@ -8962,7 +8878,6 @@ class AdvectionTerm(PoissonTerm):
         diag = super().get_diagnostics()
         diag.update(self._diagnostics)
         return diag
-
 ```
 
 ### physics/pressure/terms/viscous.py
@@ -9244,7 +9159,7 @@ class ContinuityEquation:
         """
         スカラー場の時間微分を計算（非保存形式）
 
-        中心差分により ∂f/∂t = -u⋅∇f を計算します。
+        速度場との内積演算を活用して、∂f/∂t = -u⋅∇f を計算します。
 
         Args:
             field: 移流される任意のスカラー場
@@ -9253,20 +9168,8 @@ class ContinuityEquation:
         Returns:
             スカラー場の時間微分をScalarFieldとして返す
         """
-        # 結果を格納するScalarFieldを作成
         result = ScalarField(field.shape, field.dx)
-
-        # field の勾配を計算: ∇f
-        grad_f = [field.gradient(i) for i in range(field.ndim)]
-
-        # 速度場との内積を計算: u⋅∇f
-        advection = sum(
-            velocity.components[i].data * grad_f[i] for i in range(field.ndim)
-        )
-
-        # 移流の符号を反転: -u⋅∇f
-        result.data = -advection
-
+        result.data = -(velocity * field.gradient()).data
         return result
 
     def compute_derivative_conservative(
@@ -9277,7 +9180,7 @@ class ContinuityEquation:
         """
         スカラー場の時間微分を計算（保存形式）
 
-        中心差分により ∂f/∂t = -∇⋅(uf) を計算します。
+        フラックスの発散として、∂f/∂t = -∇⋅(uf) を計算します。
 
         Args:
             field: 移流される任意のスカラー場
@@ -9286,21 +9189,9 @@ class ContinuityEquation:
         Returns:
             スカラー場の時間微分をScalarFieldとして返す
         """
-        # 結果を格納するScalarFieldを作成
         result = ScalarField(field.shape, field.dx)
-        dx = field.dx
-
-        # 各方向のフラックスを計算して発散を求める: ∇⋅(uf)
-        flux_divergence = np.zeros_like(field.data)
-        for i in range(field.ndim):
-            # フラックスの計算: u_i * f
-            flux = velocity.components[i].data * field.data
-            # フラックスの勾配を加算: ∂(u_i * f)/∂x_i
-            flux_divergence += np.gradient(flux, dx, axis=i)
-
-        # フラックス発散の符号を反転: -∇⋅(uf)
-        result.data = -flux_divergence
-
+        flux = velocity * field
+        result.data = -flux.divergence().data
         return result
 
     def compute_timestep(
@@ -9368,7 +9259,6 @@ class ContinuityEquation:
             "field": field_info,
             "grid_spacing": field.dx,
         }
-
 ```
 
 ### physics/continuity/__init__.py
@@ -9437,7 +9327,15 @@ class InterfaceOperations:
         self, shape: Tuple[int, ...], normal: List[float], point: List[float]
     ) -> ScalarField:
         """平面界面を生成"""
-        return self._init_op.create_plane(shape, normal, point)
+        result = ScalarField(shape, self.dx)
+        coords = np.meshgrid(*[np.linspace(0, 1, s) for s in shape], indexing="ij")
+        
+        # ベクトル演算を活用した簡潔な実装
+        result.data = np.dot(
+            normal, 
+            [(x - p) / d for x, p, d in zip(coords, point, self.dx)]
+        )
+        return result
 
     def combine_interfaces(
         self, phi1: ScalarField, phi2: ScalarField, operation: str = "union"
@@ -9485,15 +9383,7 @@ class InterfaceOperations:
 
     # 診断情報の取得メソッド
     def get_diagnostics(self, phi: ScalarField) -> Dict[str, Any]:
-        """界面に関する診断情報を取得
-
-        以下の情報を含む辞書を返します：
-        - volume_fraction: 第1相の体積分率
-        - interface_points: 界面近傍の格子点数
-        - interface_area: 界面の面積（3D）または長さ（2D）
-        - distance_error: 距離関数の性質からのずれ
-        - curvature_range: 界面の曲率の範囲
-        """
+        """界面に関する診断情報を取得"""
         # 相分布とデルタ関数の計算
         phase = self.get_phase_distribution(phi)
         delta = self.get_interface_delta(phi)
@@ -9536,20 +9426,7 @@ class InterfaceOperations:
         }
 
     def compute_interface_measures(self, phi: ScalarField) -> Dict[str, float]:
-        """界面の各種測度を計算
-
-        以下の測度を計算します：
-        - volume: 第1相の体積
-        - area: 界面の面積
-        - length: 界面の長さ（2Dの場合）
-        - perimeter: 界面の周長（3Dの場合）
-
-        Args:
-            phi: 距離関数
-
-        Returns:
-            各種測度を含む辞書
-        """
+        """界面の各種測度を計算"""
         # 相分布とデルタ関数
         phase = self.get_phase_distribution(phi)
         delta = self.get_interface_delta(phi)
@@ -9569,7 +9446,6 @@ class InterfaceOperations:
             "length": interface_measure if phi.ndim == 2 else None,
             "perimeter": interface_measure if phi.ndim == 3 else None,
         }
-
 ```
 
 ### physics/multiphase/operators/initialization.py
@@ -10362,7 +10238,7 @@ class AdvectionTerm(BaseNavierStokesTerm):
         Args:
             name: 項の名前
             enabled: 項を有効にするかどうか
-            scheme: 差分スキーム（現時点では中心差分のみ）
+            scheme: 差分スキーム
         """
         super().__init__(name, enabled)
         self._scheme = scheme
@@ -10380,16 +10256,8 @@ class AdvectionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        result = VectorField(velocity.shape, velocity.dx)
-
-        # (u⋅∇)u の計算
-        for i, v_i in enumerate(velocity.components):
-            # u_j ∂u_i/∂x_j を計算
-            advection = np.zeros_like(v_i.data)
-            for j, v_j in enumerate(velocity.components):
-                advection += v_j.data * v_i.gradient(j)
-
-            result.components[i].data = -advection  # 符号に注意
+        # 速度場の内積演算を活用
+        result = -velocity.dot(velocity.gradient())
 
         # 診断情報の更新
         self._update_diagnostics(result)
@@ -10439,7 +10307,6 @@ class AdvectionTerm(BaseNavierStokesTerm):
         diag = super().get_diagnostics()
         diag.update(self._diagnostics)
         return diag
-
 ```
 
 ### physics/navier_stokes/terms/acceleration.py
@@ -10493,20 +10360,11 @@ class AccelerationTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        # 結果用のVectorFieldを作成
-        result = VectorField(velocity.shape, velocity.dx)
+        # 密度移流計算
+        density_advection = sum(v.data * density.gradient(i) for i, v in enumerate(velocity.components))
 
-        # まず u⋅∇ρ を計算
-        density_advection = np.zeros_like(density.data)
-        for i, v_i in enumerate(velocity.components):
-            density_advection += v_i.data * density.gradient(i)
-
-        # 次に -1/ρ u(u⋅∇ρ) を計算
-        inverse_density = 1.0 / np.maximum(density.data, 1e-10)
-        for i, v_i in enumerate(velocity.components):
-            result.components[i].data = -(
-                v_i.data * density_advection * inverse_density
-            )
+        # 密度勾配による加速度
+        result = -velocity * density_advection / density
 
         # 診断情報の更新
         self._update_diagnostics(result, density_advection, density)
@@ -10586,7 +10444,6 @@ class AccelerationTerm(BaseNavierStokesTerm):
         diag = super().get_diagnostics()
         diag.update(self._diagnostics)
         return diag
-
 ```
 
 ### physics/navier_stokes/terms/diffusion.py
@@ -10642,37 +10499,15 @@ class DiffusionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        result = VectorField(velocity.shape, velocity.dx)
-        dx = velocity.dx
-
-        # 粘性係数の設定（スカラー場または定数）
-        nu = viscosity if viscosity is not None else 1.0e-3
+        # 粘性係数の正規化
         nu_field = (
-            nu
-            if isinstance(nu, ScalarField)
-            else ScalarField(velocity.shape, dx, initial_value=nu)
+            viscosity
+            if isinstance(viscosity, ScalarField)
+            else ScalarField(velocity.shape, velocity.dx, initial_value=viscosity or 1.0e-3)
         )
 
-        for i, v_i in enumerate(velocity.components):
-            diffusion = np.zeros_like(v_i.data)
-
-            for j in range(velocity.ndim):
-                # ∂u_i/∂x_j を計算
-                dui_dxj = v_i.gradient(j)
-
-                # ∂u_j/∂x_i を計算 (対称項)
-                if i != j:  # 非対角項の場合のみ
-                    duj_dxi = velocity.components[j].gradient(i)
-                    strain_rate = 0.5 * (dui_dxj + duj_dxi)
-                else:
-                    strain_rate = dui_dxj
-
-                # 粘性応力項の発散を計算
-                # ∂/∂x_j(μ * 2ε_ij)
-                stress = nu_field.data * (2.0 * strain_rate)
-                diffusion += np.gradient(stress, dx, axis=j)
-
-            result.components[i].data = diffusion
+        # 対称勾配テンソルと粘性応力の発散
+        result = nu_field * velocity.symmetric_gradient().divergence()
 
         # 診断情報の更新
         self._update_diagnostics(result, nu_field)
@@ -10728,7 +10563,6 @@ class DiffusionTerm(BaseNavierStokesTerm):
         diag = super().get_diagnostics()
         diag.update(self._diagnostics)
         return diag
-
 ```
 
 ### physics/navier_stokes/terms/__init__.py
@@ -10812,25 +10646,18 @@ class PressureTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        # 結果用のVectorFieldを作成
-        result = VectorField(velocity.shape, velocity.dx)
+        # 密度場の正規化
+        density_field = (
+            density
+            if isinstance(density, ScalarField)
+            else ScalarField(velocity.shape, velocity.dx, initial_value=density or 1000.0)
+        )
 
-        # 密度場の準備
-        if density is None:
-            density = ScalarField(velocity.shape, velocity.dx, initial_value=1000.0)
-        elif isinstance(density, (int, float)):
-            density = ScalarField(velocity.shape, velocity.dx, initial_value=density)
-
-        # 各方向の圧力勾配を計算
-        for i in range(velocity.ndim):
-            # i方向の圧力勾配を計算
-            pressure_grad = pressure.gradient(i)
-
-            # 密度で割って符号を反転
-            result.components[i].data = -pressure_grad / np.maximum(density.data, 1e-10)
+        # 圧力勾配項の計算
+        result = -pressure.gradient() / density_field
 
         # 診断情報の更新
-        self._update_diagnostics(result, pressure, density)
+        self._update_diagnostics(result, pressure, density_field)
 
         return result
 
@@ -10908,7 +10735,6 @@ class PressureTerm(BaseNavierStokesTerm):
         diag = super().get_diagnostics()
         diag.update(self._diagnostics)
         return diag
-
 ```
 
 ### physics/navier_stokes/__init__.py

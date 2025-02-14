@@ -1,101 +1,96 @@
 """
-移流項（対流項）の計算を提供するモジュール
+圧力ポアソン方程式の移流項の発散を計算するモジュール
 
-Navier-Stokes方程式における u⋅∇u 項を計算します。
+Navier-Stokes方程式の移流項 u⋅∇u の発散 ∇⋅(u⋅∇u) を計算します。
 """
 
 from typing import Dict, Any
 import numpy as np
 
-from core.field import VectorField
-from .base import BaseNavierStokesTerm
+from core.field import VectorField, ScalarField
+from .base import PoissonTerm
 
 
-class AdvectionTerm(BaseNavierStokesTerm):
+class AdvectionTerm(PoissonTerm):
     """
-    移流項（対流項）を計算するクラス
+    圧力ポアソン方程式の移流項の発散を計算するクラス
 
-    速度場の移流（u⋅∇u）を中心差分で近似計算します。
+    式: ∇⋅(u⋅∇u)
+    
+    この項は、速度場の非線形移流効果を表現し、 
+    圧力ポアソン方程式の右辺に寄与します。
     """
 
     def __init__(
         self,
-        name: str = "Advection",
+        name: str = "AdvectionDivergence",
         enabled: bool = True,
-        scheme: str = "central",
     ):
         """
         Args:
             name: 項の名前
             enabled: 項を有効にするかどうか
-            scheme: 差分スキーム
         """
         super().__init__(name, enabled)
-        self._scheme = scheme
 
-    def compute(self, velocity: VectorField, **kwargs) -> VectorField:
+    def compute(
+        self, velocity: VectorField, **kwargs
+    ) -> ScalarField:
         """
-        移流項の寄与を計算 (u⋅∇)u
+        移流項の発散を計算 ∇⋅(u⋅∇u)
 
         Args:
             velocity: 速度場
 
         Returns:
-            移流項をVectorFieldとして返す
+            移流項の発散をScalarFieldとして返す
         """
         if not self.enabled:
-            return VectorField(velocity.shape, velocity.dx)
+            return ScalarField(velocity.shape, velocity.dx)
 
-        # 速度場の内積演算を活用
-        advection = velocity.dot(velocity.gradient())
-        result = VectorField(velocity.shape, velocity.dx)
+        # 移流項の発散を計算
+        result = ScalarField(velocity.shape, velocity.dx)
         
-        # 各成分に対して符号を反転
+        # u⋅∇u の各成分の発散を計算
         for i in range(velocity.ndim):
-            result.components[i].data = -advection.components[i].data
+            # u_j * ∂u_i/∂x_j の発散
+            advection_div = np.zeros_like(velocity.components[i].data)
+            for j in range(velocity.ndim):
+                # v_j * ∂u_i/∂x_j
+                advection_term = velocity.components[j].data * velocity.components[i].gradient(j)
+                # ∂/∂x_j(v_j * ∂u_i/∂x_j)
+                advection_div += np.gradient(advection_term, velocity.dx[j], axis=j)
+            
+            # 結果に加算（移流項の発散は成分ごとに計算し、合計）
+            result.data += advection_div
 
         # 診断情報の更新
-        self._update_diagnostics(result)
+        self._update_diagnostics(result, velocity)
 
         return result
 
-    def _update_diagnostics(self, result: VectorField):
+    def _update_diagnostics(self, result: ScalarField, velocity: VectorField):
         """
         診断情報を更新
 
         Args:
-            result: 計算された移流項
+            result: 計算された移流項の発散
+            velocity: 速度場
         """
         self._diagnostics = {
-            "scheme": self._scheme,
-            "max_advection": float(
-                max(np.max(np.abs(comp.data)) for comp in result.components)
-            ),
-            "component_max": {
+            "max_advection_divergence": float(np.max(np.abs(result.data))),
+            "velocity_max": {
                 f"component_{i}": float(np.max(np.abs(comp.data)))
-                for i, comp in enumerate(result.components)
+                for i, comp in enumerate(velocity.components)
             },
+            "velocity_ranges": {
+                f"component_{i}": {
+                    "min": float(np.min(comp.data)),
+                    "max": float(np.max(comp.data)),
+                }
+                for i, comp in enumerate(velocity.components)
+            }
         }
-
-    def compute_timestep(self, velocity: VectorField, **kwargs) -> float:
-        """
-        移流項に基づく時間刻み幅の制限を計算
-
-        Args:
-            velocity: 速度場
-
-        Returns:
-            計算された時間刻み幅の制限
-        """
-        if not self.enabled:
-            return float("inf")
-
-        # 最大速度の計算（各成分の最大絶対値）
-        max_velocity = max(np.max(np.abs(comp.data)) for comp in velocity.components)
-
-        # CFLに基づく時間刻み幅の計算
-        cfl = kwargs.get("cfl", 0.5)
-        return cfl * velocity.dx / (max_velocity + 1e-10)
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""
