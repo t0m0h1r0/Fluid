@@ -49,25 +49,18 @@ class PressureTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        # 結果用のVectorFieldを作成
-        result = VectorField(velocity.shape, velocity.dx)
+        # 密度場の正規化
+        density_field = (
+            density
+            if isinstance(density, ScalarField)
+            else ScalarField(velocity.shape, velocity.dx, initial_value=density or 1000.0)
+        )
 
-        # 密度場の準備
-        if density is None:
-            density = ScalarField(velocity.shape, velocity.dx, initial_value=1000.0)
-        elif isinstance(density, (int, float)):
-            density = ScalarField(velocity.shape, velocity.dx, initial_value=density)
-
-        # 各方向の圧力勾配を計算
-        for i in range(velocity.ndim):
-            # i方向の圧力勾配を計算
-            pressure_grad = pressure.gradient(i)
-
-            # 密度で割って符号を反転
-            result.components[i].data = -pressure_grad / np.maximum(density.data, 1e-10)
+        # 圧力勾配項の計算
+        result = -pressure.gradient() / density_field
 
         # 診断情報の更新
-        self._update_diagnostics(result, pressure, density)
+        self._update_diagnostics(result, pressure, density_field)
 
         return result
 

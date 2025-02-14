@@ -48,37 +48,15 @@ class DiffusionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        result = VectorField(velocity.shape, velocity.dx)
-        dx = velocity.dx
-
-        # 粘性係数の設定（スカラー場または定数）
-        nu = viscosity if viscosity is not None else 1.0e-3
+        # 粘性係数の正規化
         nu_field = (
-            nu
-            if isinstance(nu, ScalarField)
-            else ScalarField(velocity.shape, dx, initial_value=nu)
+            viscosity
+            if isinstance(viscosity, ScalarField)
+            else ScalarField(velocity.shape, velocity.dx, initial_value=viscosity or 1.0e-3)
         )
 
-        for i, v_i in enumerate(velocity.components):
-            diffusion = np.zeros_like(v_i.data)
-
-            for j in range(velocity.ndim):
-                # ∂u_i/∂x_j を計算
-                dui_dxj = v_i.gradient(j)
-
-                # ∂u_j/∂x_i を計算 (対称項)
-                if i != j:  # 非対角項の場合のみ
-                    duj_dxi = velocity.components[j].gradient(i)
-                    strain_rate = 0.5 * (dui_dxj + duj_dxi)
-                else:
-                    strain_rate = dui_dxj
-
-                # 粘性応力項の発散を計算
-                # ∂/∂x_j(μ * 2ε_ij)
-                stress = nu_field.data * (2.0 * strain_rate)
-                diffusion += np.gradient(stress, dx, axis=j)
-
-            result.components[i].data = diffusion
+        # 対称勾配テンソルと粘性応力の発散
+        result = nu_field * velocity.symmetric_gradient().divergence()
 
         # 診断情報の更新
         self._update_diagnostics(result, nu_field)

@@ -3,35 +3,36 @@
 このモジュールは、スカラー量（圧力、温度など）を表現するための場のクラスを定義します。
 """
 
-from typing import Tuple, Optional, Union, List
+from typing import Tuple, Optional, Union
 import numpy as np
 from .field import Field
-from typing import Dict, Any, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .vector import VectorField
+from typing import Dict, Any, List
 
 
 class ScalarField(Field):
     """スカラー場クラス
 
     温度、圧力などのスカラー量を表現するためのクラスです。
-    NumPyスタイルの演算子と数値計算メソッドを提供します。
+    基本的な微分演算や補間機能を提供します。
     """
 
     def __init__(
         self,
         shape: Tuple[int, ...],
-        dx: float = 1.0,
+        dx: Union[float, np.ndarray] = 1.0,
         initial_value: Union[float, np.ndarray] = 0.0,
     ):
         """スカラー場を初期化
 
         Args:
             shape: グリッドの形状
-            dx: グリッド間隔
+            dx: グリッド間隔（スカラーまたはベクトル）
             initial_value: 初期値（スカラーまたは配列）
         """
+        # dxの正規化：スカラーの場合はベクトルに変換
+        if np.isscalar(dx):
+            dx = np.full(len(shape), float(dx))
+
         super().__init__(shape, dx)
         if isinstance(initial_value, np.ndarray):
             # 配列の場合は直接代入
@@ -47,91 +48,13 @@ class ScalarField(Field):
         else:
             raise TypeError(f"Unsupported initial_value type: {type(initial_value)}")
 
-    def __add__(self, other):
-        """NumPyの+演算子に準じた加算"""
-        if isinstance(other, (int, float, np.ndarray)):
-            result = self.copy()
-            result.data += other
-            return result
-        elif isinstance(other, ScalarField):
-            result = self.copy()
-            result.data += other.data
-            return result
-        else:
-            raise TypeError(f"サポートされていない型との加算: {type(other)}")
+    def __neg__(self) -> "ScalarField":
+        """単項マイナス演算子の実装
 
-    def __radd__(self, other):
-        """右側からの加算"""
-        return self.__add__(other)
-
-    def __sub__(self, other):
-        """NumPyの-演算子に準じた減算"""
-        if isinstance(other, (int, float, np.ndarray)):
-            result = self.copy()
-            result.data -= other
-            return result
-        elif isinstance(other, ScalarField):
-            result = self.copy()
-            result.data -= other.data
-            return result
-        else:
-            raise TypeError(f"サポートされていない型との減算: {type(other)}")
-
-    def __rsub__(self, other):
-        """右側からの減算"""
-        result = self.copy()
-        result.data = other - result.data
-        return result
-
-    def __mul__(self, other):
-        """NumPyの*演算子に準じた乗算"""
-        if isinstance(other, (int, float, np.ndarray)):
-            result = self.copy()
-            result.data *= other
-            return result
-        elif isinstance(other, ScalarField):
-            result = self.copy()
-            result.data *= other.data
-            return result
-        else:
-            raise TypeError(f"サポートされていない型との乗算: {type(other)}")
-
-    def __rmul__(self, other):
-        """右側からの乗算"""
-        return self.__mul__(other)
-
-    def __truediv__(self, other):
-        """NumPyの/演算子に準じた除算"""
-        if isinstance(other, (int, float, np.ndarray)):
-            result = self.copy()
-            result.data /= other
-            return result
-        elif isinstance(other, ScalarField):
-            result = self.copy()
-            result.data /= other.data
-            return result
-        else:
-            raise TypeError(f"サポートされていない型との除算: {type(other)}")
-
-    def __rtruediv__(self, other):
-        """右側からの除算"""
-        result = self.copy()
-        result.data = other / result.data
-        return result
-
-    def gradient(self, axis: int = None) -> Union[np.ndarray, List[np.ndarray]]:
-        """NumPyのgradientに準じた勾配計算"""
-        if axis is None:
-            return [np.gradient(self.data, self.dx, axis=i) for i in range(self.ndim)]
-        return np.gradient(self.data, self.dx, axis=axis)
-
-    def dot(self, other: "VectorField") -> "ScalarField":
-        """内積計算（NumPyのdot演算に準じる）"""
+        データの符号を反転したScalarFieldを返します。
+        """
         result = ScalarField(self.shape, self.dx)
-        result.data = sum(
-            comp.data * other_comp.data
-            for comp, other_comp in zip(other.components, other.components)
-        )
+        result.data = -self.data
         return result
 
     def interpolate(self, points: np.ndarray) -> np.ndarray:
@@ -149,7 +72,7 @@ class ScalarField(Field):
 
         for dim in range(self.ndim):
             # 座標をインデックスに変換
-            idx = points[:, dim] / self._dx
+            idx = points[:, dim] / self._dx[dim]
             idx0 = np.floor(idx).astype(int)
             idx1 = idx0 + 1
             w1 = idx - idx0
@@ -178,9 +101,28 @@ class ScalarField(Field):
 
         return result
 
+    def gradient(self, axis: Optional[int] = None) -> Union[np.ndarray, List[np.ndarray]]:
+        """勾配を計算
+
+        Args:
+            axis: 勾配を計算する軸（Noneの場合は全軸の勾配を返す）
+
+        Returns:
+            指定された軸の勾配、またはすべての軸の勾配のリスト
+        """
+        if axis is not None:
+            # 特定の軸の勾配を計算
+            return np.gradient(self._data, self._dx[axis], axis=axis)
+        
+        # すべての軸の勾配を計算
+        return [
+            np.gradient(self._data, self._dx[i], axis=i)
+            for i in range(self.ndim)
+        ]
+
     def integrate(self) -> float:
         """場の積分値を計算"""
-        return np.sum(self._data) * self._dx**self.ndim
+        return np.sum(self._data) * np.prod(self._dx)
 
     def mean(self) -> float:
         """場の平均値を計算"""
@@ -223,6 +165,49 @@ class ScalarField(Field):
 
         self._data = gaussian_filter(self._data, sigma)
 
+    def __add__(self, other):
+        """加算演算子の実装"""
+        result = self.__class__(self.shape, self.dx)
+        if isinstance(other, (int, float)):
+            result.data = self.data + other
+        elif isinstance(other, ScalarField):
+            if self.shape != other.shape:
+                raise ValueError("場の形状が一致しません")
+            result.data = self.data + other.data
+        else:
+            raise TypeError("無効な型との演算です")
+        return result
+
+    def __mul__(self, other):
+        """乗算演算子の実装"""
+        result = self.__class__(self.shape, self.dx)
+        if isinstance(other, (int, float)):
+            result.data = self.data * other
+        elif isinstance(other, ScalarField):
+            if self.shape != other.shape:
+                raise ValueError("場の形状が一致しません")
+            result.data = self.data * other.data
+        else:
+            raise TypeError("無効な型との演算です")
+        return result
+
+    def __rmul__(self, other):
+        """右乗算演算子の実装"""
+        return self.__mul__(other)
+
+    def __truediv__(self, other):
+        """除算演算子の実装"""
+        result = self.__class__(self.shape, self.dx)
+        if isinstance(other, (int, float)):
+            result.data = self.data / other
+        elif isinstance(other, ScalarField):
+            if self.shape != other.shape:
+                raise ValueError("場の形状が一致しません")
+            result.data = self.data / other.data
+        else:
+            raise TypeError("無効な型との演算です")
+        return result
+
     def save_state(self) -> Dict[str, Any]:
         """現在の状態を保存
 
@@ -252,7 +237,7 @@ class ScalarField(Field):
         self.time = state.get("time", 0.0)
 
         # グリッド間隔の確認（必要に応じて）
-        if abs(state["dx"] - self.dx) > 1e-10:
+        if not np.allclose(state["dx"], self.dx):
             raise ValueError("グリッド間隔が一致しません")
 
     def norm(self, ord=2) -> float:

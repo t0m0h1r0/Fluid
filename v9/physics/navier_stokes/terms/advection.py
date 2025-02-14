@@ -28,7 +28,7 @@ class AdvectionTerm(BaseNavierStokesTerm):
         Args:
             name: 項の名前
             enabled: 項を有効にするかどうか
-            scheme: 差分スキーム（現時点では中心差分のみ）
+            scheme: 差分スキーム
         """
         super().__init__(name, enabled)
         self._scheme = scheme
@@ -46,16 +46,8 @@ class AdvectionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        result = VectorField(velocity.shape, velocity.dx)
-
-        # (u⋅∇)u の計算
-        for i, v_i in enumerate(velocity.components):
-            # u_j ∂u_i/∂x_j を計算
-            advection = np.zeros_like(v_i.data)
-            for j, v_j in enumerate(velocity.components):
-                advection += v_j.data * v_i.gradient(j)
-
-            result.components[i].data = -advection  # 符号に注意
+        # 速度場の内積演算を活用
+        result = -velocity.dot(velocity.gradient())
 
         # 診断情報の更新
         self._update_diagnostics(result)

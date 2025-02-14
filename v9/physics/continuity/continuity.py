@@ -38,7 +38,7 @@ class ContinuityEquation:
         """
         スカラー場の時間微分を計算（非保存形式）
 
-        中心差分により ∂f/∂t = -u⋅∇f を計算します。
+        速度場との内積演算を活用して、∂f/∂t = -u⋅∇f を計算します。
 
         Args:
             field: 移流される任意のスカラー場
@@ -47,20 +47,8 @@ class ContinuityEquation:
         Returns:
             スカラー場の時間微分をScalarFieldとして返す
         """
-        # 結果を格納するScalarFieldを作成
         result = ScalarField(field.shape, field.dx)
-
-        # field の勾配を計算: ∇f
-        grad_f = [field.gradient(i) for i in range(field.ndim)]
-
-        # 速度場との内積を計算: u⋅∇f
-        advection = sum(
-            velocity.components[i].data * grad_f[i] for i in range(field.ndim)
-        )
-
-        # 移流の符号を反転: -u⋅∇f
-        result.data = -advection
-
+        result.data = -(velocity * field.gradient()).data
         return result
 
     def compute_derivative_conservative(
@@ -71,7 +59,7 @@ class ContinuityEquation:
         """
         スカラー場の時間微分を計算（保存形式）
 
-        中心差分により ∂f/∂t = -∇⋅(uf) を計算します。
+        フラックスの発散として、∂f/∂t = -∇⋅(uf) を計算します。
 
         Args:
             field: 移流される任意のスカラー場
@@ -80,21 +68,9 @@ class ContinuityEquation:
         Returns:
             スカラー場の時間微分をScalarFieldとして返す
         """
-        # 結果を格納するScalarFieldを作成
         result = ScalarField(field.shape, field.dx)
-        dx = field.dx
-
-        # 各方向のフラックスを計算して発散を求める: ∇⋅(uf)
-        flux_divergence = np.zeros_like(field.data)
-        for i in range(field.ndim):
-            # フラックスの計算: u_i * f
-            flux = velocity.components[i].data * field.data
-            # フラックスの勾配を加算: ∂(u_i * f)/∂x_i
-            flux_divergence += np.gradient(flux, dx, axis=i)
-
-        # フラックス発散の符号を反転: -∇⋅(uf)
-        result.data = -flux_divergence
-
+        flux = velocity * field
+        result.data = -flux.divergence().data
         return result
 
     def compute_timestep(

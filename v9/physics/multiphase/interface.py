@@ -44,7 +44,15 @@ class InterfaceOperations:
         self, shape: Tuple[int, ...], normal: List[float], point: List[float]
     ) -> ScalarField:
         """平面界面を生成"""
-        return self._init_op.create_plane(shape, normal, point)
+        result = ScalarField(shape, self.dx)
+        coords = np.meshgrid(*[np.linspace(0, 1, s) for s in shape], indexing="ij")
+        
+        # ベクトル演算を活用した簡潔な実装
+        result.data = np.dot(
+            normal, 
+            [(x - p) / d for x, p, d in zip(coords, point, self.dx)]
+        )
+        return result
 
     def combine_interfaces(
         self, phi1: ScalarField, phi2: ScalarField, operation: str = "union"
@@ -92,15 +100,7 @@ class InterfaceOperations:
 
     # 診断情報の取得メソッド
     def get_diagnostics(self, phi: ScalarField) -> Dict[str, Any]:
-        """界面に関する診断情報を取得
-
-        以下の情報を含む辞書を返します：
-        - volume_fraction: 第1相の体積分率
-        - interface_points: 界面近傍の格子点数
-        - interface_area: 界面の面積（3D）または長さ（2D）
-        - distance_error: 距離関数の性質からのずれ
-        - curvature_range: 界面の曲率の範囲
-        """
+        """界面に関する診断情報を取得"""
         # 相分布とデルタ関数の計算
         phase = self.get_phase_distribution(phi)
         delta = self.get_interface_delta(phi)
@@ -143,20 +143,7 @@ class InterfaceOperations:
         }
 
     def compute_interface_measures(self, phi: ScalarField) -> Dict[str, float]:
-        """界面の各種測度を計算
-
-        以下の測度を計算します：
-        - volume: 第1相の体積
-        - area: 界面の面積
-        - length: 界面の長さ（2Dの場合）
-        - perimeter: 界面の周長（3Dの場合）
-
-        Args:
-            phi: 距離関数
-
-        Returns:
-            各種測度を含む辞書
-        """
+        """界面の各種測度を計算"""
         # 相分布とデルタ関数
         phase = self.get_phase_distribution(phi)
         delta = self.get_interface_delta(phi)

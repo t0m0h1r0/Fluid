@@ -46,20 +46,11 @@ class AccelerationTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        # 結果用のVectorFieldを作成
-        result = VectorField(velocity.shape, velocity.dx)
+        # 密度移流計算
+        density_advection = sum(v.data * density.gradient(i) for i, v in enumerate(velocity.components))
 
-        # まず u⋅∇ρ を計算
-        density_advection = np.zeros_like(density.data)
-        for i, v_i in enumerate(velocity.components):
-            density_advection += v_i.data * density.gradient(i)
-
-        # 次に -1/ρ u(u⋅∇ρ) を計算
-        inverse_density = 1.0 / np.maximum(density.data, 1e-10)
-        for i, v_i in enumerate(velocity.components):
-            result.components[i].data = -(
-                v_i.data * density_advection * inverse_density
-            )
+        # 密度勾配による加速度
+        result = -velocity * density_advection / density
 
         # 診断情報の更新
         self._update_diagnostics(result, density_advection, density)
