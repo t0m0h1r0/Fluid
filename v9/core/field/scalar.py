@@ -161,7 +161,6 @@ class ScalarField(Field):
             sigma: ガウシアンフィルタの標準偏差
         """
         from scipy.ndimage import gaussian_filter
-
         self._data = gaussian_filter(self._data, sigma)
 
     def __add__(self, other):
@@ -179,6 +178,8 @@ class ScalarField(Field):
 
     def __mul__(self, other):
         """乗算演算子の実装"""
+        from .vector import VectorField  # 循環インポートを避けるためローカルインポート
+        
         result = self.__class__(self.shape, self.dx)
         if isinstance(other, (int, float)):
             result.data = self.data * other
@@ -186,6 +187,12 @@ class ScalarField(Field):
             if self.shape != other.shape:
                 raise ValueError("場の形状が一致しません")
             result.data = self.data * other.data
+        elif isinstance(other, VectorField):
+            if self.shape != other.shape:
+                raise ValueError("場の形状が一致しません")
+            result = VectorField(self.shape, self.dx)
+            for i, comp in enumerate(other.components):
+                result.components[i] = self * comp
         else:
             raise TypeError("無効な型との演算です")
         return result

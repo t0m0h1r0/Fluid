@@ -1,7 +1,7 @@
 """ベクトル場クラスを提供するモジュール
 
-このモジュールは、ベクトル量（速度、運動量など）を表現するためのベクトル場クラスを定義します。
-"""
+このモジュールは、ベクトル量（速度、運動量など）を表現するための
+ベクトル場クラスを定義します。"""
 
 import numpy as np
 from typing import List, Tuple, Optional
@@ -193,27 +193,47 @@ class VectorField:
             result.components[i] = c1 + c2
         return result
 
-    def __mul__(self, other) -> "VectorField":
+    def __mul__(self, other: Union[float, ScalarField]) -> "VectorField":
         """スカラー倍の実装"""
-        if not isinstance(other, (int, float, ScalarField)):
-            raise TypeError("スカラー倍のみ可能です")
-
         result = VectorField(self.shape, self.dx)
 
-        # スカラー値の場合
         if isinstance(other, (int, float)):
+            # スカラー値による乗算
             for i, component in enumerate(self.components):
                 result.components[i] = component * other
-        # スカラー場の場合
+        elif isinstance(other, ScalarField):
+            # スカラー場による乗算
+            if self.shape != other.shape:
+                raise ValueError("場の形状が一致しません")
+            for i, component in enumerate(self.components):
+                result.components[i] = component * other
         else:
-            for i, component in enumerate(self.components):
-                result.components[i] = component * other
+            raise TypeError("スカラーまたはスカラー場との乗算のみ可能です")
 
         return result
 
-    def __rmul__(self, other) -> "VectorField":
+    def __rmul__(self, other: Union[float, ScalarField]) -> "VectorField":
         """右スカラー倍の実装"""
         return self.__mul__(other)
+
+    def __truediv__(self, other: Union[float, ScalarField]) -> "VectorField":
+        """除算の実装"""
+        result = VectorField(self.shape, self.dx)
+
+        if isinstance(other, (int, float)):
+            # スカラー値による除算
+            for i, component in enumerate(self.components):
+                result.components[i] = component / other
+        elif isinstance(other, ScalarField):
+            # スカラー場による除算
+            if self.shape != other.shape:
+                raise ValueError("場の形状が一致しません")
+            for i, component in enumerate(self.components):
+                result.components[i] = component / other
+        else:
+            raise TypeError("スカラーまたはスカラー場との除算のみ可能です")
+
+        return result
 
     def dot(self, other: "VectorField") -> ScalarField:
         """内積を計算
@@ -301,54 +321,3 @@ class VectorField:
         component_norms = [np.sqrt(np.mean(comp.data**2)) for comp in self.components]
         # 最大のノルムを返す
         return max(component_norms)
-
-    def __matmul__(self, other):
-        """
-        '@' 演算子のオーバーロード
-
-        以下のような演算をサポート:
-        1. ベクトル場同士の内積
-        2. ベクトル場と任意のオブジェクトの積
-        - NumPy配列
-        - ScalarField
-        - その他互換性のあるオブジェクト
-        """
-        # 既存のベクトル場同士の内積
-        if isinstance(other, VectorField):
-            return self.dot(other)
-
-        # NumPy配列との演算
-        if isinstance(other, np.ndarray):
-            result = ScalarField(self.shape, self.dx)
-
-            # 配列の次元に応じて異なる演算
-            if other.ndim == 1 and len(other) == len(self.components):
-                # ベクトルとの内積
-                result.data = sum(
-                    comp.data * val for comp, val in zip(self.components, other)
-                )
-            elif other.ndim == self.ndim + 1:
-                # テンソルとの内積
-                result.data = sum(
-                    sum(self.components[j].data * other[j, i] for j in range(self.ndim))
-                    for i in range(self.ndim)
-                )
-            else:
-                # スカラー倍や他の演算
-                result = ScalarField(self.shape, self.dx)
-                result.data = sum(comp.data * other for comp in self.components)
-
-            return result
-
-        # ScalarFieldとの演算
-        if isinstance(other, ScalarField):
-            result = VectorField(self.shape, self.dx)
-            for i, comp in enumerate(self.components):
-                result.components[i] = comp * other
-            return result
-
-        # その他の型（スカラー値など）
-        if isinstance(other, (int, float)):
-            return self * other
-
-        raise TypeError(f"無効な型との演算: {type(other)}")
