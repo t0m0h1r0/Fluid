@@ -18,7 +18,7 @@ from .terms import AdvectionTerm, ViscousTerm, ForceTerm
 
 
 class PressurePoissonSolver:
-    """圧力ポアソン方程式のソルバー
+    """圧力ポアソン方程式のソルバー（修正版）
 
     非圧縮性流体の圧力場を計算するためのソルバーです。
     各種の物理項（移流、粘性、外力）の発散から右辺を構築し、
@@ -49,7 +49,7 @@ class PressurePoissonSolver:
         external_force: Optional[VectorField] = None,
         **kwargs,
     ) -> Tuple[ScalarField, Dict[str, Any]]:
-        """圧力ポアソン方程式を解く
+        """圧力ポアソン方程式を解く（修正版）
 
         Args:
             velocity: 速度場
@@ -66,14 +66,19 @@ class PressurePoissonSolver:
             velocity, density, viscosity, external_force
         )
 
-        # 右辺の構築
-        rhs = ScalarField(velocity.shape, velocity.dx)
-        for term in source_terms.values():
-            rhs.data = np.array(rhs.data) + np.array(term.data)
+        # 右辺の構築（修正版）
+        rhs = ScalarField(velocity.shape[:-1], velocity.dx)
+        for term_name, term in source_terms.items():
+            # 発散された項はスカラー場であることを保証
+            term_scalar = (
+                term.data if isinstance(term, ScalarField) else term.divergence().data
+            )
+            # スカラー場の加算
+            rhs.data += term_scalar
 
         # ポアソン方程式を解く
-        pressure = ScalarField(velocity.shape, velocity.dx)
-        pressure.data = self._poisson_solver.solve(np.array(rhs.data))
+        pressure = ScalarField(velocity.shape[:-1], velocity.dx)
+        pressure.data = self._poisson_solver.solve(rhs.data)
 
         # 診断情報の更新
         self._update_diagnostics(pressure, rhs, source_terms)
@@ -86,23 +91,20 @@ class PressurePoissonSolver:
         density: ScalarField,
         viscosity: ScalarField,
         external_force: Optional[VectorField],
-    ) -> Dict[str, ScalarField]:
-        """ポアソン方程式の右辺を構成する各項を計算"""
+    ) -> Dict[str, Any]:
+        """ポアソン方程式の右辺を構成する各項を計算
+
+        各項の発散を計算し、スカラー場として返します。
+        """
         source_terms = {}
 
         # 移流項の発散: -∇⋅(ρ(u⋅∇)u)
         advection = self._advection_term.compute(velocity=velocity)
-        source_terms["advection"] = ScalarField(
-            velocity.shape,
-            velocity.dx,
-        )
+        source_terms["advection"] = advection.divergence()
 
         # 粘性項の発散: ∇⋅(μ∇²u)
         viscous = self._viscous_term.compute(velocity=velocity, viscosity=viscosity)
-        source_terms["viscous"] = ScalarField(
-            velocity.shape,
-            velocity.dx,
-        )
+        source_terms["viscous"] = viscous.divergence()
 
         # 外力項の発散: ∇⋅f
         if external_force is not None:

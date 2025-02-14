@@ -11,17 +11,12 @@ ScalarField/VectorFieldの演算子を活用して、
 ここで:
 - u_j: j方向の速度成分
 - ∂u_i/∂x_j: i成分のj方向への偏微分
-
-実装の注意点:
-1. gradient()メソッドはnumpy.ndarrayを返すため、ScalarFieldでラップする必要がある
-2. 演算子の型の一貫性を保持する
-3. 各方向の寄与を正しく合計する
 """
 
 from typing import Dict, Any
 import numpy as np
 
-from core.field import VectorField, ScalarField
+from core.field import VectorField
 from .base import BaseNavierStokesTerm
 
 
@@ -47,11 +42,6 @@ class AdvectionTerm(BaseNavierStokesTerm):
     def compute(self, velocity: VectorField, **kwargs) -> VectorField:
         """移流項 -(u·∇)u を計算
 
-        ScalarField/VectorFieldの演算子を活用して、
-        数学的な表現に近い形で実装します。
-
-        式: (u·∇)u_i = Σ_j (u_j ∂u_i/∂x_j)
-
         Args:
             velocity: 速度場
             **kwargs: 追加のパラメータ
@@ -60,29 +50,33 @@ class AdvectionTerm(BaseNavierStokesTerm):
             計算された移流項（VectorField）
         """
         if not self.enabled:
-            return VectorField(velocity.shape, velocity.dx)
+            return VectorField(velocity.shape[:-1], velocity.dx)
 
-        result = VectorField(velocity.shape, velocity.dx)
+        # 計算結果を格納するベクトル場
+        result = VectorField(velocity.shape[:-1], velocity.dx)
 
-        # 各速度成分に対して (u·∇)u_i を計算
-        for i, u_i in enumerate(velocity.components):
-            # 初期化
-            advection = ScalarField(velocity.shape, velocity.dx)
+        # 速度成分の数を取得
+        n_components = len(velocity.shape[:-1])  # VectorFieldの形状から最後の次元を除外
 
-            # 各方向について u_j * ∂u_i/∂x_j を計算して合計
-            for j, u_j in enumerate(velocity.components):
-                # gradient()の結果をScalarFieldでラップ
-                grad_u_i = ScalarField(
-                    velocity.shape, velocity.dx, initial_value=u_i.gradient(j)
-                )
-                # 寄与を加算
-                advection = advection + (u_j * grad_u_i)
+        # 各速度成分について -(u·∇)u_i を計算
+        for i in range(n_components):
+            # 各方向の寄与を計算して合計
+            advection = np.zeros(velocity.shape[:-1])
+            for j in range(n_components):
+                # u_j * ∂u_i/∂x_j を計算
+                # データに直接アクセスして高速化
+                velocity_j = velocity._data[..., j]
+                grad_u_i = np.gradient(velocity._data[..., i], velocity.dx[j], axis=j)
+                advection += velocity_j * grad_u_i
 
-            # 結果を設定（負の符号に注意）
-            result.components[i] = -advection
+            # 結果を設定（負符号に注意）
+            result._data[
+                ..., i
+            ] = -advection  # 移流項は運動方程式の左辺に移項されるため負符号
 
         # 診断情報の更新
         self._update_diagnostics(result)
+
         return result
 
     def _update_diagnostics(self, result: VectorField):
@@ -95,8 +89,8 @@ class AdvectionTerm(BaseNavierStokesTerm):
             "scheme": self._scheme,
             "max_magnitude": float(result.magnitude().max()),
             "component_max": {
-                f"component_{i}": float(np.max(np.abs(comp.data)))
-                for i, comp in enumerate(result.components)
+                f"component_{i}": float(np.max(np.abs(result._data[..., i])))
+                for i in range(result.shape[-1])
             },
         }
 
@@ -124,11 +118,7 @@ class AdvectionTerm(BaseNavierStokesTerm):
         return cfl * min(velocity.dx) / (max_velocity + 1e-10)
 
     def get_diagnostics(self) -> Dict[str, Any]:
-        """診断情報を取得
-
-        Returns:
-            診断情報を含む辞書
-        """
+        """診断情報を取得"""
         diag = super().get_diagnostics()
         diag.update(self._diagnostics)
         return diag

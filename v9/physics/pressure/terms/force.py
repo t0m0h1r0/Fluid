@@ -42,15 +42,21 @@ class ForceTerm(PoissonTerm):
             外力項の発散を表すスカラー場
         """
         if not self.enabled or external_force is None:
-            return ScalarField(shape, dx)
+            return ScalarField(shape[:-1], dx)  # VectorFieldの最後の次元を除外
 
-        # 各方向成分の発散の計算
-        divergence = np.zeros(shape)
-        for i, force_comp in enumerate(external_force.components):
-            divergence += np.gradient(force_comp.data, dx[i], axis=i)
+        # 結果を格納するスカラー場
+        result = ScalarField(shape[:-1], dx)
+        
+        # 空間次元数の取得（VectorFieldの最後の次元を除く）
+        ndim = len(shape) - 1
 
-        # 結果の設定
-        result = ScalarField(shape, dx)
+        # 発散の計算: ∇⋅f = Σᵢ ∂fᵢ/∂xᵢ
+        divergence = np.zeros(shape[:-1])
+        for i in range(ndim):
+            # i方向の力の成分についての勾配を計算
+            div_i = np.gradient(external_force.components[i].data, dx[i], axis=i)
+            divergence += div_i
+
         result.data = divergence
 
         # 診断情報の更新

@@ -197,7 +197,9 @@ class TwoPhaseFlowSimulator:
 
         for i, comp in enumerate(gravity_force.components):
             # 最後の次元（z方向）にのみ重力を適用
-            if i == len(state.velocity.shape) - 2:  # -2 because shape has an extra dimension
+            if (
+                i == len(state.velocity.shape) - 2
+            ):  # -2 because shape has an extra dimension
                 comp.data = -self.config.physics.gravity * density.data
             else:
                 comp.data = np.zeros(density.shape)

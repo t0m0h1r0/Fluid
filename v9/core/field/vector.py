@@ -82,8 +82,9 @@ class VectorField(Field):
             計算されたベクトルの大きさを表すスカラー場
         """
         from .scalar import ScalarField
+
         result = ScalarField(self.shape[:-1], self.dx)  # 形状から最後の次元を除外
-        result.data = np.sqrt(np.sum(self._data ** 2, axis=-1))
+        result.data = np.sqrt(np.sum(self._data**2, axis=-1))
         return result
 
     def symmetric_gradient(self) -> VectorField:
@@ -117,7 +118,9 @@ class VectorField(Field):
         for i in range(self.ndim):
             for j in range(self.ndim):
                 # ∂u_i/∂x_j
-                result._data[..., i] = np.gradient(self._data[..., j], self.dx[i], axis=i)
+                result._data[..., i] = np.gradient(
+                    self._data[..., j], self.dx[i], axis=i
+                )
         return result
 
     def divergence(self) -> ScalarField:
@@ -127,8 +130,12 @@ class VectorField(Field):
             計算された発散を表すスカラー場
         """
         from .scalar import ScalarField
+
         result = ScalarField(self.shape[:-1], self.dx)  # 形状から最後の次元を除外
-        divs = [np.gradient(self._data[..., i], self.dx[i], axis=i) for i in range(self.ndim)]
+        divs = [
+            np.gradient(self._data[..., i], self.dx[i], axis=i)
+            for i in range(self.ndim)
+        ]
         result.data = np.sum(divs, axis=0)
         return result
 
@@ -144,20 +151,17 @@ class VectorField(Field):
 
         result = VectorField(self.shape[:-1], self.dx)  # 形状から最後の次元を除外
         # ∂w/∂y - ∂v/∂z
-        result._data[..., 0] = (
-            np.gradient(self._data[..., 2], self.dx[1], axis=1)
-            - np.gradient(self._data[..., 1], self.dx[2], axis=2)
-        )
+        result._data[..., 0] = np.gradient(
+            self._data[..., 2], self.dx[1], axis=1
+        ) - np.gradient(self._data[..., 1], self.dx[2], axis=2)
         # ∂u/∂z - ∂w/∂x
-        result._data[..., 1] = (
-            np.gradient(self._data[..., 0], self.dx[2], axis=2)
-            - np.gradient(self._data[..., 2], self.dx[0], axis=0)
-        )
+        result._data[..., 1] = np.gradient(
+            self._data[..., 0], self.dx[2], axis=2
+        ) - np.gradient(self._data[..., 2], self.dx[0], axis=0)
         # ∂v/∂x - ∂u/∂y
-        result._data[..., 2] = (
-            np.gradient(self._data[..., 1], self.dx[0], axis=0)
-            - np.gradient(self._data[..., 0], self.dx[1], axis=1)
-        )
+        result._data[..., 2] = np.gradient(
+            self._data[..., 1], self.dx[0], axis=0
+        ) - np.gradient(self._data[..., 0], self.dx[1], axis=1)
         return result
 
     def integrate(self) -> float:
@@ -169,7 +173,9 @@ class VectorField(Field):
         # グリッド体積要素
         dV = np.prod(self.dx)
         # 各成分の積分
-        integral_squares = [np.sum(self._data[..., i])**2 * dV**2 for i in range(self.ndim)]
+        integral_squares = [
+            np.sum(self._data[..., i]) ** 2 * dV**2 for i in range(self.ndim)
+        ]
         return np.sqrt(np.sum(integral_squares))
 
     def get_diagnostics(self) -> Dict[str, Any]:
@@ -181,10 +187,10 @@ class VectorField(Field):
                     "min": float(np.min(self._data[..., i])),
                     "max": float(np.max(self._data[..., i])),
                     "mean": float(np.mean(self._data[..., i])),
-                    "norm": float(np.linalg.norm(self._data[..., i]))
+                    "norm": float(np.linalg.norm(self._data[..., i])),
                 }
                 for i in range(self.ndim)
-            }
+            },
         }
 
     def __neg__(self) -> VectorField:
@@ -248,6 +254,7 @@ class VectorField(Field):
             raise ValueError("場の形状が一致しません")
 
         from .scalar import ScalarField
+
         result = ScalarField(self.shape[:-1], self.dx)
         result.data = np.sum(self._data * other._data, axis=-1)
         return result
@@ -263,9 +270,18 @@ class VectorField(Field):
 
         result = VectorField(self.shape[:-1], self.dx)
         # 外積の各成分を計算
-        result._data[..., 0] = self._data[..., 1] * other._data[..., 2] - self._data[..., 2] * other._data[..., 1]
-        result._data[..., 1] = self._data[..., 2] * other._data[..., 0] - self._data[..., 0] * other._data[..., 2]
-        result._data[..., 2] = self._data[..., 0] * other._data[..., 1] - self._data[..., 1] * other._data[..., 0]
+        result._data[..., 0] = (
+            self._data[..., 1] * other._data[..., 2]
+            - self._data[..., 2] * other._data[..., 1]
+        )
+        result._data[..., 1] = (
+            self._data[..., 2] * other._data[..., 0]
+            - self._data[..., 0] * other._data[..., 2]
+        )
+        result._data[..., 2] = (
+            self._data[..., 0] * other._data[..., 1]
+            - self._data[..., 1] * other._data[..., 0]
+        )
         return result
 
     def norm(self) -> float:
@@ -275,6 +291,8 @@ class VectorField(Field):
             全成分のL2ノルムの最大値
         """
         # 各成分のL2ノルムを計算
-        component_norms = [np.sqrt(np.mean(self._data[..., i]**2)) for i in range(self.ndim)]
+        component_norms = [
+            np.sqrt(np.mean(self._data[..., i] ** 2)) for i in range(self.ndim)
+        ]
         # 最大のノルムを返す
         return max(component_norms)
