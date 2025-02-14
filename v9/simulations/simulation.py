@@ -182,8 +182,7 @@ class TwoPhaseFlowSimulator:
         return new_state, diagnostics
 
     def _compute_external_forces(self, state: SimulationState) -> VectorField:
-        """
-        外力（重力と界面張力）を計算
+        """外力（重力と界面張力）を計算
 
         Args:
             state: シミュレーション状態
@@ -191,13 +190,14 @@ class TwoPhaseFlowSimulator:
         Returns:
             外力のベクトル場
         """
-        # 重力の計算
-        gravity_force = VectorField(state.velocity.shape, self.dx)
+        # base_shape を使用して、追加の次元を除外
+        base_shape = state.velocity.shape[:-1]  # 最後の次元を除外
+        gravity_force = VectorField(base_shape, self.dx)
         density = state.get_density(self.config.physics)
 
         for i, comp in enumerate(gravity_force.components):
             # 最後の次元（z方向）にのみ重力を適用
-            if i == len(state.velocity.shape) - 1:
+            if i == len(state.velocity.shape) - 2:  # -2 because shape has an extra dimension
                 comp.data = -self.config.physics.gravity * density.data
             else:
                 comp.data = np.zeros(density.shape)
@@ -304,21 +304,3 @@ class TwoPhaseFlowSimulator:
             読み込まれた状態
         """
         return SimulationState.load_state(filepath)
-
-
-# 将来の拡張性のためのファクトリメソッド
-def create_simulator(
-    config: SimulationConfig, time_integrator: Optional[TemporalSolver] = None
-) -> TwoPhaseFlowSimulator:
-    """
-    シミュレータのファクトリメソッド
-
-    Args:
-        config: シミュレーション設定
-        time_integrator: オプションの時間積分器
-
-    Returns:
-        初期化されたTwoPhaseFlowSimulatorインスタンス
-    """
-    simulator = TwoPhaseFlowSimulator(config, time_integrator)
-    return simulator

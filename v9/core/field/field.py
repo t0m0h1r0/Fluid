@@ -36,9 +36,12 @@ class Field(ABC):
         else:
             self._dx = np.asarray(dx, dtype=float)
             if len(self._dx) != len(shape):
-                raise ValueError(
-                    f"dxの次元数({len(self._dx)})がshapeの次元数({len(shape)})と一致しません"
-                )
+                # VectorFieldの場合、最後の次元は成分を表すので除外してチェック
+                base_shape = shape[:-1] if len(shape) > len(self._dx) else shape
+                if len(self._dx) != len(base_shape):
+                    raise ValueError(
+                        f"dxの次元数({len(self._dx)})がshapeの次元数({len(base_shape)})と一致しません"
+                    )
 
         self._time = 0.0
 
