@@ -5,10 +5,11 @@
 """
 
 import numpy as np
-from typing import List, Tuple, Union, Dict, Any
-from .scalar import ScalarField
+from typing import List, Tuple, Union, Dict, Any, TYPE_CHECKING
 from .field import Field
 
+if TYPE_CHECKING:
+    from .scalar import ScalarField
 
 class VectorField(Field):
     """ベクトル場クラス

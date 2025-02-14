@@ -3,12 +3,13 @@
 このモジュールは、スカラー量（圧力、温度など）を表現するための場のクラスを定義します。
 """
 
-from typing import Tuple, Optional, Union, List
+from typing import Tuple, Optional, Union, List, TYPE_CHECKING
 import numpy as np
 from .field import Field
 from typing import Dict, Any
-from .vector import VectorField
 
+if TYPE_CHECKING:
+    from .vector import VectorField
 
 class ScalarField(Field):
     """スカラー場クラス
