@@ -1,92 +1,122 @@
-"""前進オイラー法による時間積分を提供するモジュール"""
+"""
+前進オイラー法による時間積分
 
-from typing import Union
+1次精度の明示的時間積分スキーム
+"""
 
-from .base import TimeIntegrator, FieldType
+from typing import Union, Dict, Any
+
+from .base import TimeIntegrator, TimeIntegratorConfig
 from core.field import ScalarField, VectorField
 
 
 class ForwardEuler(TimeIntegrator):
-    """前進オイラー法による時間積分器
+    """
+    前進オイラー法による時間積分器
 
-    簡単だが1次精度の明示的時間積分スキーム。
-    条件付き安定で、時間刻み幅に制限があります。
+    特徴:
+    - 1次精度の単純な時間積分スキーム
+    - 計算が軽く、安定性に制限がある
     """
 
     def __init__(
         self,
-        cfl: float = 0.5,
-        min_dt: float = 1e-6,
-        max_dt: float = 1.0,
-        tolerance: float = 1e-6,
+        config: TimeIntegratorConfig = TimeIntegratorConfig(
+            cfl=0.5,
+            stability_limit=1.0,  # von Neumannの安定性解析による
+        ),
     ):
-        """前進オイラー法の積分器を初期化"""
-        super().__init__(
-            cfl=cfl,
-            min_dt=min_dt,
-            max_dt=max_dt,
-            tolerance=tolerance,
-            stability_limit=2.0,  # von Neumannの安定性解析による
-        )
-
-    def integrate(
-        self,
-        field: FieldType,
-        dt: float,
-        derivative: FieldType,
-    ) -> FieldType:
-        """前進オイラー法で時間積分を実行
+        """
+        前進オイラー法の積分器を初期化
 
         Args:
-            field: 現在のフィールド値
-            dt: 時間刻み幅
-            derivative: フィールドの時間微分（fieldと同じ型）
-
-        Returns:
-            更新されたフィールド
+            config: 時間積分の設定パラメータ
         """
-        if not isinstance(derivative, type(field)):
-            raise TypeError("derivativeはfieldと同じ型である必要があります")
+        super().__init__(config)
 
-        try:
-            if isinstance(field, (ScalarField, VectorField)):
-                return self._integrate_field(field, dt, derivative)
-            else:
-                raise ValueError("Unsupported field type")
-
-        except Exception as e:
-            raise RuntimeError(f"Euler積分中にエラー: {e}")
-
-    def _integrate_field(
+    def integrate(
         self,
         field: Union[ScalarField, VectorField],
         dt: float,
         derivative: Union[ScalarField, VectorField],
     ) -> Union[ScalarField, VectorField]:
-        """ScalarFieldまたはVectorFieldの時間積分"""
-        # 加算演算子を使用した更新
-        new_field = field + dt * derivative
-
-        # 誤差の推定
-        error = dt * derivative.norm()
-        self._error_history.append(error)
-
-        return new_field
-
-    def compute_timestep(self, field: FieldType, **kwargs) -> float:
-        """安定な時間刻み幅を計算"""
-        dt = super().compute_timestep(field, **kwargs)
-        return self._clip_timestep(dt)
-
-    def get_order(self) -> int:
-        """数値スキームの次数を取得"""
-        return 1
-
-    def get_error_estimate(self) -> float:
-        """誤差の推定値を取得
-
-        前進オイラー法の局所打ち切り誤差は O(dt²)
         """
-        if not self._error_history:
-            return float("inf")
-        return max(self._error_history[-10:])
+        前進オイラー法で時間積分を実行
+
+        数値スキーム: u(t+Δt) = u(t) + Δt * ∂u/∂t
+
+        Args:
+            field: 現在の場
+            dt: 時間刻み幅
+            derivative: 場の時間微分
+
+        Returns:
+            更新された場
+        """
+        # 型と整合性のチェック
+        if type(field) != type(derivative):
+            raise TypeError("fieldとderivativeは同じ型である必要があります")
+
+        try:
+            # 時間発展の計算
+            new_field = field + dt * derivative
+
+            # 誤差推定
+            error = dt * derivative.norm()
+            self._error_history.append(error)
+
+            return new_field
+
+        except Exception as e:
+            raise RuntimeError(f"Euler積分中にエラー: {e}")
+
+    def compute_timestep(
+        self, field: Union[ScalarField, VectorField], **kwargs
+    ) -> float:
+        """
+        CFL条件に基づく安定な時間刻み幅を計算
+
+        数値的安定性条件:
+        Δt ≤ CFL * Δx / |u|_max
+
+        Args:
+            field: 現在の場
+            **kwargs: 追加のパラメータ
+
+        Returns:
+            計算された時間刻み幅
+        """
+        # 速度の最大大きさを推定（ベクトル場の場合）
+        if isinstance(field, VectorField):
+            max_velocity = field.magnitude().max()
+        else:
+            # スカラー場の場合は意味のある値を計算できないため、最大値を使用
+            max_velocity = field.max()
+
+        # CFL条件に基づく時間刻み幅の計算
+        min_dx = min(self.config.dx) if hasattr(self.config, "dx") else 1.0
+
+        # 0除算を防ぐ
+        if max_velocity > 0:
+            return self.config.cfl * min_dx / max_velocity
+        else:
+            return self.config.max_dt
+
+    def get_stability_diagnostics(self) -> Dict[str, Any]:
+        """
+        安定性に関する診断情報を取得
+
+        Returns:
+            安定性診断情報の辞書
+        """
+        return {
+            "method": "Forward Euler",
+            "order": 1,  # 1次精度
+            "error_history": self._error_history,
+            "max_error": max(self._error_history) if self._error_history else None,
+            "stability_properties": {
+                "conditionally_stable": True,
+                "requires_small_timestep": True,
+                "first_order_accuracy": True,
+            },
+        }

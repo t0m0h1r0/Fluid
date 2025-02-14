@@ -192,12 +192,15 @@ class TwoPhaseFlowSimulator:
             外力のベクトル場
         """
         # 重力の計算
-        gravity_force = VectorField(state.velocity.shape, self.dx)
+        gravity_force = VectorField(
+            state.velocity.shape,
+            dx=np.full(state.velocity.shape[-1] - 1, self.dx[-1]),  # 正しいdxを設定
+        )
         density = state.get_density(self.config.physics)
 
         for i, comp in enumerate(gravity_force.components):
             # 最後の次元（z方向）にのみ重力を適用
-            if i == len(state.velocity.shape) - 1:
+            if i == len(state.velocity.shape) - 2:  # 注意: shape[-1]は速度成分のため
                 comp.data = -self.config.physics.gravity * density.data
             else:
                 comp.data = np.zeros(density.shape)

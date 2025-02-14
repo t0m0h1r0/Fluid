@@ -1,154 +1,108 @@
-"""境界条件の基底クラスを提供するモジュール
+"""3次元の物理場を表現する基底クラスを提供するモジュール
 
-このモジュールは、流体シミュレーションで使用される境界条件の基底クラスを定義します。
-すべての具体的な境界条件（周期境界、ディリクレ境界など）は、この基底クラスを継承します。
+このモジュールは、JAXを使用した3次元の物理場の基本的な抽象化を提供します。
+すべての具体的な場の実装（スカラー場、ベクトル場）は、この基底クラスを継承します。
 """
 
 from abc import ABC, abstractmethod
+from typing import Tuple, Protocol, Dict, Any
 from dataclasses import dataclass
-from typing import Tuple
-import numpy as np
+import jax.numpy as jnp
+from jax import jit
 
 
-@dataclass
-class StencilInfo:
-    """差分ステンシルの情報を保持するクラス
+# 場の値を保持するプロトコル
+class FieldValue(Protocol):
+    """場の値の型プロトコル"""
+
+    @property
+    def shape(self) -> Tuple[int, int, int]:
+        """3次元形状を取得"""
+        ...
+
+    def __array__(self) -> jnp.DeviceArray:
+        """JAX配列としての表現を取得"""
+        ...
+
+
+@dataclass(frozen=True)
+class GridInfo:
+    """計算グリッドの情報を保持する不変クラス
 
     Attributes:
-        points: ステンシルの位置（中心からの相対位置）
-        coefficients: 各点での係数
+        shape: グリッドの3次元形状 (nx, ny, nz)
+        dx: 各方向のグリッド間隔 (dx, dy, dz)
+        time: 現在の時刻
     """
 
-    points: np.ndarray  # 形状: (N,)
-    coefficients: np.ndarray  # 形状: (N,)
+    shape: Tuple[int, int, int]
+    dx: Tuple[float, float, float]
+    time: float = 0.0
+
+    def __post_init__(self):
+        """初期化後の検証"""
+        if len(self.shape) != 3 or len(self.dx) != 3:
+            raise ValueError("GridInfoは3次元データのみ対応しています")
+        if any(s <= 0 for s in self.shape):
+            raise ValueError("グリッドサイズは正の値である必要があります")
+        if any(d <= 0 for d in self.dx):
+            raise ValueError("グリッド間隔は正の値である必要があります")
+        if self.time < 0:
+            raise ValueError("時刻は非負である必要があります")
 
 
-class BoundaryCondition(ABC):
-    """境界条件の基底クラス
+class Field(ABC):
+    """3次元物理場の基底抽象クラス"""
 
-    この抽象基底クラスは、すべての境界条件に共通のインターフェースを定義します。
-    """
-
-    def __init__(self, order: int = 2):
-        """境界条件を初期化
+    def __init__(self, grid: GridInfo):
+        """場を初期化
 
         Args:
-            order: 差分近似の次数（デフォルトは2次精度）
+            grid: 計算グリッドの情報
         """
-        self.order = order
+        self._grid = grid
 
+    @property
+    def grid(self) -> GridInfo:
+        """グリッド情報を取得"""
+        return self._grid
+
+    @property
     @abstractmethod
-    def apply(self, field: np.ndarray, axis: int, side: int) -> np.ndarray:
-        """境界条件を適用
-
-        Args:
-            field: 境界条件を適用する場
-            axis: 境界条件を適用する軸
-            side: 境界の側（0: 負側、1: 正側）
-
-        Returns:
-            境界条件が適用された場
-        """
+    def data(self) -> FieldValue:
+        """場のデータを取得する抽象プロパティ"""
         pass
 
     @abstractmethod
-    def get_stencil(self, side: int) -> StencilInfo:
-        """差分ステンシルの情報を取得
-
-        Args:
-            side: 境界の側（0: 負側、1: 正側）
-
-        Returns:
-            ステンシルの情報
-        """
+    def copy(self) -> "Field":
+        """場の深いコピーを作成する抽象メソッド"""
         pass
 
-    def validate_field(self, field: np.ndarray, axis: int) -> None:
-        """場の妥当性をチェック
+    @jit
+    def norm(self, p: int = 2) -> float:
+        """場のp-ノルムを計算
 
         Args:
-            field: チェックする場
-            axis: チェックする軸
-
-        Raises:
-            ValueError: 無効な場や軸が指定された場合
-        """
-        if not isinstance(field, np.ndarray):
-            raise ValueError("fieldはnumpy配列である必要があります")
-        if not 0 <= axis < field.ndim:
-            raise ValueError(f"無効な軸です: {axis}")
-
-    def apply_all(self, field: np.ndarray, axis: int) -> np.ndarray:
-        """両側の境界に境界条件を適用
-
-        Args:
-            field: 境界条件を適用する場
-            axis: 境界条件を適用する軸
+            p: ノルムの次数（デフォルト: 2）
 
         Returns:
-            境界条件が適用された場
+            計算されたノルム値
         """
-        self.validate_field(field, axis)
-        result = field.copy()
+        return float(jnp.linalg.norm(jnp.asarray(self.data).ravel(), ord=p))
 
-        # 負側の境界に適用
-        result = self.apply(result, axis, 0)
-
-        # 正側の境界に適用
-        result = self.apply(result, axis, 1)
-
-        return result
-
-    def get_boundary_slice(
-        self, field: np.ndarray, axis: int, side: int, width: int
-    ) -> Tuple[slice, ...]:
-        """境界領域のスライスを取得
-
-        Args:
-            field: 対象の場
-            axis: 境界条件を適用する軸
-            side: 境界の側（0: 負側、1: 正側）
-            width: 境界領域の幅
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """場の診断情報を取得
 
         Returns:
-            境界領域を選択するスライスのタプル
+            診断情報を含む辞書
         """
-        slices = [slice(None)] * field.ndim
-        if side == 0:
-            slices[axis] = slice(0, width)
-        else:
-            slices[axis] = slice(-width, None)
-        return tuple(slices)
-
-    def get_ghost_points(self, field: np.ndarray, axis: int, side: int) -> np.ndarray:
-        """ゴースト点の座標を取得
-
-        Args:
-            field: 対象の場
-            axis: 境界条件を適用する軸
-            side: 境界の側（0: 負側、1: 正側）
-
-        Returns:
-            ゴースト点の座標配列
-        """
-        # ステンシル情報から必要なゴースト点の数を決定
-        stencil = self.get_stencil(side)
-        n_ghost = len(stencil.points)
-
-        # 境界に沿った座標グリッドを生成
-        shape = list(field.shape)
-        shape[axis] = n_ghost
-        coordinates = np.empty(shape + [field.ndim])
-
-        # 各次元の座標を設定
-        for dim in range(field.ndim):
-            if dim == axis:
-                if side == 0:
-                    coords = np.arange(-n_ghost, 0)
-                else:
-                    coords = np.arange(field.shape[axis], field.shape[axis] + n_ghost)
-            else:
-                coords = np.arange(field.shape[dim])
-            coordinates[..., dim] = coords
-
-        return coordinates
+        data_array = jnp.asarray(self.data)
+        return {
+            "shape": self.grid.shape,
+            "dx": self.grid.dx,
+            "time": self.grid.time,
+            "min": float(data_array.min()),
+            "max": float(data_array.max()),
+            "mean": float(data_array.mean()),
+            "norm": float(self.norm()),
+        }

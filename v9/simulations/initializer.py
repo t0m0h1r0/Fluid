@@ -44,7 +44,10 @@ class SimulationInitializer:
         # 追加の初期化パラメータ
         self._init_parameters = {
             "time": 0.0,
-            "shape": tuple(self.config.domain.dimensions),
+            "shape": tuple(
+                list(self.config.domain.dimensions)
+                + [len(self.config.domain.dimensions)]
+            ),
         }
 
     def _validate_config(self):
@@ -64,8 +67,8 @@ class SimulationInitializer:
         """
         # 基本フィールドの初期化
         velocity = VectorField(self._init_parameters["shape"], self.dx)
-        levelset = ScalarField(self._init_parameters["shape"], self.dx)
-        pressure = ScalarField(self._init_parameters["shape"], self.dx)
+        levelset = ScalarField(self._init_parameters["shape"][:-1], self.dx)
+        pressure = ScalarField(self._init_parameters["shape"][:-1], self.dx)
 
         # 速度場の初期化
         self._initialize_velocity(velocity)
@@ -93,7 +96,8 @@ class SimulationInitializer:
 
         if velocity_config["type"] == "zero":
             # ゼロ速度場（デフォルト）
-            pass
+            for comp in velocity.components:
+                comp.data.fill(0.0)
         elif velocity_config["type"] == "uniform":
             # 一様流れ
             direction = velocity_config.get("direction", [1.0, 0.0, 0.0])
@@ -105,7 +109,7 @@ class SimulationInitializer:
             center = velocity_config.get("center", [0.5, 0.5, 0.5])
             strength = velocity_config.get("strength", 1.0)
             coords = np.meshgrid(
-                *[np.linspace(0, 1, s) for s in velocity.shape], indexing="ij"
+                *[np.linspace(0, 1, s) for s in velocity.shape[:-1]], indexing="ij"
             )
             r = np.sqrt(
                 sum((c - cent) ** 2 for c, cent in zip(coords[:-1], center[:-1]))

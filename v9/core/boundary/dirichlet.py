@@ -1,84 +1,138 @@
-"""ディリクレ境界条件を提供するモジュール
+"""Dirichlet境界条件を提供するモジュール
 
-このモジュールは、流体シミュレーションで使用されるディリクレ境界条件を実装します。
-ディリクレ境界条件では、境界上で物理量の値を指定します。
+このモジュールは、3次元流体計算におけるDirichlet境界条件を実装します。
+境界上で物理量の値を直接指定する境界条件を提供します。
 """
 
-import numpy as np
-from .base import BoundaryCondition, StencilInfo
+from typing import Union, Callable
+import jax.numpy as jnp
+from jax import jit
+
+from .base import (
+    BoundaryCondition,
+    BoundaryField,
+    Direction,
+    Side,
+    StencilInfo,
+)
 
 
-class DirichletBoundary(BoundaryCondition):
-    """ディリクレ境界条件クラス
+class DirichletBC(BoundaryCondition):
+    """Dirichlet境界条件クラス
 
-    ディリクレ境界条件は、境界上で物理量の値を指定します。
-    壁面での速度や温度などを指定する場合に使用されます。
+    境界上で値を直接指定する境界条件:
+    f|_boundary = g(x, y, z)
+
+    ここで g は指定された境界値または境界値を計算する関数です。
     """
 
-    def __init__(self, value: float = 0.0, order: int = 2):
-        """ディリクレ境界条件を初期化
+    def __init__(
+        self,
+        direction: Direction,
+        side: Side,
+        value: Union[float, Callable[[float, float, float], float]],
+        order: int = 2,
+    ):
+        """Dirichlet境界条件を初期化
 
         Args:
-            value: 境界での値
-            order: 差分近似の次数
+            direction: 境界面の方向（X, Y, Z）
+            side: 境界の側（NEGATIVE, POSITIVE）
+            value: 境界値または境界値を計算する関数
+            order: 差分近似の次数（デフォルト: 2）
         """
-        super().__init__(order)
-        self.value = value
+        super().__init__(direction, side, order)
+        self._value = value
 
-    def apply(self, field: np.ndarray, axis: int, side: int) -> np.ndarray:
-        """ディリクレ境界条件を適用
+    @jit
+    def apply(self, field: BoundaryField) -> jnp.DeviceArray:
+        """境界条件を適用
 
         Args:
             field: 境界条件を適用する場
-            axis: 境界条件を適用する軸
-            side: 境界の側（0: 負側、1: 正側）
 
         Returns:
-            境界条件が適用された場
+            境界条件が適用された新しい配列
         """
-        self.validate_field(field, axis)
-        result = field.copy()
+        self.validate_field(field)
+        result = jnp.array(field)
 
-        # 境界面のスライスを取得
-        boundary_slice = self.get_boundary_slice(field, axis, side, 1)
+        # 境界スライスの取得
+        boundary_slice = self.get_boundary_slice(field.shape)
 
-        # 境界値を設定
-        result[boundary_slice] = self.value
+        # 境界値の計算
+        if callable(self._value):
+            # 境界面の座標グリッドを生成
+            coords = self._get_boundary_coordinates(field.shape)
+            boundary_values = self._value(*coords)
+        else:
+            boundary_values = self._value
+
+        # 境界値の設定
+        result = result.at[boundary_slice].set(boundary_values)
 
         return result
 
-    def get_stencil(self, side: int) -> StencilInfo:
+    def get_stencil(self) -> StencilInfo:
         """差分ステンシルの情報を取得
 
-        Args:
-            side: 境界の側（0: 負側、1: 正側）
-
         Returns:
-            ステンシルの情報
+            ステンシルの情報（2次または4次精度）
         """
-        # 2次精度の場合
         if self.order == 2:
-            if side == 0:
-                return StencilInfo(
-                    points=np.array([0, 1, 2]),
-                    coefficients=np.array([-3 / 2, 2, -1 / 2]),
-                )
+            # 2次精度
+            if self.side == Side.NEGATIVE:
+                points = jnp.array([0, 1, 2])
+                coeffs = jnp.array([-3 / 2, 2, -1 / 2])
             else:
-                return StencilInfo(
-                    points=np.array([-2, -1, 0]),
-                    coefficients=np.array([1 / 2, -2, 3 / 2]),
-                )
-        # 4次精度の場合
+                points = jnp.array([-2, -1, 0])
+                coeffs = jnp.array([1 / 2, -2, 3 / 2])
         elif self.order == 4:
-            if side == 0:
-                return StencilInfo(
-                    points=np.array([0, 1, 2, 3, 4]),
-                    coefficients=np.array([-25 / 12, 4, -3, 4 / 3, -1 / 4]),
-                )
+            # 4次精度
+            if self.side == Side.NEGATIVE:
+                points = jnp.array([0, 1, 2, 3, 4])
+                coeffs = jnp.array([-25 / 12, 4, -3, 4 / 3, -1 / 4])
             else:
-                return StencilInfo(
-                    points=np.array([-4, -3, -2, -1, 0]),
-                    coefficients=np.array([1 / 4, -4 / 3, 3, -4, 25 / 12]),
-                )
+                points = jnp.array([-4, -3, -2, -1, 0])
+                coeffs = jnp.array([1 / 4, -4 / 3, 3, -4, 25 / 12])
         else:
             raise ValueError(f"未対応の次数です: {self.order}")
+
+        return StencilInfo(points, coeffs)
+
+    @jit
+    def _get_boundary_coordinates(
+        self, shape: tuple[int, int, int]
+    ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        """境界面の座標グリッドを生成
+
+        Args:
+            shape: 場の3次元形状
+
+        Returns:
+            (x, y, z) 座標のタプル
+        """
+        # グリッドの生成
+        nx, ny, nz = shape
+        x = jnp.linspace(0, 1, nx)
+        y = jnp.linspace(0, 1, ny)
+        z = jnp.linspace(0, 1, nz)
+
+        # 境界面のスライス位置
+        pos = 0 if self.side == Side.NEGATIVE else -1
+
+        # 方向に応じた座標グリッドの生成
+        if self.direction == Direction.X:
+            coord = x[pos]
+            yy, zz = jnp.meshgrid(y, z, indexing="ij")
+            xx = jnp.full_like(yy, coord)
+        elif self.direction == Direction.Y:
+            coord = y[pos]
+            xx, zz = jnp.meshgrid(x, z, indexing="ij")
+            yy = jnp.full_like(xx, coord)
+        else:  # Direction.Z
+            coord = z[pos]
+            xx, yy = jnp.meshgrid(x, y, indexing="ij")
+            zz = jnp.full_like(xx, coord)
+
+        return xx, yy, zz

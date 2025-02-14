@@ -1,306 +1,163 @@
-"""スカラー場クラスを提供するモジュール
-
-このモジュールは、スカラー量（圧力、温度など）を表現するための場のクラスを定義します。
-"""
-
-from __future__ import annotations  # 型アノテーションの評価を延期
-from typing import Tuple, Optional, Union, List, Dict, Any, TYPE_CHECKING
-import numpy as np
-from .field import Field
-
-if TYPE_CHECKING:
-    from .vector import VectorField
+from typing import Union, Optional
+import jax.numpy as jnp
+from jax import jit
+from .base import Field, GridInfo
+from .vector import VectorField
 
 
 class ScalarField(Field):
-    """スカラー場クラス
+    """3次元スカラー場"""
 
-    温度、圧力などのスカラー量を表現するためのクラスです。
-    基本的な微分演算や補間機能を提供します。
-    """
-
-    def __init__(
-        self,
-        shape: Tuple[int, ...],
-        dx: Union[float, np.ndarray] = 1.0,
-        initial_value: Union[float, np.ndarray] = 0.0,
-    ):
-        """スカラー場を初期化
+    def __init__(self, grid: GridInfo, initial_value: Union[float, jnp.ndarray] = 0.0):
+        """
+        スカラー場を初期化
 
         Args:
-            shape: グリッドの形状
-            dx: グリッド間隔（スカラーまたはベクトル）
+            grid: 計算グリッドの情報
             initial_value: 初期値（スカラーまたは配列）
         """
-        # スーパークラスの初期化
-        Field.__init__(self, shape, dx)
+        super().__init__(grid)
 
-        # データの初期化（以前の実装と同じ）
-        if isinstance(initial_value, np.ndarray):
-            if initial_value.shape != shape:
-                raise ValueError(
-                    f"Initial value shape {initial_value.shape} does not match field shape {shape}"
-                )
-            self._data = initial_value.copy()
-        elif isinstance(initial_value, (int, float)):
-            if initial_value != 0.0:
-                self._data.fill(initial_value)
+        if jnp.isscalar(initial_value):
+            self._data = jnp.full(grid.shape, float(initial_value))
+        elif isinstance(initial_value, jnp.ndarray):
+            if initial_value.shape != grid.shape:
+                raise ValueError("初期値の形状がグリッドと一致しません")
+            self._data = initial_value
         else:
-            raise TypeError(f"Unsupported initial_value type: {type(initial_value)}")
+            raise TypeError(f"未対応の初期値型: {type(initial_value)}")
 
     @property
-    def components(self) -> List[ScalarField]:
-        """ScalarFieldは自身を唯一のコンポーネントとして返す"""
-        return [self]
+    def data(self) -> jnp.ndarray:
+        """フィールドデータを取得"""
+        return self._data
 
-    def magnitude(self) -> ScalarField:
-        """絶対値の大きさを計算
-
-        Returns:
-            絶対値の大きさを表すスカラー場
-        """
-        result = ScalarField(self.shape, self.dx)
-        result.data = np.abs(self.data)
-        return result
-
-    def __neg__(self) -> ScalarField:
-        """単項マイナス演算子の実装
-
-        データの符号を反転したScalarFieldを返します。
-        """
-        result = ScalarField(self.shape, self.dx)
-        result.data = -self.data
-        return result
-
-    def interpolate(self, points: np.ndarray) -> np.ndarray:
-        """任意の点での値を線形補間
-
-        Args:
-            points: 補間点の座標 (N, ndim)
-
-        Returns:
-            補間された値 (N,)
-        """
-        # 各次元のインデックスと重みを計算
-        indices = []
-        weights = []
-
-        for dim in range(self.ndim):
-            # 座標をインデックスに変換
-            idx = points[:, dim] / self._dx[dim]
-            idx0 = np.floor(idx).astype(int)
-            idx1 = idx0 + 1
-            w1 = idx - idx0
-            w0 = 1.0 - w1
-
-            # 境界条件の適用
-            idx0 = np.clip(idx0, 0, self.shape[dim] - 1)
-            idx1 = np.clip(idx1, 0, self.shape[dim] - 1)
-
-            indices.append((idx0, idx1))
-            weights.append((w0, w1))
-
-        # 全ての隣接点での重み付き和を計算
-        result = np.zeros(len(points))
-        for i in range(2**self.ndim):
-            # i のビット表現から各次元でのインデックスを決定
-            idx = []
-            w = 1.0
-            for d in range(self.ndim):
-                bit = (i >> d) & 1
-                idx.append(indices[d][bit])
-                w *= weights[d][bit]
-
-            # インデックスでの値を重み付きで加算
-            result += w * self._data[tuple(idx)]
-
-        return result
-
-    def gradient(
-        self, axis: Optional[int] = None
-    ) -> Union[np.ndarray, List[np.ndarray]]:
+    @jit
+    def gradient(self, axis: Optional[int] = None) -> Union["ScalarField", VectorField]:
         """勾配を計算
 
         Args:
-            axis: 勾配を計算する軸（Noneの場合は全軸の勾配を返す）
+            axis: 方向（Noneの場合は全方向）
 
         Returns:
-            指定された軸の勾配、またはすべての軸の勾配のリスト
+            勾配場（1方向の場合はScalarField、全方向の場合はVectorField）
         """
         if axis is not None:
-            # 特定の軸の勾配を計算
-            return np.gradient(self._data, self._dx[axis], axis=axis)
+            # 1方向の勾配
+            grad_data = jnp.gradient(self._data, self.grid.dx[axis], axis=axis)
+            return ScalarField(self.grid, grad_data)
+        else:
+            # 全方向の勾配
+            grads = [
+                jnp.gradient(self._data, d, axis=i) for i, d in enumerate(self.grid.dx)
+            ]
+            return VectorField(self.grid, grads)
 
-        # すべての軸の勾配を計算
-        return [np.gradient(self._data, self._dx[i], axis=i) for i in range(self.ndim)]
+    @jit
+    def laplacian(self) -> "ScalarField":
+        """ラプラシアンを計算"""
+        result = jnp.zeros_like(self._data)
+        for i, d in enumerate(self.grid.dx):
+            result += jnp.gradient(jnp.gradient(self._data, d, axis=i), d, axis=i)
+        return ScalarField(self.grid, result)
 
     def integrate(self) -> float:
-        """場の積分値を計算"""
-        return np.sum(self._data) * np.prod(self._dx)
+        """領域全体の積分値を計算"""
+        return float(jnp.sum(self._data * jnp.prod(self.grid.dx)))
 
-    def mean(self) -> float:
-        """場の平均値を計算"""
-        return np.mean(self._data)
+    def copy(self) -> "ScalarField":
+        """深いコピーを作成"""
+        return ScalarField(self.grid, jnp.array(self._data))
 
-    def min(self) -> float:
-        """場の最小値を取得"""
-        return np.min(self._data)
-
-    def max(self) -> float:
-        """場の最大値を取得"""
-        return np.max(self._data)
-
-    def normalize(self):
-        """場を正規化
-
-        場の値を[0, 1]の範囲に正規化します。
-        """
-        min_val = self.min()
-        max_val = self.max()
-        if max_val > min_val:
-            self._data = (self._data - min_val) / (max_val - min_val)
-
-    def clip(self, min_val: Optional[float] = None, max_val: Optional[float] = None):
-        """場の値を指定範囲に制限
-
-        Args:
-            min_val: 最小値（Noneの場合は制限なし）
-            max_val: 最大値（Noneの場合は制限なし）
-        """
-        self._data = np.clip(self._data, min_val, max_val)
-
-    def smooth(self, sigma: float = 1.0):
-        """場をガウシアンフィルタで平滑化
-
-        Args:
-            sigma: ガウシアンフィルタの標準偏差
-        """
-        from scipy.ndimage import gaussian_filter
-
-        self._data = gaussian_filter(self._data, sigma)
-
-    def __add__(self, other: Union[ScalarField, float]) -> ScalarField:
-        """加算演算子の実装"""
-        result = self.__class__(self.shape, self.dx)
-        if isinstance(other, (int, float)):
-            result.data = self.data + other
+    def __add__(self, other: Union["ScalarField", float]) -> "ScalarField":
+        """加算演算子"""
+        if jnp.isscalar(other):
+            return ScalarField(self.grid, self._data + other)
         elif isinstance(other, ScalarField):
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result.data = self.data + other.data
-        else:
-            raise TypeError("無効な型との演算です")
-        return result
+            if self.grid != other.grid:
+                raise ValueError("グリッド情報が一致しません")
+            return ScalarField(self.grid, self._data + other._data)
+        return NotImplemented
+
+    def __sub__(self, other: Union["ScalarField", float]) -> "ScalarField":
+        """減算演算子"""
+        if jnp.isscalar(other):
+            return ScalarField(self.grid, self._data - other)
+        elif isinstance(other, ScalarField):
+            if self.grid != other.grid:
+                raise ValueError("グリッド情報が一致しません")
+            return ScalarField(self.grid, self._data - other._data)
+        return NotImplemented
 
     def __mul__(
-        self, other: Union[ScalarField, VectorField, float]
-    ) -> Union[ScalarField, VectorField]:
-        """乗算演算子の実装"""
-        # VectorFieldのインポートを関数内で行うことで循環インポートを回避
-        from .vector import VectorField
+        self, other: Union["ScalarField", float, VectorField]
+    ) -> Union["ScalarField", VectorField]:
+        """乗算演算子
 
-        if isinstance(other, (int, float)):
-            result = self.__class__(self.shape, self.dx)
-            result.data = self.data * other
-            return result
+        スカラー場 * スカラー値
+        スカラー場 * スカラー場
+        スカラー場 * ベクトル場
+        """
+        if jnp.isscalar(other):
+            # スカラー倍
+            return ScalarField(self.grid, self._data * other)
         elif isinstance(other, ScalarField):
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result = self.__class__(self.shape, self.dx)
-            result.data = self.data * other.data
-            return result
-        elif isinstance(other, np.ndarray):
-            if self.data.shape != other.shape:
-                raise ValueError("配列の形状が一致しません")
-            result = self.__class__(self.shape, self.dx)
-            result.data = self.data * other
-            return result
+            # スカラー場同士の積
+            if self.grid != other.grid:
+                raise ValueError("グリッド情報が一致しません")
+            return ScalarField(self.grid, self._data * other._data)
         elif isinstance(other, VectorField):
-            # VectorFieldとの乗算
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result = VectorField(self.shape, self.dx)
-            for i, comp in enumerate(other.components):
-                # ScalarField同士の乗算を使用
-                scalar_result = self.__class__(self.shape, self.dx)
-                scalar_result.data = self.data * comp.data
-                result.components[i] = scalar_result
-            return result
-        else:
-            raise TypeError("無効な型との演算です")
+            # スカラー場とベクトル場の積
+            return other * self
+        return NotImplemented
 
-    def __rmul__(
-        self, other: Union[float, VectorField]
-    ) -> Union[ScalarField, VectorField]:
-        """右乗算演算子の実装"""
-        if isinstance(other, (int, float)):
-            return self.__mul__(other)
-        elif TYPE_CHECKING and isinstance(other, VectorField):
-            return self.__mul__(other)
-        else:
-            raise TypeError("無効な型との演算です")
-
-    def __truediv__(self, other: Union[ScalarField, float]) -> ScalarField:
-        """除算演算子の実装"""
-        result = self.__class__(self.shape, self.dx)
-        if isinstance(other, (int, float)):
-            result.data = self.data / other
+    def __truediv__(self, other: Union["ScalarField", float]) -> "ScalarField":
+        """除算演算子"""
+        if jnp.isscalar(other):
+            return ScalarField(self.grid, self._data / other)
         elif isinstance(other, ScalarField):
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result.data = self.data / other.data
-        else:
-            raise TypeError("無効な型との演算です")
-        return result
+            if self.grid != other.grid:
+                raise ValueError("グリッド情報が一致しません")
+            return ScalarField(self.grid, self._data / other._data)
+        return NotImplemented
 
-    def get_diagnostics(self) -> Dict[str, Any]:
-        """診断情報を取得"""
-        return {
-            "magnitude": float(self.magnitude().max()),
-            "min": float(self.min()),
-            "max": float(self.max()),
-            "mean": float(self.mean()),
-        }
+    def __pow__(self, power: Union[int, float]) -> "ScalarField":
+        """累乗演算子"""
+        return ScalarField(self.grid, self._data**power)
 
-    def save_state(self) -> Dict[str, Any]:
-        """現在の状態を保存
+    def __neg__(self) -> "ScalarField":
+        """単項マイナス演算子"""
+        return ScalarField(self.grid, -self._data)
 
-        Returns:
-            現在の状態を表す辞書
-        """
-        return {
-            "data": self.data.copy(),
-            "shape": self.shape,
-            "dx": self.dx,
-            "time": self.time,
-        }
+    def __eq__(self, other: "ScalarField") -> bool:
+        """等価性比較"""
+        if not isinstance(other, ScalarField):
+            return NotImplemented
+        if self.grid != other.grid:
+            return False
+        return jnp.array_equal(self._data, other._data)
 
-    def load_state(self, state: Dict[str, Any]):
-        """状態を読み込み
+    def __ne__(self, other: "ScalarField") -> bool:
+        """非等価性比較"""
+        result = self.__eq__(other)
+        return not result if result is not NotImplemented else NotImplemented
 
-        Args:
-            state: 読み込む状態の辞書
-        """
-        # データの復元
-        if tuple(state["shape"]) != self.shape:
-            raise ValueError("形状が一致しません")
+    @jit
+    def min(self) -> float:
+        """最小値を取得"""
+        return float(jnp.min(self._data))
 
-        self.data = state["data"].copy()
+    @jit
+    def max(self) -> float:
+        """最大値を取得"""
+        return float(jnp.max(self._data))
 
-        # 時刻の復元
-        self.time = state.get("time", 0.0)
+    @jit
+    def mean(self) -> float:
+        """平均値を取得"""
+        return float(jnp.mean(self._data))
 
-        # グリッド間隔の確認（必要に応じて）
-        if not np.allclose(state["dx"], self.dx):
-            raise ValueError("グリッド間隔が一致しません")
-
-    def norm(self, ord=2) -> float:
-        """場のノルムを計算
-
-        Args:
-            ord: ノルムの種類（デフォルトはL2ノルム）
-
-        Returns:
-            計算されたノルム
-        """
-        return np.linalg.norm(self._data.ravel(), ord=ord)
+    @jit
+    def sum(self) -> float:
+        """合計値を取得"""
+        return float(jnp.sum(self._data))
