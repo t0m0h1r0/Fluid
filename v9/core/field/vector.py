@@ -1,15 +1,16 @@
 """ベクトル場クラスを提供するモジュール
 
 このモジュールは、ベクトル量（速度、運動量など）を表現するための
-ベクトル場クラスを定義します。"""
+ベクトル場クラスを定義します。
+"""
 
 import numpy as np
-from typing import List, Tuple, Optional, Union
+from typing import List, Tuple, Union, Dict, Any
 from .scalar import ScalarField
-from typing import Dict, Any
+from .field import Field
 
 
-class VectorField:
+class VectorField(Field):
     """ベクトル場クラス
 
     速度、運動量などのベクトル量を表現するためのクラスです。
@@ -27,9 +28,11 @@ class VectorField:
         if np.isscalar(dx):
             dx = np.full(len(shape), float(dx))
 
+        # スーパークラスの初期化
+        Field.__init__(self, shape, dx)
+
+        # 各成分の初期化
         self._components = [ScalarField(shape, dx) for _ in range(len(shape))]
-        self._shape = shape
-        self._dx = dx
 
     @property
     def components(self) -> List[ScalarField]:
@@ -56,30 +59,68 @@ class VectorField:
             raise ValueError("すべてのコンポーネントは同じ形状である必要があります")
         self._components = value
 
-    @property
-    def shape(self) -> Tuple[int, ...]:
-        """場の形状を取得"""
-        return self._shape
+    def __add__(self, other: Union["VectorField", float, int]) -> "VectorField":
+        """加算演算子の実装"""
+        if isinstance(other, (float, int)):
+            result = self.copy()
+            for i, comp in enumerate(result.components):
+                comp.data += float(other)
+            return result
 
-    @property
-    def dx(self) -> np.ndarray:
-        """グリッド間隔を取得"""
-        return self._dx
+        if not isinstance(other, VectorField):
+            raise TypeError(f"無効な型との演算: {type(other)}")
 
-    @property
-    def ndim(self) -> int:
-        """次元数を取得"""
-        return len(self._shape)
+        if self.shape != other.shape:
+            raise ValueError("VectorFieldの形状が一致しません")
 
-    def __neg__(self) -> "VectorField":
-        """単項マイナス演算子の実装
-
-        各成分の符号を反転したVectorFieldを返します。
-        """
-        result = VectorField(self.shape, self.dx)
-        for i, comp in enumerate(self.components):
-            result.components[i] = -comp
+        result = self.copy()
+        for i, (comp, other_comp) in enumerate(
+            zip(result.components, other.components)
+        ):
+            comp.data += other_comp.data
         return result
+
+    def __mul__(self, other: Union[ScalarField, float, int]) -> "VectorField":
+        """スカラー倍の実装"""
+        if isinstance(other, (float, int)):
+            result = self.copy()
+            for i, comp in enumerate(result.components):
+                comp.data *= float(other)
+            return result
+
+        if isinstance(other, ScalarField):
+            if self.shape != other.shape:
+                raise ValueError("VectorFieldとScalarFieldの形状が一致しません")
+
+            result = self.copy()
+            for i, comp in enumerate(result.components):
+                comp.data *= other.data
+            return result
+
+        raise TypeError(f"無効な型との演算: {type(other)}")
+
+    def __truediv__(self, other: Union[ScalarField, float, int]) -> "VectorField":
+        """除算演算子の実装"""
+        if isinstance(other, (float, int)):
+            if other == 0:
+                raise ZeroDivisionError("ゼロによる除算は許可されません")
+            result = self.copy()
+            for i, comp in enumerate(result.components):
+                comp.data /= float(other)
+            return result
+
+        if isinstance(other, ScalarField):
+            if self.shape != other.shape:
+                raise ValueError("VectorFieldとScalarFieldの形状が一致しません")
+
+            result = self.copy()
+            for i, comp in enumerate(result.components):
+                # ゼロ除算の防止
+                safe_data = np.where(other.data == 0, np.finfo(float).eps, other.data)
+                comp.data /= safe_data
+            return result
+
+        raise TypeError(f"無効な型との演算: {type(other)}")
 
     def magnitude(self) -> ScalarField:
         """ベクトル場の大きさを計算
@@ -134,15 +175,14 @@ class VectorField:
         result.data = sum(c.gradient(i) for i, c in enumerate(self._components))
         return result
 
-    def curl(self) -> Optional["VectorField"]:
+    def curl(self) -> "VectorField":
         """回転を計算
 
         Returns:
             3次元の場合は計算された回転を表すベクトル場
-            2次元の場合はNone
         """
         if self.ndim != 3:
-            return None
+            raise ValueError("回転は3次元でのみ計算可能です")
 
         result = VectorField(self.shape, self.dx)
         u, v, w = [c.data for c in self._components]
@@ -159,79 +199,6 @@ class VectorField:
         result.components[2].data = np.gradient(v, self.dx[0], axis=0) - np.gradient(
             u, self.dx[1], axis=1
         )
-
-        return result
-
-    def integrate(self) -> float:
-        """場の積分値を計算
-
-        Returns:
-            各成分の積分値の二乗和の平方根
-        """
-        return np.sqrt(sum(c.integrate() ** 2 for c in self._components))
-
-    def copy(self) -> "VectorField":
-        """場の深いコピーを作成
-
-        Returns:
-            コピーされた場
-        """
-        result = VectorField(self.shape, self.dx)
-        for i, component in enumerate(self._components):
-            result.components[i] = component.copy()
-        return result
-
-    def __add__(self, other: "VectorField") -> "VectorField":
-        """加算演算子の実装"""
-        if not isinstance(other, VectorField):
-            raise TypeError("ベクトル場同士の演算のみ可能です")
-        if self.shape != other.shape:
-            raise ValueError("場の形状が一致しません")
-
-        result = VectorField(self.shape, self.dx)
-        for i, (c1, c2) in enumerate(zip(self.components, other.components)):
-            result.components[i] = c1 + c2
-        return result
-
-    def __mul__(self, other: Union[float, ScalarField]) -> "VectorField":
-        """スカラー倍の実装"""
-        result = VectorField(self.shape, self.dx)
-
-        if isinstance(other, (int, float)):
-            # スカラー値による乗算
-            for i, component in enumerate(self.components):
-                result.components[i] = component * other
-        elif isinstance(other, ScalarField):
-            # スカラー場による乗算
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            for i, component in enumerate(self.components):
-                result.components[i] = component * other
-        else:
-            raise TypeError("スカラーまたはスカラー場との乗算のみ可能です")
-
-        return result
-
-    def __rmul__(self, other: Union[float, ScalarField]) -> "VectorField":
-        """右スカラー倍の実装"""
-        return self.__mul__(other)
-
-    def __truediv__(self, other: Union[float, ScalarField]) -> "VectorField":
-        """除算の実装"""
-        result = VectorField(self.shape, self.dx)
-
-        if isinstance(other, (int, float)):
-            # スカラー値による除算
-            for i, component in enumerate(self.components):
-                result.components[i] = component / other
-        elif isinstance(other, ScalarField):
-            # スカラー場による除算
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            for i, component in enumerate(self.components):
-                result.components[i] = component / other
-        else:
-            raise TypeError("スカラーまたはスカラー場との除算のみ可能です")
 
         return result
 
@@ -255,20 +222,21 @@ class VectorField:
         )
         return result
 
-    def cross(self, other: "VectorField") -> Optional["VectorField"]:
+    def cross(self, other: "VectorField") -> "VectorField":
         """外積を計算（3次元のみ）
 
         Args:
             other: 外積を取るベクトル場
 
         Returns:
-            3次元の場合は計算された外積を表すベクトル場
-            2次元の場合はNone
+            計算された外積を表すベクトル場
         """
         if self.ndim != 3:
-            return None
+            raise ValueError("外積は3次元でのみ計算可能です")
+
         if not isinstance(other, VectorField):
             raise TypeError("ベクトル場同士の演算のみ可能です")
+
         if self.shape != other.shape:
             raise ValueError("場の形状が一致しません")
 
@@ -280,6 +248,42 @@ class VectorField:
         result.components[1].data = w1 * u2 - u1 * w2
         result.components[2].data = u1 * v2 - v1 * u2
 
+        return result
+
+    def integrate(self) -> float:
+        """場の積分値を計算
+
+        Returns:
+            各成分の積分値の二乗和の平方根
+        """
+        return np.sqrt(sum(c.integrate() ** 2 for c in self._components))
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """診断情報を取得"""
+        return {
+            "max_magnitude": float(self.magnitude().max()),
+            "components": self.get_component_diagnostics(),
+        }
+
+    def get_component_diagnostics(self) -> Dict[str, Any]:
+        """各成分の診断情報を取得"""
+        return {
+            f"component_{i}": {
+                "magnitude": float(comp.magnitude().max()),
+                "min": float(comp.min()),
+                "max": float(comp.max()),
+            }
+            for i, comp in enumerate(self.components)
+        }
+
+    def __neg__(self) -> "VectorField":
+        """単項マイナス演算子の実装
+
+        各成分の符号を反転したVectorFieldを返します。
+        """
+        result = VectorField(self.shape, self.dx)
+        for i, comp in enumerate(self.components):
+            result.components[i] = -comp
         return result
 
     def save_state(self) -> Dict[str, Any]:

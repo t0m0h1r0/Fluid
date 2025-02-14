@@ -100,7 +100,8 @@ class PressurePoissonSolver:
         # 粘性項の発散: ∇⋅(μ∇²u)
         viscous = self._viscous_term.compute(velocity=velocity, viscosity=viscosity)
         source_terms["viscous"] = ScalarField(
-            velocity.shape, velocity.dx,
+            velocity.shape,
+            velocity.dx,
         )
 
         # 外力項の発散: ∇⋅f

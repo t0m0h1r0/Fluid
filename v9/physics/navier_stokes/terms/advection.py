@@ -63,23 +63,21 @@ class AdvectionTerm(BaseNavierStokesTerm):
             return VectorField(velocity.shape, velocity.dx)
 
         result = VectorField(velocity.shape, velocity.dx)
-        
+
         # 各速度成分に対して (u·∇)u_i を計算
         for i, u_i in enumerate(velocity.components):
             # 初期化
             advection = ScalarField(velocity.shape, velocity.dx)
-            
+
             # 各方向について u_j * ∂u_i/∂x_j を計算して合計
             for j, u_j in enumerate(velocity.components):
                 # gradient()の結果をScalarFieldでラップ
                 grad_u_i = ScalarField(
-                    velocity.shape, 
-                    velocity.dx, 
-                    initial_value=u_i.gradient(j)
+                    velocity.shape, velocity.dx, initial_value=u_i.gradient(j)
                 )
                 # 寄与を加算
                 advection = advection + (u_j * grad_u_i)
-            
+
             # 結果を設定（負の符号に注意）
             result.components[i] = -advection
 

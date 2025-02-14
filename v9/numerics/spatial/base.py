@@ -10,6 +10,7 @@ from core.field import ScalarField
 @dataclass
 class DifferentiationConfig:
     """空間微分の設定クラス"""
+
     order: int = 2
     padding_mode: str = "reflect"
     boundary_order: Optional[int] = None

@@ -47,8 +47,10 @@ class AccelerationTerm(BaseNavierStokesTerm):
             return VectorField(velocity.shape, velocity.dx)
 
         # 密度勾配の計算
-        density_grad = [ScalarField(velocity.shape, velocity.dx, density.gradient(i)) 
-                       for i in range(velocity.ndim)]
+        density_grad = [
+            ScalarField(velocity.shape, velocity.dx, density.gradient(i))
+            for i in range(velocity.ndim)
+        ]
 
         # 速度と密度勾配の内積 (u⋅∇ρ)
         density_advection = ScalarField(velocity.shape, velocity.dx)
@@ -58,7 +60,7 @@ class AccelerationTerm(BaseNavierStokesTerm):
         # 結果の計算 -1/ρ u(u⋅∇ρ)
         result = VectorField(velocity.shape, velocity.dx)
         inv_density = ScalarField(density.shape, density.dx, 1.0) / (density + 1e-10)
-        
+
         # 各成分の計算
         for i, v_comp in enumerate(velocity.components):
             result.components[i] = -(v_comp * density_advection * inv_density)

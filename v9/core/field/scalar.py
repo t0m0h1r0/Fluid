@@ -3,13 +3,12 @@
 このモジュールは、スカラー量（圧力、温度など）を表現するための場のクラスを定義します。
 """
 
-from typing import Tuple, Optional, Union, TYPE_CHECKING
+from typing import Tuple, Optional, Union, List
 import numpy as np
 from .field import Field
-from typing import Dict, Any, List
+from typing import Dict, Any
+from .vector import VectorField
 
-if TYPE_CHECKING:
-    from .vector import VectorField
 
 class ScalarField(Field):
     """スカラー場クラス
@@ -31,24 +30,104 @@ class ScalarField(Field):
             dx: グリッド間隔（スカラーまたはベクトル）
             initial_value: 初期値（スカラーまたは配列）
         """
-        # dxの正規化：スカラーの場合はベクトルに変換
-        if np.isscalar(dx):
-            dx = np.full(len(shape), float(dx))
+        # スーパークラスの初期化
+        Field.__init__(self, shape, dx)
 
-        super().__init__(shape, dx)
+        # データの初期化（以前の実装と同じ）
         if isinstance(initial_value, np.ndarray):
-            # 配列の場合は直接代入
             if initial_value.shape != shape:
                 raise ValueError(
                     f"Initial value shape {initial_value.shape} does not match field shape {shape}"
                 )
             self._data = initial_value.copy()
         elif isinstance(initial_value, (int, float)):
-            # スカラー値の場合は配列全体に設定
-            if initial_value != 0.0:  # 0.0の場合は既にzeros()で初期化済み
+            if initial_value != 0.0:
                 self._data.fill(initial_value)
         else:
             raise TypeError(f"Unsupported initial_value type: {type(initial_value)}")
+
+    @property
+    def components(self) -> List["ScalarField"]:
+        """ScalarFieldは自身を唯一のコンポーネントとして返す"""
+        return [self]
+
+    def __add__(self, other: Union["ScalarField", float, int]) -> "ScalarField":
+        """加算演算子の実装"""
+        if isinstance(other, (float, int)):
+            result = self.copy()
+            result.data += float(other)
+            return result
+
+        if not isinstance(other, ScalarField):
+            raise TypeError(f"無効な型との演算: {type(other)}")
+
+        if self.shape != other.shape:
+            raise ValueError("ScalarFieldの形状が一致しません")
+
+        result = self.copy()
+        result.data += other.data
+        return result
+
+    def __mul__(
+        self, other: Union["ScalarField", "VectorField", float, int]
+    ) -> Union["ScalarField", "VectorField"]:
+        """乗算演算子の実装"""
+        from .vector import VectorField  # 循環インポート回避
+
+        if isinstance(other, (float, int)):
+            result = self.copy()
+            result.data *= float(other)
+            return result
+
+        if isinstance(other, ScalarField):
+            if self.shape != other.shape:
+                raise ValueError("ScalarFieldの形状が一致しません")
+            result = self.copy()
+            result.data *= other.data
+            return result
+
+        if isinstance(other, VectorField):
+            if self.shape != other.shape:
+                raise ValueError("ScalarFieldとVectorFieldの形状が一致しません")
+            result = VectorField(self.shape, self.dx)
+            for i, comp in enumerate(other.components):
+                scalar_result = self.copy()
+                scalar_result.data *= comp.data
+                result.components[i] = scalar_result
+            return result
+
+        raise TypeError(f"無効な型との演算: {type(other)}")
+
+    def __truediv__(self, other: Union["ScalarField", float, int]) -> "ScalarField":
+        """除算演算子の実装"""
+        if isinstance(other, (float, int)):
+            if other == 0:
+                raise ZeroDivisionError("ゼロによる除算は許可されません")
+            result = self.copy()
+            result.data /= float(other)
+            return result
+
+        if not isinstance(other, ScalarField):
+            raise TypeError(f"無効な型との演算: {type(other)}")
+
+        if self.shape != other.shape:
+            raise ValueError("ScalarFieldの形状が一致しません")
+
+        result = self.copy()
+        # ゼロ除算の防止
+        safe_other_data = np.where(other.data == 0, np.finfo(float).eps, other.data)
+        result.data /= safe_other_data
+        return result
+
+    def magnitude(self) -> "ScalarField":
+        """絶対値の大きさを計算
+
+        Returns:
+            絶対値の大きさを表すスカラー場
+        """
+        result = ScalarField(self.shape, self.dx)
+        result.data = np.abs(self.data)
+        return result
 
     def __neg__(self) -> "ScalarField":
         """単項マイナス演算子の実装
@@ -166,75 +245,14 @@ class ScalarField(Field):
 
         self._data = gaussian_filter(self._data, sigma)
 
-    def __add__(self, other: Union["ScalarField", float]) -> "ScalarField":
-        """加算演算子の実装"""
-        result = self.__class__(self.shape, self.dx)
-        if isinstance(other, (int, float)):
-            result.data = self.data + other
-        elif isinstance(other, ScalarField):
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result.data = self.data + other.data
-        else:
-            raise TypeError("無効な型との演算です")
-        return result
-
-    def __mul__(self, other: Union["ScalarField", "VectorField", float]) -> Union["ScalarField", "VectorField"]:
-        """乗算演算子の実装"""
-        # VectorFieldのインポートを関数内で行うことで循環インポートを回避
-        from .vector import VectorField
-        
-        if isinstance(other, (int, float)):
-            result = self.__class__(self.shape, self.dx)
-            result.data = self.data * other
-            return result
-        elif isinstance(other, ScalarField):
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result = self.__class__(self.shape, self.dx)
-            result.data = self.data * other.data
-            return result
-        elif isinstance(other, np.ndarray):
-            if self.data.shape != other.shape:
-                raise ValueError("配列の形状が一致しません")
-            result = self.__class__(self.shape, self.dx)
-            result.data = self.data * other
-            return result
-        elif isinstance(other, VectorField):
-            # VectorFieldとの乗算
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result = VectorField(self.shape, self.dx)
-            for i, comp in enumerate(other.components):
-                # ScalarField同士の乗算を使用
-                scalar_result = self.__class__(self.shape, self.dx)
-                scalar_result.data = self.data * comp.data
-                result.components[i] = scalar_result
-            return result
-        else:
-            raise TypeError("無効な型との演算です")
-
-    def __rmul__(self, other: Union[float, "VectorField"]) -> Union["ScalarField", "VectorField"]:
-        """右乗算演算子の実装"""
-        if isinstance(other, (int, float)):
-            return self.__mul__(other)
-        elif TYPE_CHECKING and isinstance(other, "VectorField"):
-            return self.__mul__(other)
-        else:
-            raise TypeError("無効な型との演算です")
-
-    def __truediv__(self, other: Union["ScalarField", float]) -> "ScalarField":
-        """除算演算子の実装"""
-        result = self.__class__(self.shape, self.dx)
-        if isinstance(other, (int, float)):
-            result.data = self.data / other
-        elif isinstance(other, ScalarField):
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result.data = self.data / other.data
-        else:
-            raise TypeError("無効な型との演算です")
-        return result
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """診断情報を取得"""
+        return {
+            "magnitude": float(self.magnitude().max()),
+            "min": float(self.min()),
+            "max": float(self.max()),
+            "mean": float(self.mean()),
+        }
 
     def save_state(self) -> Dict[str, Any]:
         """現在の状態を保存

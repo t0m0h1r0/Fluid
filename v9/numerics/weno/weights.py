@@ -128,10 +128,12 @@ class WeightCalculator:
             "last_alpha": self._cache.get("alpha"),
             "mapping_stats": {
                 "min_weight": min(np.min(w) for w in self._cache.get("omega", [0]))
-                if "omega" in self._cache else None,
+                if "omega" in self._cache
+                else None,
                 "max_weight": max(np.max(w) for w in self._cache.get("omega", [0]))
-                if "omega" in self._cache else None,
-            }
+                if "omega" in self._cache
+                else None,
+            },
         }
 
     def clear_cache(self) -> None:

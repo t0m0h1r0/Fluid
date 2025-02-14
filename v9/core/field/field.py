@@ -5,7 +5,7 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Tuple, Dict, Any, Union
+from typing import Tuple, Dict, Any, Union, List
 import numpy as np
 
 
@@ -41,6 +41,43 @@ class Field(ABC):
                 )
 
         self._time = 0.0
+
+    @property
+    @abstractmethod
+    def components(self) -> List[Any]:
+        """場のコンポーネントを取得する抽象メソッド
+
+        サブクラスで実装する必要があります。
+        """
+        pass
+
+    def get_component_diagnostics(self) -> Dict[str, Any]:
+        """全コンポーネントの診断情報を取得
+
+        Returns:
+            コンポーネントごとの診断情報を含む辞書
+        """
+        try:
+            return {
+                f"component_{i}": {
+                    "magnitude": float(comp.magnitude().max())
+                    if hasattr(comp, "magnitude")
+                    else None,
+                    "min": float(comp.min()) if hasattr(comp, "min") else None,
+                    "max": float(comp.max()) if hasattr(comp, "max") else None,
+                    "mean": float(comp.mean()) if hasattr(comp, "mean") else None,
+                }
+                for i, comp in enumerate(self.components)
+            }
+        except Exception:
+            return {}
+
+    def magnitude(self) -> "Field":
+        """場の大きさを計算する共通メソッド
+
+        サブクラスで具体的な実装が必要です。
+        """
+        raise NotImplementedError("サブクラスで実装する必要があります")
 
     @property
     def data(self) -> np.ndarray:
