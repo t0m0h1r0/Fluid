@@ -46,13 +46,22 @@ class AccelerationTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        # 密度移流計算
-        density_advection = sum(
-            v.data * density.gradient(i) for i, v in enumerate(velocity.components)
-        )
+        # 密度勾配の計算
+        density_grad = [ScalarField(velocity.shape, velocity.dx, density.gradient(i)) 
+                       for i in range(velocity.ndim)]
 
-        # 密度勾配による加速度
-        result = -velocity * density_advection / density
+        # 速度と密度勾配の内積 (u⋅∇ρ)
+        density_advection = ScalarField(velocity.shape, velocity.dx)
+        for u_comp, grad_comp in zip(velocity.components, density_grad):
+            density_advection = density_advection + (u_comp * grad_comp)
+
+        # 結果の計算 -1/ρ u(u⋅∇ρ)
+        result = VectorField(velocity.shape, velocity.dx)
+        inv_density = ScalarField(density.shape, density.dx, 1.0) / (density + 1e-10)
+        
+        # 各成分の計算
+        for i, v_comp in enumerate(velocity.components):
+            result.components[i] = -(v_comp * density_advection * inv_density)
 
         # 診断情報の更新
         self._update_diagnostics(result, density_advection, density)
@@ -60,7 +69,7 @@ class AccelerationTerm(BaseNavierStokesTerm):
         return result
 
     def _update_diagnostics(
-        self, result: VectorField, density_advection: np.ndarray, density: ScalarField
+        self, result: VectorField, density_advection: ScalarField, density: ScalarField
     ):
         """
         診断情報を更新
@@ -80,9 +89,9 @@ class AccelerationTerm(BaseNavierStokesTerm):
                 max(np.max(np.abs(comp.data)) for comp in result.components)
             ),
             "density_advection": {
-                "min": float(np.min(density_advection)),
-                "max": float(np.max(density_advection)),
-                "mean": float(np.mean(density_advection)),
+                "min": float(np.min(density_advection.data)),
+                "max": float(np.max(density_advection.data)),
+                "mean": float(np.mean(density_advection.data)),
             },
             "density_gradients": {
                 "x": float(density_gradients[0]) if len(density_gradients) > 0 else 0.0,
@@ -125,7 +134,7 @@ class AccelerationTerm(BaseNavierStokesTerm):
 
         # CFL条件に基づく時間刻み幅の計算
         cfl = kwargs.get("cfl", 0.5)
-        return cfl * velocity.dx / (characteristic_speed + 1e-10)
+        return cfl * min(velocity.dx) / (characteristic_speed + 1e-10)
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""
