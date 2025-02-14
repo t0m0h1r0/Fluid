@@ -95,13 +95,12 @@ class PressurePoissonSolver:
         source_terms["advection"] = ScalarField(
             velocity.shape,
             velocity.dx,
-            initial_value=-np.array(density.data) * np.array(advection.data),
         )
 
         # 粘性項の発散: ∇⋅(μ∇²u)
         viscous = self._viscous_term.compute(velocity=velocity, viscosity=viscosity)
         source_terms["viscous"] = ScalarField(
-            velocity.shape, velocity.dx, initial_value=np.array(viscous.data)
+            velocity.shape, velocity.dx,
         )
 
         # 外力項の発散: ∇⋅f
