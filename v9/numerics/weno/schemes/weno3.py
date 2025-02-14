@@ -1,131 +1,53 @@
-"""WENOスキームの重み係数を計算するモジュール
-
-このモジュールは、WENOスキームの非線形重み係数の計算を担当します。
-これらの重み係数は、滑らかさ指標に基づいて各ステンシルの寄与を決定します。
-"""
-
-from typing import List, Tuple, Optional, Dict, Any
 import numpy as np
 import numpy.typing as npt
+from typing import List
+
+from ..base import WENOBase
+from ..coefficients import WENOCoefficients
+from ..smoothness import SmoothnessIndicator
+from ..weights import WeightCalculator
 
 
-class WeightCalculator:
-    """WENOスキームの重み係数を計算するクラス"""
+class WENO3(WENOBase):
+    """3次精度WENOスキームのクラス（演算子改善版）"""
 
     def __init__(self, epsilon: float = 1e-6, p: float = 2.0):
-        """重み係数計算器を初期化
+        super().__init__(order=3, epsilon=epsilon)
+        self._coeffs = WENOCoefficients()
+        self._smoother = SmoothnessIndicator()
+        self._weight_calc = WeightCalculator(epsilon=epsilon, p=p)
+        self._interpolation_coeffs, self._optimal_weights = (
+            self._coeffs.get_interpolation_coefficients(3)
+        )
 
-        Args:
-            epsilon: ゼロ除算を防ぐための小さな値
-            p: 非線形重みの指数
-        """
-        self._epsilon = epsilon
-        self._p = p
-        self._cache: Dict[str, Any] = {}
+    def reconstruct(
+        self, field: npt.NDArray[np.float64], axis: int = -1
+    ) -> npt.NDArray[np.float64]:
+        """WENO3による再構成を実行（新しい演算子を活用）"""
+        self._validate_input(field, axis)
 
-    def compute_weights(
-        self,
-        beta: List[npt.NDArray[np.float64]],
-        optimal_weights: npt.NDArray[np.float64],
-    ) -> Tuple[List[npt.NDArray[np.float64]], npt.NDArray[np.float64]]:
-        """非線形重み係数を計算
+        # 滑らかさ指標の計算（新しい演算子を活用）
+        smoothness_coeffs = self._coeffs.get_smoothness_coefficients(3)
+        beta = self._smoother.compute(field, smoothness_coeffs, axis)
 
-        Args:
-            beta: 各ステンシルの滑らかさ指標
-            optimal_weights: 理想重み係数
+        # 非線形重み係数の計算
+        omega, _ = self._weight_calc.compute_weights(beta, self._optimal_weights)
 
-        Returns:
-            (非線形重み係数のリスト, 正規化係数）のタプル
-        """
-        # アルファの計算 (α_k = d_k / (ε + β_k)^p)
-        alpha = []
-        for b, d in zip(beta, optimal_weights):
-            alpha_k = d / (self._epsilon + b) ** self._p
-            alpha.append(alpha_k)
+        # 各ステンシルの寄与を計算（新しい演算子を活用）
+        result = np.zeros_like(field)
+        for k in range(len(omega)):
+            # このステンシルの補間値を計算
+            stencil_value = np.zeros_like(field)
+            for j, coeff in enumerate(self._interpolation_coeffs[k]):
+                stencil_value += coeff * np.roll(field, j - 1, axis=axis)
+            # 重み付き加算（新しい * 演算子を活用）
+            result += omega[k] * stencil_value
 
-        # 正規化係数の計算
-        omega_sum = sum(alpha)
+        return result
 
-        # 正規化された重み係数の計算
-        omega = [a / omega_sum for a in alpha]
-
-        # 結果をキャッシュ
-        self._cache = {"alpha": alpha, "omega": omega, "omega_sum": omega_sum}
-
-        return omega, omega_sum
-
-    def compute_mapped_weights(
-        self,
-        beta: List[npt.NDArray[np.float64]],
-        optimal_weights: npt.NDArray[np.float64],
-        mapping_function: Optional[str] = None,
-    ) -> Tuple[List[npt.NDArray[np.float64]], npt.NDArray[np.float64]]:
-        """マッピング関数を使用して非線形重み係数を計算
-
-        Args:
-            beta: 各ステンシルの滑らかさ指標
-            optimal_weights: 理想重み係数
-            mapping_function: マッピング関数の種類（'henrick'または'borges'）
-
-        Returns:
-            (非線形重み係数のリスト, 正規化係数）のタプル
-        """
-        # まず通常の重み係数を計算
-        omega, omega_sum = self.compute_weights(beta, optimal_weights)
-
-        if mapping_function is None:
-            return omega, omega_sum
-
-        # マッピング関数の適用
-        if mapping_function == "henrick":
-            omega = self._henrick_mapping(omega, optimal_weights)
-        elif mapping_function == "borges":
-            omega = self._borges_mapping(omega, optimal_weights)
-        else:
-            raise ValueError(f"未対応のマッピング関数です: {mapping_function}")
-
-        # 正規化係数の再計算
-        omega_sum = sum(o for o in omega)
-
-        return omega, omega_sum
-
-    def _henrick_mapping(
-        self,
-        omega: List[npt.NDArray[np.float64]],
-        optimal_weights: npt.NDArray[np.float64],
+    def compute_smoothness_indicators(
+        self, field: npt.NDArray[np.float64], axis: int = -1
     ) -> List[npt.NDArray[np.float64]]:
-        """Henrickのマッピング関数を適用"""
-        mapped_omega = []
-        for w, d in zip(omega, optimal_weights):
-            numerator = w * (d + d * d - 3 * d * w + w * w)
-            denominator = d * d + w * (1 - 2 * d)
-            mapped_omega.append(numerator / denominator)
-        return mapped_omega
-
-    def _borges_mapping(
-        self,
-        omega: List[npt.NDArray[np.float64]],
-        optimal_weights: npt.NDArray[np.float64],
-    ) -> List[npt.NDArray[np.float64]]:
-        """Borgesのマッピング関数を適用"""
-        mapped_omega = []
-        for w, d in zip(omega, optimal_weights):
-            mapped_w = (
-                d * ((d + d - 3) * w * w + (3 - 2 * d) * w) / (d * d + w * (1 - 2 * d))
-            )
-            mapped_omega.append(mapped_w)
-        return mapped_omega
-
-    def get_diagnostics(self) -> Dict[str, Any]:
-        """診断情報を取得"""
-        return {
-            "epsilon": self._epsilon,
-            "p": self._p,
-            "cache_size": len(self._cache),
-            "last_weights": self._cache.get("omega", None),
-            "last_alpha": self._cache.get("alpha", None),
-        }
-
-    def clear_cache(self) -> None:
-        """キャッシュをクリア"""
-        self._cache.clear()
+        """滑らかさ指標を計算（新しい演算子を活用）"""
+        smoothness_coeffs = self._coeffs.get_smoothness_coefficients(3)
+        return self._smoother.compute(field, smoothness_coeffs, axis)
