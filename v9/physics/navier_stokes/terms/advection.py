@@ -11,12 +11,17 @@ ScalarField/VectorFieldの演算子を活用して、
 ここで:
 - u_j: j方向の速度成分
 - ∂u_i/∂x_j: i成分のj方向への偏微分
+
+実装の注意点:
+1. gradient()メソッドはnumpy.ndarrayを返すため、ScalarFieldでラップする必要がある
+2. 演算子の型の一貫性を保持する
+3. 各方向の寄与を正しく合計する
 """
 
 from typing import Dict, Any
 import numpy as np
 
-from core.field import VectorField
+from core.field import VectorField, ScalarField
 from .base import BaseNavierStokesTerm
 
 
@@ -61,10 +66,21 @@ class AdvectionTerm(BaseNavierStokesTerm):
         
         # 各速度成分に対して (u·∇)u_i を計算
         for i, u_i in enumerate(velocity.components):
-            # u_j * ∂u_i/∂x_j を各方向について計算して合計
-            advection = sum(u_j * u_i.gradient(j) 
-                          for j, u_j in enumerate(velocity.components))
+            # 初期化
+            advection = ScalarField(velocity.shape, velocity.dx)
             
+            # 各方向について u_j * ∂u_i/∂x_j を計算して合計
+            for j, u_j in enumerate(velocity.components):
+                # gradient()の結果をScalarFieldでラップ
+                grad_u_i = ScalarField(
+                    velocity.shape, 
+                    velocity.dx, 
+                    initial_value=u_i.gradient(j)
+                )
+                # 寄与を加算
+                advection = advection + (u_j * grad_u_i)
+            
+            # 結果を設定（負の符号に注意）
             result.components[i] = -advection
 
         # 診断情報の更新
