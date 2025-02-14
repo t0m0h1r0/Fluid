@@ -1,20 +1,50 @@
-"""3次元の物理場を表現する基底クラスを提供するモジュール
+"""境界条件の基底クラスを提供するモジュール
 
-このモジュールは、JAXを使用した3次元の物理場の基本的な抽象化を提供します。
-すべての具体的な場の実装（スカラー場、ベクトル場）は、この基底クラスを継承します。
+このモジュールは、3次元流体計算における境界条件の基本的な抽象化を提供します。
+すべての具体的な境界条件（Dirichlet、Neumann、周期境界など）は、
+この基底クラスを継承します。
 """
 
 from abc import ABC, abstractmethod
-from typing import Tuple, Protocol, Dict, Any
+from enum import Enum, auto
 from dataclasses import dataclass
+from typing import Tuple, Protocol
 import jax.numpy as jnp
 from jax import jit
 
 
-# 場の値を保持するプロトコル
-class FieldValue(Protocol):
-    """場の値の型プロトコル"""
+class Side(Enum):
+    """境界の側を表す列挙型"""
+    NEGATIVE = auto()  # 負の側 (x=0, y=0, z=0)
+    POSITIVE = auto()  # 正の側 (x=Lx, y=Ly, z=Lz)
 
+
+class Direction(Enum):
+    """座標軸の方向を表す列挙型"""
+    X = 0
+    Y = 1
+    Z = 2
+
+
+@dataclass(frozen=True)
+class StencilInfo:
+    """差分ステンシルの情報を保持する不変クラス
+    
+    Attributes:
+        points: ステンシル点の相対位置（中心からのオフセット）
+        coefficients: 各点での係数
+    """
+    points: jnp.ndarray      # shape: (N,)
+    coefficients: jnp.ndarray  # shape: (N,)
+
+    def __post_init__(self):
+        """初期化後の検証"""
+        if self.points.shape != self.coefficients.shape:
+            raise ValueError("点の数と係数の数が一致しません")
+
+
+class BoundaryField(Protocol):
+    """境界条件が適用される場のプロトコル"""
     @property
     def shape(self) -> Tuple[int, int, int]:
         """3次元形状を取得"""
@@ -25,84 +55,75 @@ class FieldValue(Protocol):
         ...
 
 
-@dataclass(frozen=True)
-class GridInfo:
-    """計算グリッドの情報を保持する不変クラス
+class BoundaryCondition(ABC):
+    """境界条件の基底抽象クラス"""
 
-    Attributes:
-        shape: グリッドの3次元形状 (nx, ny, nz)
-        dx: 各方向のグリッド間隔 (dx, dy, dz)
-        time: 現在の時刻
-    """
-
-    shape: Tuple[int, int, int]
-    dx: Tuple[float, float, float]
-    time: float = 0.0
-
-    def __post_init__(self):
-        """初期化後の検証"""
-        if len(self.shape) != 3 or len(self.dx) != 3:
-            raise ValueError("GridInfoは3次元データのみ対応しています")
-        if any(s <= 0 for s in self.shape):
-            raise ValueError("グリッドサイズは正の値である必要があります")
-        if any(d <= 0 for d in self.dx):
-            raise ValueError("グリッド間隔は正の値である必要があります")
-        if self.time < 0:
-            raise ValueError("時刻は非負である必要があります")
-
-
-class Field(ABC):
-    """3次元物理場の基底抽象クラス"""
-
-    def __init__(self, grid: GridInfo):
-        """場を初期化
-
+    def __init__(self, direction: Direction, side: Side, order: int = 2):
+        """境界条件を初期化
+        
         Args:
-            grid: 計算グリッドの情報
+            direction: 境界面の方向（X, Y, Z）
+            side: 境界の側（NEGATIVE, POSITIVE）
+            order: 差分近似の次数（デフォルト: 2）
         """
-        self._grid = grid
+        self.direction = direction
+        self.side = side
+        self.order = order
 
-    @property
-    def grid(self) -> GridInfo:
-        """グリッド情報を取得"""
-        return self._grid
-
-    @property
     @abstractmethod
-    def data(self) -> FieldValue:
-        """場のデータを取得する抽象プロパティ"""
+    def apply(self, field: BoundaryField) -> jnp.DeviceArray:
+        """境界条件を適用
+        
+        Args:
+            field: 境界条件を適用する場
+            
+        Returns:
+            境界条件が適用された新しい配列
+        """
         pass
 
     @abstractmethod
-    def copy(self) -> "Field":
-        """場の深いコピーを作成する抽象メソッド"""
+    def get_stencil(self) -> StencilInfo:
+        """差分ステンシルの情報を取得
+        
+        Returns:
+            ステンシルの情報
+        """
         pass
 
     @jit
-    def norm(self, p: int = 2) -> float:
-        """場のp-ノルムを計算
-
+    def get_boundary_slice(
+        self, 
+        shape: Tuple[int, int, int], 
+        width: int = 1
+    ) -> Tuple[slice, ...]:
+        """境界領域のスライスを取得
+        
         Args:
-            p: ノルムの次数（デフォルト: 2）
-
+            shape: 場の3次元形状
+            width: 境界領域の幅
+            
         Returns:
-            計算されたノルム値
+            境界領域を選択するスライスのタプル
         """
-        return float(jnp.linalg.norm(jnp.asarray(self.data).ravel(), ord=p))
+        slices = [slice(None)] * 3
+        if self.side == Side.NEGATIVE:
+            slices[self.direction.value] = slice(0, width)
+        else:
+            slices[self.direction.value] = slice(-width, None)
+        return tuple(slices)
 
-    def get_diagnostics(self) -> Dict[str, Any]:
-        """場の診断情報を取得
-
-        Returns:
-            診断情報を含む辞書
+    @jit
+    def validate_field(self, field: BoundaryField) -> None:
+        """場の妥当性を検証
+        
+        Args:
+            field: 検証する場
+            
+        Raises:
+            ValueError: 無効な場が指定された場合
         """
-        data_array = jnp.asarray(self.data)
-        return {
-            "shape": self.grid.shape,
-            "dx": self.grid.dx,
-            "time": self.grid.time,
-            "min": float(data_array.min()),
-            "max": float(data_array.max()),
-            "mean": float(data_array.mean()),
-            "norm": float(self.norm()),
-        }
+        if len(field.shape) != 3:
+            raise ValueError("場は3次元である必要があります")
+        if any(s <= 0 for s in field.shape):
+            raise ValueError("場の各次元は正の大きさを持つ必要があります")

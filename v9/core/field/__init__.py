@@ -1,4 +1,4 @@
-from .field import Field
+from .base import Field
 from .scalar import ScalarField
 from .vector import VectorField
 
