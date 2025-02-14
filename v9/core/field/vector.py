@@ -4,9 +4,9 @@
 ベクトル場クラスを定義します。"""
 
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 from .scalar import ScalarField
-from typing import Dict, Any, Union
+from typing import Dict, Any
 
 
 class VectorField:
