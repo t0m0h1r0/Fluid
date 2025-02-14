@@ -4064,6 +4064,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Tuple, Optional
 import numpy as np
 from dataclasses import dataclass
+from core.field import ScalarField
 
 
 @dataclass
@@ -4109,16 +4110,16 @@ class SpatialDerivative(ABC):
         self.config.validate()
 
     @abstractmethod
-    def __call__(self, data: np.ndarray, axis: int, dx: float) -> np.ndarray:
+    def __call__(self, field: ScalarField, axis: int, dx: float) -> ScalarField:
         """空間微分を計算
 
         Args:
-            data: 入力データ
+            field: 入力スカラー場
             axis: 微分を計算する軸
             dx: グリッド間隔
 
         Returns:
-            計算された微分
+            微分値を格納した新しいスカラー場
         """
         pass
 
@@ -4131,21 +4132,21 @@ class SpatialDerivative(ABC):
         """
         pass
 
-    def _validate_input(self, data: np.ndarray, axis: int, dx: float):
+    def _validate_input(self, field: ScalarField, axis: int, dx: float):
         """入力データの妥当性を検証
 
         Args:
-            data: 入力データ
+            field: 入力スカラー場
             axis: 微分を計算する軸
             dx: グリッド間隔
 
         Raises:
             ValueError: 無効な入力が指定された場合
         """
-        if not isinstance(data, np.ndarray):
-            raise ValueError("dataはnumpy配列である必要があります")
+        if not isinstance(field, ScalarField):
+            raise ValueError("fieldはScalarFieldである必要があります")
 
-        if not 0 <= axis < data.ndim:
+        if not 0 <= axis < field.ndim:
             raise ValueError(f"無効な軸です: {axis}")
 
         if dx <= 0:
@@ -4160,24 +4161,20 @@ class SpatialDerivative(ABC):
         return self.config.order // 2
 
     def apply_padding(
-        self, data: np.ndarray, axis: int, width: Optional[int] = None
-    ) -> np.ndarray:
-        """データにパディングを適用
+        self, field: ScalarField, axis: int, width: Optional[int] = None
+    ) -> ScalarField:
+        """スカラー場にパディングを適用
 
         Args:
-            data: 入力データ
+            field: 入力スカラー場
             axis: パディングを適用する軸
             width: パディング幅（Noneの場合は次数から自動決定）
 
         Returns:
-            パディングが適用されたデータ
+            パディングが適用された新しいスカラー場
         """
         width = width or self.get_padding_width()
-        # 軸ごとのパディング幅を指定
-        pad_width = [(0, 0)] * data.ndim
-        pad_width[axis] = (width, width)
-
-        return np.pad(data, pad_width, mode=self.config.padding_mode)
+        return field.pad(axis, width, mode=self.config.padding_mode)
 
     def get_boundary_stencil(self, side: int) -> Tuple[np.ndarray, np.ndarray]:
         """境界での差分ステンシルを取得
@@ -4213,10 +4210,10 @@ class SpatialDerivative(ABC):
 このモジュールは、2次、4次、6次の中心差分スキームを実装します。
 """
 
-import numpy as np
 from typing import Dict, Any
 from ..base import SpatialDerivative, DifferentiationConfig
 from ..stencil import DifferenceStencils, StencilCoefficients
+from core.field import ScalarField
 
 
 class CentralDifference(SpatialDerivative):
@@ -4241,31 +4238,30 @@ class CentralDifference(SpatialDerivative):
             raise ValueError("微分の階数は1または2である必要があります")
         self.derivative_order = derivative_order
 
-    def __call__(self, data: np.ndarray, axis: int, dx: float) -> np.ndarray:
+    def __call__(self, field: ScalarField, axis: int, dx: float) -> ScalarField:
         """中心差分により微分を計算
 
         Args:
-            data: 入力データ
+            field: 入力スカラー場
             axis: 微分を計算する軸
             dx: グリッド間隔
 
         Returns:
-            計算された微分
+            微分値を格納した新しいスカラー場
         """
-        self._validate_input(data, axis, dx)
+        self._validate_input(field, axis, dx)
 
         # パディングの適用
-        padded_data = self.apply_padding(data, axis)
+        padded_field = self.apply_padding(field, axis)
 
         # ステンシルの取得と適用
         stencil = self.get_stencil()
-        derivative = DifferenceStencils.apply_stencil(padded_data, stencil, axis, dx)
+        derivative = DifferenceStencils.apply_stencil(padded_field, stencil, axis, dx)
 
         # パディング部分の除去
-        padding = self.get_padding_width()
-        slices = [slice(None)] * data.ndim
-        slices[axis] = slice(padding, -padding)
-        return derivative[tuple(slices)]
+        result = derivative.trim([axis], [self.get_padding_width()])
+
+        return result
 
     def get_stencil(self) -> StencilCoefficients:
         """差分ステンシルを取得
@@ -5402,9 +5398,11 @@ class RungeKutta4(TimeIntegrator):
 
     def _estimate_error(self, k_values: List[FieldType], dt: float) -> None:
         """RK4の誤差を推定（エンベディッドRK4(5)法による）"""
-        # 5次法と4次法の差による誤差推定
-        error = dt * abs(
-            k_values[0].norm() / 6 - k_values[2].norm() / 3 + k_values[3].norm() / 6
+        # 誤差の推定方法を変更
+        error = dt * max(
+            comp.norm()
+            for k in k_values
+            for comp in (k.components if hasattr(k, "components") else [k])
         )
         self._error_history.append(error)
 
@@ -5738,17 +5736,20 @@ __all__ = [
 ### numerics/poisson/solver.py
 
 ```
-"""Poisson方程式のソルバーを提供するモジュール
+"""
+Poisson方程式のソルバー
 
-このモジュールは、Poisson方程式 ∇²φ = f を解くための反復法ソルバーを実装します。
+Poisson方程式 ∇²φ = f を解くための反復法ソルバーを実装します。
 """
 
 import numpy as np
 from typing import Optional, List, Dict, Any, Union
 
+from core.field import ScalarField
 from core.solver import IterativeSolver
 from core.boundary import BoundaryCondition
-from .base import PoissonSolverBase, PoissonSolverConfig, PoissonSolverTerm
+from .base import PoissonSolverBase, PoissonSolverTerm
+from .config import PoissonSolverConfig
 
 
 class PoissonSolver(PoissonSolverBase, IterativeSolver):
@@ -5795,18 +5796,20 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
 
         # 収束判定フラグ
         self._converged = False
+        # 初期残差
+        self._initial_residual = None
 
     def solve(
         self,
-        rhs: np.ndarray,
-        initial_solution: Optional[np.ndarray] = None,
+        rhs: Union[np.ndarray, ScalarField],
+        initial_solution: Optional[Union[np.ndarray, ScalarField]] = None,
         dx: Union[float, np.ndarray] = 1.0,
         **kwargs,
-    ) -> np.ndarray:
+    ) -> Union[np.ndarray, ScalarField]:
         """Poisson方程式を解く
 
         Args:
-            rhs: 右辺ベクトル
+            rhs: 右辺
             initial_solution: 初期推定解
             dx: グリッド間隔
             **kwargs: 追加のパラメータ
@@ -5815,9 +5818,15 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
             計算された解
         """
         try:
+            # 入力が ScalarField の場合は numpy 配列に変換
+            if isinstance(rhs, ScalarField):
+                rhs = rhs.data
+
             # 初期解のセットアップ
             if initial_solution is None:
                 initial_solution = np.zeros_like(rhs)
+            elif isinstance(initial_solution, ScalarField):
+                initial_solution = initial_solution.data
 
             # dx の正規化
             if np.isscalar(dx):
@@ -5831,7 +5840,12 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
 
             # 反復解法の実行
             solution = initial_solution.copy()
-            residual = float("inf")  # 初期残差
+
+            # 初期残差の計算
+            self._initial_residual = self.compute_residual(solution, rhs, dx)
+            self._residual_history = [self._initial_residual]
+
+            residual = self._initial_residual
 
             diagnostics_config = self.config.get_config_for_component("diagnostics")
             log_frequency = diagnostics_config.get("log_frequency", 10)
@@ -5864,7 +5878,7 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
             if not self._converged and self.logger:
                 self.logger.warning(
                     f"最大反復回数に到達: 残差 = {residual:.3e}, "
-                    f"相対残差 = {residual / self._residual_history[0]:.3e}"
+                    f"相対残差 = {residual / self._initial_residual:.3e}"
                 )
 
             return solution
@@ -5943,16 +5957,15 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
         convergence_config = self.config.get_config_for_component("convergence")
         relative_tolerance = convergence_config.get("relative_tolerance", False)
 
-        # 初期残差の記録（最初の呼び出し時）
-        if not self._residual_history:
-            return False
+        # 初期残差が非常に小さい場合の特別な処理
+        if self._initial_residual < 1e-15:
+            return residual < 1e-10
 
-        # 絶対残差または相対残差による収束判定
+        # 相対残差または絶対残差による収束判定
         if relative_tolerance:
             # 相対残差
             return (
-                residual / self._residual_history[0] < self.tolerance
-                and residual < self.tolerance
+                residual / self._initial_residual < self.tolerance and residual < 1e-10
             )
         else:
             # 絶対残差
@@ -6367,7 +6380,8 @@ class SORSolver(PoissonSolver):
 ### numerics/poisson/methods/cg.py
 
 ```
-"""共役勾配法（CG）によるPoissonソルバーの実装
+"""
+共役勾配法（CG）によるPoissonソルバーの実装
 
 このモジュールは、圧力ポアソン方程式を解くための共役勾配法を実装します。
 共役勾配法は対称正定値な問題に対して効率的な反復解法です。
@@ -7430,17 +7444,20 @@ __all__ = ["Solver", "TemporalSolver", "IterativeSolver"]
 このモジュールは、スカラー量（圧力、温度など）を表現するための場のクラスを定義します。
 """
 
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, List
 import numpy as np
 from .field import Field
-from typing import Dict, Any
+from typing import Dict, Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .vector import VectorField
 
 
 class ScalarField(Field):
     """スカラー場クラス
 
     温度、圧力などのスカラー量を表現するためのクラスです。
-    基本的な微分演算や補間機能を提供します。
+    NumPyスタイルの演算子と数値計算メソッドを提供します。
     """
 
     def __init__(
@@ -7470,6 +7487,93 @@ class ScalarField(Field):
                 self._data.fill(initial_value)
         else:
             raise TypeError(f"Unsupported initial_value type: {type(initial_value)}")
+
+    def __add__(self, other):
+        """NumPyの+演算子に準じた加算"""
+        if isinstance(other, (int, float, np.ndarray)):
+            result = self.copy()
+            result.data += other
+            return result
+        elif isinstance(other, ScalarField):
+            result = self.copy()
+            result.data += other.data
+            return result
+        else:
+            raise TypeError(f"サポートされていない型との加算: {type(other)}")
+
+    def __radd__(self, other):
+        """右側からの加算"""
+        return self.__add__(other)
+
+    def __sub__(self, other):
+        """NumPyの-演算子に準じた減算"""
+        if isinstance(other, (int, float, np.ndarray)):
+            result = self.copy()
+            result.data -= other
+            return result
+        elif isinstance(other, ScalarField):
+            result = self.copy()
+            result.data -= other.data
+            return result
+        else:
+            raise TypeError(f"サポートされていない型との減算: {type(other)}")
+
+    def __rsub__(self, other):
+        """右側からの減算"""
+        result = self.copy()
+        result.data = other - result.data
+        return result
+
+    def __mul__(self, other):
+        """NumPyの*演算子に準じた乗算"""
+        if isinstance(other, (int, float, np.ndarray)):
+            result = self.copy()
+            result.data *= other
+            return result
+        elif isinstance(other, ScalarField):
+            result = self.copy()
+            result.data *= other.data
+            return result
+        else:
+            raise TypeError(f"サポートされていない型との乗算: {type(other)}")
+
+    def __rmul__(self, other):
+        """右側からの乗算"""
+        return self.__mul__(other)
+
+    def __truediv__(self, other):
+        """NumPyの/演算子に準じた除算"""
+        if isinstance(other, (int, float, np.ndarray)):
+            result = self.copy()
+            result.data /= other
+            return result
+        elif isinstance(other, ScalarField):
+            result = self.copy()
+            result.data /= other.data
+            return result
+        else:
+            raise TypeError(f"サポートされていない型との除算: {type(other)}")
+
+    def __rtruediv__(self, other):
+        """右側からの除算"""
+        result = self.copy()
+        result.data = other / result.data
+        return result
+
+    def gradient(self, axis: int = None) -> Union[np.ndarray, List[np.ndarray]]:
+        """NumPyのgradientに準じた勾配計算"""
+        if axis is None:
+            return [np.gradient(self.data, self.dx, axis=i) for i in range(self.ndim)]
+        return np.gradient(self.data, self.dx, axis=axis)
+
+    def dot(self, other: "VectorField") -> "ScalarField":
+        """内積計算（NumPyのdot演算に準じる）"""
+        result = ScalarField(self.shape, self.dx)
+        result.data = sum(
+            comp.data * other_comp.data
+            for comp, other_comp in zip(other.components, other.components)
+        )
+        return result
 
     def interpolate(self, points: np.ndarray) -> np.ndarray:
         """任意の点での値を線形補間
@@ -7560,49 +7664,6 @@ class ScalarField(Field):
 
         self._data = gaussian_filter(self._data, sigma)
 
-    def __add__(self, other):
-        """加算演算子の実装"""
-        result = self.__class__(self.shape, self.dx)
-        if isinstance(other, (int, float)):
-            result.data = self.data + other
-        elif isinstance(other, ScalarField):
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result.data = self.data + other.data
-        else:
-            raise TypeError("無効な型との演算です")
-        return result
-
-    def __mul__(self, other):
-        """乗算演算子の実装"""
-        result = self.__class__(self.shape, self.dx)
-        if isinstance(other, (int, float)):
-            result.data = self.data * other
-        elif isinstance(other, ScalarField):
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result.data = self.data * other.data
-        else:
-            raise TypeError("無効な型との演算です")
-        return result
-
-    def __rmul__(self, other):
-        """右乗算演算子の実装"""
-        return self.__mul__(other)
-
-    def __truediv__(self, other):
-        """除算演算子の実装"""
-        result = self.__class__(self.shape, self.dx)
-        if isinstance(other, (int, float)):
-            result.data = self.data / other
-        elif isinstance(other, ScalarField):
-            if self.shape != other.shape:
-                raise ValueError("場の形状が一致しません")
-            result.data = self.data / other.data
-        else:
-            raise TypeError("無効な型との演算です")
-        return result
-
     def save_state(self) -> Dict[str, Any]:
         """現在の状態を保存
 
@@ -7666,7 +7727,7 @@ class VectorField:
     """ベクトル場クラス
 
     速度、運動量などのベクトル量を表現するためのクラスです。
-    各成分をスカラー場として保持し、ベクトル演算のメソッドを提供します。
+    NumPyスタイルの演算子と数値計算メソッドを提供します。
     """
 
     def __init__(self, shape: Tuple[int, ...], dx: float = 1.0):
@@ -7720,6 +7781,55 @@ class VectorField:
         """次元数を取得"""
         return len(self._shape)
 
+    def __add__(self, other: "VectorField") -> "VectorField":
+        """NumPyの+演算子に準じた加算"""
+        if not isinstance(other, VectorField):
+            raise TypeError(f"サポートされていない型との加算: {type(other)}")
+
+        result = VectorField(self.shape, self.dx)
+        for i, (c1, c2) in enumerate(zip(self.components, other.components)):
+            result.components[i] = c1 + c2
+        return result
+
+    def __sub__(self, other: "VectorField") -> "VectorField":
+        """NumPyの-演算子に準じた減算"""
+        if not isinstance(other, VectorField):
+            raise TypeError(f"サポートされていない型との減算: {type(other)}")
+
+        result = VectorField(self.shape, self.dx)
+        for i, (c1, c2) in enumerate(zip(self.components, other.components)):
+            result.components[i] = c1 - c2
+        return result
+
+    def __mul__(self, other):
+        """NumPyの*演算子に準じた乗算（スカラー倍）"""
+        if isinstance(other, (int, float, np.ndarray)):
+            result = VectorField(self.shape, self.dx)
+            for i, comp in enumerate(self.components):
+                result.components[i] = comp * other
+            return result
+        elif isinstance(other, ScalarField):
+            result = VectorField(self.shape, self.dx)
+            for i, comp in enumerate(self.components):
+                result.components[i] = comp * other
+            return result
+        else:
+            raise TypeError(f"サポートされていない型との乗算: {type(other)}")
+
+    def __rmul__(self, other):
+        """右側からの乗算"""
+        return self.__mul__(other)
+
+    def __matmul__(self, other: ScalarField) -> "VectorField":
+        """NumPyの@演算子に準じた重み付け"""
+        if not isinstance(other, ScalarField):
+            raise TypeError("@演算子はScalarFieldとの演算のみ可能です")
+
+        result = VectorField(self.shape, self.dx)
+        for i, comp in enumerate(self.components):
+            result.components[i] = comp * other
+        return result
+
     def magnitude(self) -> ScalarField:
         """ベクトル場の大きさを計算
 
@@ -7730,14 +7840,33 @@ class VectorField:
         result.data = np.sqrt(sum(c.data**2 for c in self._components))
         return result
 
-    def divergence(self) -> ScalarField:
-        """発散を計算
-
-        Returns:
-            計算された発散を表すスカラー場
-        """
+    def div(self) -> ScalarField:
+        """NumPyスタイルの発散計算"""
         result = ScalarField(self.shape, self.dx)
-        result.data = sum(c.gradient(i) for i, c in enumerate(self._components))
+        result.data = sum(comp.gradient(i) for i, comp in enumerate(self.components))
+        return result
+
+    def dot(self, other: "VectorField") -> ScalarField:
+        """NumPyのdot演算に準じた内積計算"""
+        result = ScalarField(self.shape, self.dx)
+        result.data = sum(
+            c1.data * c2.data for c1, c2 in zip(self.components, other.components)
+        )
+        return result
+
+    def cross(self, other: "VectorField") -> Optional["VectorField"]:
+        """NumPyのcross演算に準じた外積計算（3次元のみ）"""
+        if self.ndim != 3:
+            return None
+
+        result = VectorField(self.shape, self.dx)
+        u1, v1, w1 = [c.data for c in self.components]
+        u2, v2, w2 = [c.data for c in other.components]
+
+        result.components[0].data = v1 * w2 - w1 * v2
+        result.components[1].data = w1 * u2 - u1 * w2
+        result.components[2].data = u1 * v2 - v1 * u2
+
         return result
 
     def curl(self) -> Optional["VectorField"]:
@@ -7785,79 +7914,6 @@ class VectorField:
         result = VectorField(self.shape, self.dx)
         for i, component in enumerate(self._components):
             result.components[i] = component.copy()
-        return result
-
-    def __add__(self, other: "VectorField") -> "VectorField":
-        """加算演算子の実装"""
-        if not isinstance(other, VectorField):
-            raise TypeError("ベクトル場同士の演算のみ可能です")
-        if self.shape != other.shape:
-            raise ValueError("場の形状が一致しません")
-
-        result = VectorField(self.shape, self.dx)
-        for i, (c1, c2) in enumerate(zip(self.components, other.components)):
-            result.components[i] = c1 + c2
-        return result
-
-    def __mul__(self, other) -> "VectorField":
-        """スカラー倍の実装"""
-        if not isinstance(other, (int, float)):
-            raise TypeError("スカラー倍のみ可能です")
-
-        result = VectorField(self.shape, self.dx)
-        for i, component in enumerate(self.components):
-            result.components[i] = component * other
-        return result
-
-    def __rmul__(self, other) -> "VectorField":
-        """右スカラー倍の実装"""
-        return self.__mul__(other)
-
-    def dot(self, other: "VectorField") -> ScalarField:
-        """内積を計算
-
-        Args:
-            other: 内積を取るベクトル場
-
-        Returns:
-            計算された内積を表すスカラー場
-        """
-        if not isinstance(other, VectorField):
-            raise TypeError("ベクトル場同士の演算のみ可能です")
-        if self.shape != other.shape:
-            raise ValueError("場の形状が一致しません")
-
-        result = ScalarField(self.shape, self.dx)
-        result.data = sum(
-            c1.data * c2.data for c1, c2 in zip(self.components, other.components)
-        )
-        return result
-
-    def cross(self, other: "VectorField") -> Optional["VectorField"]:
-        """外積を計算（3次元のみ）
-
-        Args:
-            other: 外積を取るベクトル場
-
-        Returns:
-            3次元の場合は計算された外積を表すベクトル場
-            2次元の場合はNone
-        """
-        if self.ndim != 3:
-            return None
-        if not isinstance(other, VectorField):
-            raise TypeError("ベクトル場同士の演算のみ可能です")
-        if self.shape != other.shape:
-            raise ValueError("場の形状が一致しません")
-
-        result = VectorField(self.shape, self.dx)
-        u1, v1, w1 = [c.data for c in self.components]
-        u2, v2, w2 = [c.data for c in other.components]
-
-        result.components[0].data = v1 * w2 - w1 * v2
-        result.components[1].data = w1 * u2 - u1 * w2
-        result.components[2].data = u1 * v2 - v1 * u2
-
         return result
 
     def save_state(self) -> Dict[str, Any]:

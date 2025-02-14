@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Tuple, Optional
 import numpy as np
 from dataclasses import dataclass
+from core.field import ScalarField
 
 
 @dataclass
@@ -52,16 +53,16 @@ class SpatialDerivative(ABC):
         self.config.validate()
 
     @abstractmethod
-    def __call__(self, data: np.ndarray, axis: int, dx: float) -> np.ndarray:
+    def __call__(self, field: ScalarField, axis: int, dx: float) -> ScalarField:
         """空間微分を計算
 
         Args:
-            data: 入力データ
+            field: 入力スカラー場
             axis: 微分を計算する軸
             dx: グリッド間隔
 
         Returns:
-            計算された微分
+            微分値を格納した新しいスカラー場
         """
         pass
 
@@ -74,21 +75,21 @@ class SpatialDerivative(ABC):
         """
         pass
 
-    def _validate_input(self, data: np.ndarray, axis: int, dx: float):
+    def _validate_input(self, field: ScalarField, axis: int, dx: float):
         """入力データの妥当性を検証
 
         Args:
-            data: 入力データ
+            field: 入力スカラー場
             axis: 微分を計算する軸
             dx: グリッド間隔
 
         Raises:
             ValueError: 無効な入力が指定された場合
         """
-        if not isinstance(data, np.ndarray):
-            raise ValueError("dataはnumpy配列である必要があります")
+        if not isinstance(field, ScalarField):
+            raise ValueError("fieldはScalarFieldである必要があります")
 
-        if not 0 <= axis < data.ndim:
+        if not 0 <= axis < field.ndim:
             raise ValueError(f"無効な軸です: {axis}")
 
         if dx <= 0:
@@ -103,24 +104,20 @@ class SpatialDerivative(ABC):
         return self.config.order // 2
 
     def apply_padding(
-        self, data: np.ndarray, axis: int, width: Optional[int] = None
-    ) -> np.ndarray:
-        """データにパディングを適用
+        self, field: ScalarField, axis: int, width: Optional[int] = None
+    ) -> ScalarField:
+        """スカラー場にパディングを適用
 
         Args:
-            data: 入力データ
+            field: 入力スカラー場
             axis: パディングを適用する軸
             width: パディング幅（Noneの場合は次数から自動決定）
 
         Returns:
-            パディングが適用されたデータ
+            パディングが適用された新しいスカラー場
         """
         width = width or self.get_padding_width()
-        # 軸ごとのパディング幅を指定
-        pad_width = [(0, 0)] * data.ndim
-        pad_width[axis] = (width, width)
-
-        return np.pad(data, pad_width, mode=self.config.padding_mode)
+        return field.pad(axis, width, mode=self.config.padding_mode)
 
     def get_boundary_stencil(self, side: int) -> Tuple[np.ndarray, np.ndarray]:
         """境界での差分ステンシルを取得

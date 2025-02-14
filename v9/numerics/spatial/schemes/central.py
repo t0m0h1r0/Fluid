@@ -3,10 +3,10 @@
 このモジュールは、2次、4次、6次の中心差分スキームを実装します。
 """
 
-import numpy as np
 from typing import Dict, Any
 from ..base import SpatialDerivative, DifferentiationConfig
 from ..stencil import DifferenceStencils, StencilCoefficients
+from core.field import ScalarField
 
 
 class CentralDifference(SpatialDerivative):
@@ -31,31 +31,30 @@ class CentralDifference(SpatialDerivative):
             raise ValueError("微分の階数は1または2である必要があります")
         self.derivative_order = derivative_order
 
-    def __call__(self, data: np.ndarray, axis: int, dx: float) -> np.ndarray:
+    def __call__(self, field: ScalarField, axis: int, dx: float) -> ScalarField:
         """中心差分により微分を計算
 
         Args:
-            data: 入力データ
+            field: 入力スカラー場
             axis: 微分を計算する軸
             dx: グリッド間隔
 
         Returns:
-            計算された微分
+            微分値を格納した新しいスカラー場
         """
-        self._validate_input(data, axis, dx)
+        self._validate_input(field, axis, dx)
 
         # パディングの適用
-        padded_data = self.apply_padding(data, axis)
+        padded_field = self.apply_padding(field, axis)
 
         # ステンシルの取得と適用
         stencil = self.get_stencil()
-        derivative = DifferenceStencils.apply_stencil(padded_data, stencil, axis, dx)
+        derivative = DifferenceStencils.apply_stencil(padded_field, stencil, axis, dx)
 
         # パディング部分の除去
-        padding = self.get_padding_width()
-        slices = [slice(None)] * data.ndim
-        slices[axis] = slice(padding, -padding)
-        return derivative[tuple(slices)]
+        result = derivative.trim([axis], [self.get_padding_width()])
+
+        return result
 
     def get_stencil(self) -> StencilCoefficients:
         """差分ステンシルを取得
