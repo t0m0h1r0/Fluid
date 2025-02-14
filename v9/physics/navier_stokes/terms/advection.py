@@ -1,7 +1,8 @@
 """
-移流項（対流項）の計算を提供するモジュール
+移流項（対流項）の計算を提供するモジュール（改良版）
 
 Navier-Stokes方程式における u⋅∇u 項を計算します。
+新しい演算子とメソッドを活用して実装を改善しています。
 """
 
 from typing import Dict, Any
@@ -12,11 +13,7 @@ from .base import BaseNavierStokesTerm
 
 
 class AdvectionTerm(BaseNavierStokesTerm):
-    """
-    移流項（対流項）を計算するクラス
-
-    速度場の移流（u⋅∇u）を中心差分で近似計算します。
-    """
+    """移流項（対流項）を計算するクラス（改良版）"""
 
     def __init__(
         self,
@@ -36,6 +33,7 @@ class AdvectionTerm(BaseNavierStokesTerm):
     def compute(self, velocity: VectorField, **kwargs) -> VectorField:
         """
         移流項の寄与を計算 (u⋅∇)u
+        新しい演算子 @ を使用して内積を計算
 
         Args:
             velocity: 速度場
@@ -46,28 +44,20 @@ class AdvectionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        # 速度場の内積演算を活用
-        result = -velocity.dot(velocity.gradient())
+        # @演算子を使用した内積計算
+        result = -(velocity @ velocity.gradient())
 
         # 診断情報の更新
         self._update_diagnostics(result)
-
         return result
 
     def _update_diagnostics(self, result: VectorField):
-        """
-        診断情報を更新
-
-        Args:
-            result: 計算された移流項
-        """
+        """診断情報を更新（新しいメソッドを活用）"""
         self._diagnostics = {
             "scheme": self._scheme,
-            "max_advection": float(
-                max(np.max(np.abs(comp.data)) for comp in result.components)
-            ),
+            "max_magnitude": float(result.magnitude().max()),
             "component_max": {
-                f"component_{i}": float(np.max(np.abs(comp.data)))
+                f"component_{i}": float(comp.norm(ord=np.inf))
                 for i, comp in enumerate(result.components)
             },
         }
@@ -75,6 +65,7 @@ class AdvectionTerm(BaseNavierStokesTerm):
     def compute_timestep(self, velocity: VectorField, **kwargs) -> float:
         """
         移流項に基づく時間刻み幅の制限を計算
+        新しいメソッドを活用して最大速度を計算
 
         Args:
             velocity: 速度場
@@ -85,12 +76,12 @@ class AdvectionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return float("inf")
 
-        # 最大速度の計算（各成分の最大絶対値）
-        max_velocity = max(np.max(np.abs(comp.data)) for comp in velocity.components)
+        # magnitude()メソッドを使用して最大速度を計算
+        max_velocity = velocity.magnitude().max()
 
         # CFLに基づく時間刻み幅の計算
         cfl = kwargs.get("cfl", 0.5)
-        return cfl * velocity.dx / (max_velocity + 1e-10)
+        return cfl * min(velocity.dx) / (max_velocity + 1e-10)
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""

@@ -26,7 +26,7 @@ class VectorField:
         # dxの正規化：スカラーの場合はベクトルに変換
         if np.isscalar(dx):
             dx = np.full(len(shape), float(dx))
-        
+
         self._components = [ScalarField(shape, dx) for _ in range(len(shape))]
         self._shape = shape
         self._dx = dx
@@ -103,8 +103,7 @@ class VectorField:
                 # 対称勾配: 0.5 * (∂u_i/∂x_j + ∂u_j/∂x_i)
                 if i <= j:  # 対称性を利用して計算を最適化
                     comp_data = 0.5 * (
-                        self.components[i].gradient(j) + 
-                        self.components[j].gradient(i)
+                        self.components[i].gradient(j) + self.components[j].gradient(i)
                     )
                     result.components[i].data = comp_data
                 else:
@@ -149,11 +148,17 @@ class VectorField:
         u, v, w = [c.data for c in self._components]
 
         # ∂w/∂y - ∂v/∂z
-        result.components[0].data = np.gradient(w, self.dx[1], axis=1) - np.gradient(v, self.dx[2], axis=2)
+        result.components[0].data = np.gradient(w, self.dx[1], axis=1) - np.gradient(
+            v, self.dx[2], axis=2
+        )
         # ∂u/∂z - ∂w/∂x
-        result.components[1].data = np.gradient(u, self.dx[2], axis=2) - np.gradient(w, self.dx[0], axis=0)
+        result.components[1].data = np.gradient(u, self.dx[2], axis=2) - np.gradient(
+            w, self.dx[0], axis=0
+        )
         # ∂v/∂x - ∂u/∂y
-        result.components[2].data = np.gradient(v, self.dx[0], axis=0) - np.gradient(u, self.dx[1], axis=1)
+        result.components[2].data = np.gradient(v, self.dx[0], axis=0) - np.gradient(
+            u, self.dx[1], axis=1
+        )
 
         return result
 
@@ -194,7 +199,7 @@ class VectorField:
             raise TypeError("スカラー倍のみ可能です")
 
         result = VectorField(self.shape, self.dx)
-        
+
         # スカラー値の場合
         if isinstance(other, (int, float)):
             for i, component in enumerate(self.components):
@@ -296,11 +301,11 @@ class VectorField:
         component_norms = [np.sqrt(np.mean(comp.data**2)) for comp in self.components]
         # 最大のノルムを返す
         return max(component_norms)
-    
+
     def __matmul__(self, other):
         """
         '@' 演算子のオーバーロード
-        
+
         以下のような演算をサポート:
         1. ベクトル場同士の内積
         2. ベクトル場と任意のオブジェクトの積
@@ -311,11 +316,11 @@ class VectorField:
         # 既存のベクトル場同士の内積
         if isinstance(other, VectorField):
             return self.dot(other)
-        
+
         # NumPy配列との演算
         if isinstance(other, np.ndarray):
             result = ScalarField(self.shape, self.dx)
-            
+
             # 配列の次元に応じて異なる演算
             if other.ndim == 1 and len(other) == len(self.components):
                 # ベクトルとの内積
@@ -325,28 +330,25 @@ class VectorField:
             elif other.ndim == self.ndim + 1:
                 # テンソルとの内積
                 result.data = sum(
-                    sum(
-                        self.components[j].data * other[j, i]
-                        for j in range(self.ndim)
-                    )
+                    sum(self.components[j].data * other[j, i] for j in range(self.ndim))
                     for i in range(self.ndim)
                 )
             else:
                 # スカラー倍や他の演算
                 result = ScalarField(self.shape, self.dx)
                 result.data = sum(comp.data * other for comp in self.components)
-            
+
             return result
-        
+
         # ScalarFieldとの演算
         if isinstance(other, ScalarField):
             result = VectorField(self.shape, self.dx)
             for i, comp in enumerate(self.components):
                 result.components[i] = comp * other
             return result
-        
+
         # その他の型（スカラー値など）
         if isinstance(other, (int, float)):
             return self * other
-        
+
         raise TypeError(f"無効な型との演算: {type(other)}")

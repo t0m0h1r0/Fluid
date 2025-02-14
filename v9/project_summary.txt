@@ -102,8 +102,28 @@
   - config.yaml
   - results/
     - visualization/
+      - simulation_state_pressure_xy_slice_0.50_0.000_0.000000.png (binary file)
+      - simulation_state_levelset_yz_slice_0.50_0.000_0.000000.png (binary file)
+      - simulation_state_pressure_yz_slice_0.50_0.000_0.000000.json
+      - simulation_state_velocity_xz_slice_0.50_0.000_0.000000.json
+      - simulation_state_pressure_xz_slice_0.50_0.000_0.000000.png (binary file)
+      - simulation_state_velocity_yz_slice_0.50_0.000_0.000000.png (binary file)
       - checkpoints/
+        - initial_checkpoint.npz (binary file)
+      - simulation_state_pressure_xz_slice_0.50_0.000_0.000000.json
+      - simulation_state_velocity_xz_slice_0.50_0.000_0.000000.png (binary file)
+      - simulation_state_velocity_xy_slice_0.50_0.000_0.000000.png (binary file)
+      - simulation_state_levelset_xy_slice_0.50_0.000_0.000000.json
+      - simulation_state_pressure_xy_slice_0.50_0.000_0.000000.json
+      - simulation_state_levelset_xy_slice_0.50_0.000_0.000000.png (binary file)
+      - simulation_state_pressure_yz_slice_0.50_0.000_0.000000.png (binary file)
       - diagnostics/
+        - diagnostics_0.000000.json
+      - simulation_state_levelset_yz_slice_0.50_0.000_0.000000.json
+      - simulation_state_levelset_xz_slice_0.50_0.000_0.000000.png (binary file)
+      - simulation_state_velocity_xy_slice_0.50_0.000_0.000000.json
+      - simulation_state_levelset_xz_slice_0.50_0.000_0.000000.json
+      - simulation_state_velocity_yz_slice_0.50_0.000_0.000000.json
   - physics/
     - pressure/
       - poisson.py
@@ -7522,7 +7542,9 @@ class ScalarField(Field):
 
         return result
 
-    def gradient(self, axis: Optional[int] = None) -> Union[np.ndarray, List[np.ndarray]]:
+    def gradient(
+        self, axis: Optional[int] = None
+    ) -> Union[np.ndarray, List[np.ndarray]]:
         """勾配を計算
 
         Args:
@@ -7534,12 +7556,9 @@ class ScalarField(Field):
         if axis is not None:
             # 特定の軸の勾配を計算
             return np.gradient(self._data, self._dx[axis], axis=axis)
-        
+
         # すべての軸の勾配を計算
-        return [
-            np.gradient(self._data, self._dx[i], axis=i)
-            for i in range(self.ndim)
-        ]
+        return [np.gradient(self._data, self._dx[i], axis=i) for i in range(self.ndim)]
 
     def integrate(self) -> float:
         """場の積分値を計算"""
@@ -7671,6 +7690,7 @@ class ScalarField(Field):
             計算されたノルム
         """
         return np.linalg.norm(self._data.ravel(), ord=ord)
+
 ```
 
 ### core/field/vector.py
@@ -7704,7 +7724,7 @@ class VectorField:
         # dxの正規化：スカラーの場合はベクトルに変換
         if np.isscalar(dx):
             dx = np.full(len(shape), float(dx))
-        
+
         self._components = [ScalarField(shape, dx) for _ in range(len(shape))]
         self._shape = shape
         self._dx = dx
@@ -7781,8 +7801,7 @@ class VectorField:
                 # 対称勾配: 0.5 * (∂u_i/∂x_j + ∂u_j/∂x_i)
                 if i <= j:  # 対称性を利用して計算を最適化
                     comp_data = 0.5 * (
-                        self.components[i].gradient(j) + 
-                        self.components[j].gradient(i)
+                        self.components[i].gradient(j) + self.components[j].gradient(i)
                     )
                     result.components[i].data = comp_data
                 else:
@@ -7827,11 +7846,17 @@ class VectorField:
         u, v, w = [c.data for c in self._components]
 
         # ∂w/∂y - ∂v/∂z
-        result.components[0].data = np.gradient(w, self.dx[1], axis=1) - np.gradient(v, self.dx[2], axis=2)
+        result.components[0].data = np.gradient(w, self.dx[1], axis=1) - np.gradient(
+            v, self.dx[2], axis=2
+        )
         # ∂u/∂z - ∂w/∂x
-        result.components[1].data = np.gradient(u, self.dx[2], axis=2) - np.gradient(w, self.dx[0], axis=0)
+        result.components[1].data = np.gradient(u, self.dx[2], axis=2) - np.gradient(
+            w, self.dx[0], axis=0
+        )
         # ∂v/∂x - ∂u/∂y
-        result.components[2].data = np.gradient(v, self.dx[0], axis=0) - np.gradient(u, self.dx[1], axis=1)
+        result.components[2].data = np.gradient(v, self.dx[0], axis=0) - np.gradient(
+            u, self.dx[1], axis=1
+        )
 
         return result
 
@@ -7872,7 +7897,7 @@ class VectorField:
             raise TypeError("スカラー倍のみ可能です")
 
         result = VectorField(self.shape, self.dx)
-        
+
         # スカラー値の場合
         if isinstance(other, (int, float)):
             for i, component in enumerate(self.components):
@@ -7974,11 +7999,11 @@ class VectorField:
         component_norms = [np.sqrt(np.mean(comp.data**2)) for comp in self.components]
         # 最大のノルムを返す
         return max(component_norms)
-    
+
     def __matmul__(self, other):
         """
         '@' 演算子のオーバーロード
-        
+
         以下のような演算をサポート:
         1. ベクトル場同士の内積
         2. ベクトル場と任意のオブジェクトの積
@@ -7989,11 +8014,11 @@ class VectorField:
         # 既存のベクトル場同士の内積
         if isinstance(other, VectorField):
             return self.dot(other)
-        
+
         # NumPy配列との演算
         if isinstance(other, np.ndarray):
             result = ScalarField(self.shape, self.dx)
-            
+
             # 配列の次元に応じて異なる演算
             if other.ndim == 1 and len(other) == len(self.components):
                 # ベクトルとの内積
@@ -8003,31 +8028,29 @@ class VectorField:
             elif other.ndim == self.ndim + 1:
                 # テンソルとの内積
                 result.data = sum(
-                    sum(
-                        self.components[j].data * other[j, i]
-                        for j in range(self.ndim)
-                    )
+                    sum(self.components[j].data * other[j, i] for j in range(self.ndim))
                     for i in range(self.ndim)
                 )
             else:
                 # スカラー倍や他の演算
                 result = ScalarField(self.shape, self.dx)
                 result.data = sum(comp.data * other for comp in self.components)
-            
+
             return result
-        
+
         # ScalarFieldとの演算
         if isinstance(other, ScalarField):
             result = VectorField(self.shape, self.dx)
             for i, comp in enumerate(self.components):
                 result.components[i] = comp * other
             return result
-        
+
         # その他の型（スカラー値など）
         if isinstance(other, (int, float)):
             return self * other
-        
+
         raise TypeError(f"無効な型との演算: {type(other)}")
+
 ```
 
 ### core/field/conserved.py
@@ -8469,6 +8492,177 @@ debug:
   profiling: false
 ```
 
+### results/visualization/simulation_state_pressure_yz_slice_0.50_0.000_0.000000.json
+
+```
+{
+  "data_range": {
+    "min": 0.0,
+    "max": 0.0
+  },
+  "display_type": [
+    "scalar",
+    "slice"
+  ]
+}
+```
+
+### results/visualization/simulation_state_velocity_xz_slice_0.50_0.000_0.000000.json
+
+```
+{
+  "data_range": {
+    "min_magnitude": 0.0,
+    "max_magnitude": 0.0
+  },
+  "display_type": [
+    "vector",
+    "slice"
+  ],
+  "slice_info": {
+    "axis": "xy",
+    "position": 0.5
+  }
+}
+```
+
+### results/visualization/simulation_state_pressure_xz_slice_0.50_0.000_0.000000.json
+
+```
+{
+  "data_range": {
+    "min": 0.0,
+    "max": 0.0
+  },
+  "display_type": [
+    "scalar",
+    "slice"
+  ]
+}
+```
+
+### results/visualization/simulation_state_levelset_xy_slice_0.50_0.000_0.000000.json
+
+```
+{
+  "data_range": {
+    "min": -0.7273618495495704,
+    "max": 0.09502186816643529
+  },
+  "display_type": [
+    "scalar",
+    "slice"
+  ]
+}
+```
+
+### results/visualization/simulation_state_pressure_xy_slice_0.50_0.000_0.000000.json
+
+```
+{
+  "data_range": {
+    "min": 0.0,
+    "max": 0.0
+  },
+  "display_type": [
+    "scalar",
+    "slice"
+  ]
+}
+```
+
+### results/visualization/diagnostics/diagnostics_0.000000.json
+
+```
+{
+  "time": 0.0,
+  "velocity_max": 0.0,
+  "pressure_max": 0.0,
+  "levelset_min": -0.7273618495495704,
+  "levelset_max": 0.09502186816643529,
+  "interface_geometry": {
+    "volume_fraction": 0.019990668311745736,
+    "interface_points": 508,
+    "interface_area": 0.5955765009055204,
+    "distance_error": 0.0037628265527603253,
+    "curvature": {
+      "min": -17.237347354029886,
+      "max": -2.098045216945196,
+      "mean": -4.146721775680971,
+      "rms": 4.612266466357626
+    }
+  }
+}
+```
+
+### results/visualization/simulation_state_levelset_yz_slice_0.50_0.000_0.000000.json
+
+```
+{
+  "data_range": {
+    "min": -0.7273618495495704,
+    "max": 0.09502186816643529
+  },
+  "display_type": [
+    "scalar",
+    "slice"
+  ]
+}
+```
+
+### results/visualization/simulation_state_velocity_xy_slice_0.50_0.000_0.000000.json
+
+```
+{
+  "data_range": {
+    "min_magnitude": 0.0,
+    "max_magnitude": 0.0
+  },
+  "display_type": [
+    "vector",
+    "slice"
+  ],
+  "slice_info": {
+    "axis": "xy",
+    "position": 0.5
+  }
+}
+```
+
+### results/visualization/simulation_state_levelset_xz_slice_0.50_0.000_0.000000.json
+
+```
+{
+  "data_range": {
+    "min": -0.7273618495495704,
+    "max": 0.09502186816643529
+  },
+  "display_type": [
+    "scalar",
+    "slice"
+  ]
+}
+```
+
+### results/visualization/simulation_state_velocity_yz_slice_0.50_0.000_0.000000.json
+
+```
+{
+  "data_range": {
+    "min_magnitude": 0.0,
+    "max_magnitude": 0.0
+  },
+  "display_type": [
+    "vector",
+    "slice"
+  ],
+  "slice_info": {
+    "axis": "xy",
+    "position": 0.5
+  }
+}
+```
+
 ### physics/pressure/poisson.py
 
 ```
@@ -8797,8 +8991,8 @@ class AdvectionTerm(PoissonTerm):
     圧力ポアソン方程式の移流項の発散を計算するクラス
 
     式: ∇⋅(u⋅∇u)
-    
-    この項は、速度場の非線形移流効果を表現し、 
+
+    この項は、速度場の非線形移流効果を表現し、
     圧力ポアソン方程式の右辺に寄与します。
     """
 
@@ -8814,9 +9008,7 @@ class AdvectionTerm(PoissonTerm):
         """
         super().__init__(name, enabled)
 
-    def compute(
-        self, velocity: VectorField, **kwargs
-    ) -> ScalarField:
+    def compute(self, velocity: VectorField, **kwargs) -> ScalarField:
         """
         移流項の発散を計算 ∇⋅(u⋅∇u)
 
@@ -8831,17 +9023,19 @@ class AdvectionTerm(PoissonTerm):
 
         # 移流項の発散を計算
         result = ScalarField(velocity.shape, velocity.dx)
-        
+
         # u⋅∇u の各成分の発散を計算
         for i in range(velocity.ndim):
             # u_j * ∂u_i/∂x_j の発散
             advection_div = np.zeros_like(velocity.components[i].data)
             for j in range(velocity.ndim):
                 # v_j * ∂u_i/∂x_j
-                advection_term = velocity.components[j].data * velocity.components[i].gradient(j)
+                advection_term = velocity.components[j].data * velocity.components[
+                    i
+                ].gradient(j)
                 # ∂/∂x_j(v_j * ∂u_i/∂x_j)
                 advection_div += np.gradient(advection_term, velocity.dx[j], axis=j)
-            
+
             # 結果に加算（移流項の発散は成分ごとに計算し、合計）
             result.data += advection_div
 
@@ -8870,7 +9064,7 @@ class AdvectionTerm(PoissonTerm):
                     "max": float(np.max(comp.data)),
                 }
                 for i, comp in enumerate(velocity.components)
-            }
+            },
         }
 
     def get_diagnostics(self) -> Dict[str, Any]:
@@ -8878,6 +9072,7 @@ class AdvectionTerm(PoissonTerm):
         diag = super().get_diagnostics()
         diag.update(self._diagnostics)
         return diag
+
 ```
 
 ### physics/pressure/terms/viscous.py
@@ -9259,6 +9454,7 @@ class ContinuityEquation:
             "field": field_info,
             "grid_spacing": field.dx,
         }
+
 ```
 
 ### physics/continuity/__init__.py
@@ -9281,10 +9477,11 @@ __all__ = [
 ### physics/multiphase/interface.py
 
 ```
-"""多相流体の界面計算機能を提供するモジュール
+"""多相流体の界面計算機能を提供するモジュール（改良版）
 
 このモジュールは、多相流体における界面の初期化、再構築、幾何計算、
-相識別などの機能を統合的に提供します。
+相識別などの機能を統合的に提供します。新しい演算子とメソッドを活用して
+実装を改善しています。
 """
 
 from typing import Tuple, List, Dict, Any
@@ -9298,7 +9495,7 @@ from .operators.indicator import IndicatorOperator
 
 
 class InterfaceOperations:
-    """多相流体の界面計算機能を提供するクラス"""
+    """多相流体の界面計算機能を提供するクラス（改良版）"""
 
     def __init__(self, dx: np.ndarray, epsilon: float = 1.0e-6):
         """界面計算機能を初期化
@@ -9316,129 +9513,141 @@ class InterfaceOperations:
         self._geom_op = GeometryOperator(dx, epsilon)
         self._indicator_op = IndicatorOperator(epsilon)
 
-    # 界面生成メソッド
     def create_sphere(
         self, shape: Tuple[int, ...], center: List[float], radius: float
     ) -> ScalarField:
-        """球形の界面を生成"""
+        """球形の界面を生成（新しい演算子を活用）"""
         return self._init_op.create_sphere(shape, center, radius)
 
     def create_plane(
         self, shape: Tuple[int, ...], normal: List[float], point: List[float]
     ) -> ScalarField:
-        """平面界面を生成"""
-        result = ScalarField(shape, self.dx)
+        """平面界面を生成（新しい演算子を活用）"""
+        # 座標場の生成
         coords = np.meshgrid(*[np.linspace(0, 1, s) for s in shape], indexing="ij")
-        
-        # ベクトル演算を活用した簡潔な実装
-        result.data = np.dot(
-            normal, 
-            [(x - p) / d for x, p, d in zip(coords, point, self.dx)]
+
+        # ベクトル演算を活用した効率的な実装
+        normal = np.array(normal) / np.linalg.norm(normal)
+        displacement = [x - p for x, p in zip(coords, point)]
+        return ScalarField(
+            shape,
+            self.dx,
+            initial_value=sum(n * d for n, d in zip(normal, displacement)),
         )
-        return result
 
-    def combine_interfaces(
-        self, phi1: ScalarField, phi2: ScalarField, operation: str = "union"
-    ) -> ScalarField:
-        """界面を組み合わせて新しい形状を生成"""
-        return self._init_op.create_composite(phi1, phi2, operation)
-
-    # 距離関数の再構築メソッド
-    def reinitialize(
-        self, phi: ScalarField, n_steps: int = 5, dt: float = 0.1
-    ) -> ScalarField:
-        """距離関数の性質を回復"""
-        return self._reinit_op.execute(phi, n_steps, dt)
-
-    def validate_distance(self, phi: ScalarField) -> float:
-        """距離関数の性質を検証"""
-        return self._reinit_op.validate(phi)
-
-    # 幾何量の計算メソッド
     def compute_normal(self, phi: ScalarField) -> VectorField:
-        """法線ベクトルを計算"""
-        return self._geom_op.compute_normal(phi)
+        """法線ベクトルを計算（新しい演算子を活用）"""
+        # 勾配の計算と正規化
+        grad = phi.gradient()
+        grad_norm = grad.magnitude()
+        # 新しい除算演算子を使用
+        return grad / (grad_norm + self.epsilon)
 
     def compute_curvature(
         self, phi: ScalarField, high_order: bool = False
     ) -> ScalarField:
-        """曲率を計算"""
+        """曲率を計算（新しい演算子を活用）"""
         method = "high_order" if high_order else "standard"
         return self._geom_op.compute_curvature(phi, method)
 
-    # 相の分布計算メソッド
+    def combine_interfaces(
+        self, phi1: ScalarField, phi2: ScalarField, operation: str = "union"
+    ) -> ScalarField:
+        """界面を組み合わせて新しい形状を生成（新しい演算子を活用）"""
+        # 同じ形状チェック
+        if phi1.shape != phi2.shape:
+            raise ValueError("スカラー場の形状が一致しません")
+
+        result = ScalarField(phi1.shape, self.dx)
+
+        if operation == "union":
+            # minimum演算子を使用
+            result.data = np.minimum(phi1.data, phi2.data)
+        elif operation == "intersection":
+            # maximum演算子を使用
+            result.data = np.maximum(phi1.data, phi2.data)
+        elif operation == "difference":
+            # 新しい演算子を使用
+            result.data = np.maximum(phi1.data, -phi2.data)
+        else:
+            raise ValueError(f"未知の操作: {operation}")
+
+        return result
+
     def get_phase_distribution(self, phi: ScalarField) -> ScalarField:
-        """相分布を計算（Heaviside関数）"""
+        """相分布を計算（新しい演算子を活用）"""
         return self._indicator_op.compute_heaviside(phi)
 
     def get_interface_delta(self, phi: ScalarField) -> ScalarField:
-        """界面のデルタ関数を計算"""
+        """界面のデルタ関数を計算（新しい演算子を活用）"""
         return self._indicator_op.compute_delta(phi)
 
     def get_property_field(
         self, phi: ScalarField, value1: float, value2: float
     ) -> ScalarField:
-        """物性値の空間分布を計算"""
+        """物性値の空間分布を計算（新しい演算子を活用）"""
         return self._indicator_op.get_phase_field(phi, value1, value2)
 
-    # 診断情報の取得メソッド
+    def _compute_interface_curvature_stats(
+        self, kappa: ScalarField, interface_region: np.ndarray
+    ) -> Dict[str, float]:
+        """界面上の曲率統計を計算（新しいメソッドを活用）"""
+        if not np.any(interface_region):
+            return {"min": 0.0, "max": 0.0, "mean": 0.0, "rms": 0.0}
+
+        kappa_interface = kappa.data[interface_region]
+        return {
+            "min": float(np.min(kappa_interface)),
+            "max": float(np.max(kappa_interface)),
+            "mean": float(np.mean(kappa_interface)),
+            "rms": float(np.sqrt(np.mean(kappa_interface**2))),
+        }
+
     def get_diagnostics(self, phi: ScalarField) -> Dict[str, Any]:
-        """界面に関する診断情報を取得"""
+        """界面に関する診断情報を取得（新しいメソッドを活用）"""
         # 相分布とデルタ関数の計算
         phase = self.get_phase_distribution(phi)
         delta = self.get_interface_delta(phi)
 
         # 距離関数の性質の検証
-        distance_error = self.validate_distance(phi)
+        distance_error = self._reinit_op.validate(phi)
 
-        # 界面の曲率を計算（標準精度で十分）
+        # 界面の曲率を計算
         kappa = self.compute_curvature(phi, high_order=False)
 
-        # グリッド体積要素を計算
+        # グリッド体積要素の計算
         dv = np.prod(self.dx)
 
-        # 界面近傍の点のみを考慮
-        min_dx = np.min(self.dx)
-        interface_region = np.abs(phi.data) < (5.0 * min_dx)
+        # 界面近傍の点の識別（新しいメソッドを活用）
+        interface_region = np.abs(phi.data) < (5.0 * min(self.dx))
 
         # 界面上の曲率統計の計算
-        if np.any(interface_region):
-            kappa_interface = kappa.data[interface_region]
-            kappa_min = float(np.min(kappa_interface))
-            kappa_max = float(np.max(kappa_interface))
-            kappa_mean = float(np.mean(kappa_interface))
-            kappa_rms = float(np.sqrt(np.mean(kappa_interface**2)))
-        else:
-            kappa_min = kappa_max = kappa_mean = kappa_rms = 0.0
+        curvature_stats = self._compute_interface_curvature_stats(
+            kappa, interface_region
+        )
 
-        # 診断情報の辞書を構築
         return {
-            "volume_fraction": float(np.mean(phase.data)),
-            "interface_points": int(np.sum(interface_region)),
-            "interface_area": float(np.sum(delta.data) * dv),
+            "volume_fraction": float(phase.mean()),
+            "interface_points": int(interface_region.sum()),
+            "interface_area": float((delta.data * dv).sum()),
             "distance_error": distance_error,
-            "curvature": {
-                "min": kappa_min,
-                "max": kappa_max,
-                "mean": kappa_mean,
-                "rms": kappa_rms,
-            },
+            "curvature": curvature_stats,
         }
 
     def compute_interface_measures(self, phi: ScalarField) -> Dict[str, float]:
-        """界面の各種測度を計算"""
-        # 相分布とデルタ関数
+        """界面の各種測度を計算（新しいメソッドを活用）"""
+        # 相分布とデルタ関数の計算
         phase = self.get_phase_distribution(phi)
         delta = self.get_interface_delta(phi)
 
         # グリッド体積要素の計算
         dv = np.prod(self.dx)
 
-        # 体積の計算
-        volume = float(np.sum(phase.data) * dv)
+        # 体積の計算（新しい積分メソッドを使用）
+        volume = float(phase.integrate())
 
-        # 界面の面積/長さの計算
-        interface_measure = float(np.sum(delta.data) * dv)
+        # 界面測度の計算
+        interface_measure = float(delta.integrate())
 
         return {
             "volume": volume,
@@ -9446,6 +9655,17 @@ class InterfaceOperations:
             "length": interface_measure if phi.ndim == 2 else None,
             "perimeter": interface_measure if phi.ndim == 3 else None,
         }
+
+    def reinitialize(
+        self, phi: ScalarField, n_steps: int = 5, dt: float = 0.1
+    ) -> ScalarField:
+        """距離関数の性質を回復（新しいメソッドを活用）"""
+        return self._reinit_op.execute(phi, n_steps, dt)
+
+    def validate_distance(self, phi: ScalarField) -> float:
+        """距離関数の性質を検証（新しいメソッドを活用）"""
+        return self._reinit_op.validate(phi)
+
 ```
 
 ### physics/multiphase/operators/initialization.py
@@ -10010,10 +10230,10 @@ II. 運動量保存則の詳細な導出
 2. 密度と粘性の不連続性
 3. 圧力-速度の結合
 4. 界面での物理量の扱い
+
 """
 
-from typing import Optional
-import numpy as np
+from typing import Optional, Dict, Any
 
 from core.field import VectorField, ScalarField
 from .terms import (
@@ -10025,19 +10245,15 @@ from .terms import (
 
 
 class NavierStokesSolver:
-    """
-    Navier-Stokes方程式のソルバー
-
-    速度場、密度場、粘性場、圧力場から速度の時間微分を計算します。
-    """
+    """Navier-Stokes方程式のソルバー（改良版）"""
 
     def __init__(self):
         """ソルバーを初期化"""
-        # 各項の初期化
         self.advection_term = AdvectionTerm()
         self.diffusion_term = DiffusionTerm()
         self.pressure_term = PressureTerm()
         self.acceleration_term = AccelerationTerm()
+        self._diagnostics: Dict[str, Any] = {}
 
     def compute(
         self,
@@ -10049,9 +10265,7 @@ class NavierStokesSolver:
         **kwargs,
     ) -> VectorField:
         """
-        速度の時間微分を計算
-
-        式: ∂u/∂t = -u⋅∇u - 1/ρ u(u⋅∇ρ) - 1/ρ ∇p + 1/ρ ∇⋅(μ(∇u+∇uT)) + 1/ρ f
+        速度の時間微分を計算（新しい演算子を活用）
 
         Args:
             velocity: 速度場
@@ -10059,39 +10273,31 @@ class NavierStokesSolver:
             viscosity: 粘性場
             pressure: 圧力場
             force: 外力場（オプション）
-            **kwargs: 追加のパラメータ
 
         Returns:
             速度の時間微分をVectorFieldとして返す
         """
-        # 結果を格納するVectorFieldを作成
-        result = VectorField(velocity.shape, velocity.dx)
-
-        # 1. 移流項: -u⋅∇u
-        advection = self.advection_term.compute(velocity)
-
-        # 2. 密度勾配による加速度項: -1/ρ u(u⋅∇ρ)
-        density_gradient = self.acceleration_term.compute(velocity, density)
-
-        # 3. 粘性項: 1/ρ ∇⋅(μ(∇u+∇uT))
-        diffusion = self.diffusion_term.compute(velocity, viscosity)
-
-        # 4. 圧力項: -1/ρ ∇p
-        pressure_grad = self.pressure_term.compute(velocity, pressure, density)
-
-        # 5. 外力項: 1/ρ f
+        # デフォルトの外力場を初期化
         if force is None:
             force = VectorField(velocity.shape, velocity.dx)
 
-        # 各成分の時間微分を計算
-        for i in range(velocity.ndim):
-            result.components[i].data = (
-                -advection.components[i].data  # 移流項
-                + density_gradient.components[i].data  # 密度勾配項
-                + diffusion.components[i].data  # 粘性項
-                - pressure_grad.components[i].data  # 圧力項
-                + force.components[i].data / np.maximum(density.data, 1e-10)  # 外力項
-            )
+        # 各項を新しい演算子を使用して計算
+        advection = self.advection_term.compute(velocity)
+        density_gradient = self.acceleration_term.compute(velocity, density)
+        diffusion = self.diffusion_term.compute(velocity, viscosity)
+        pressure_grad = self.pressure_term.compute(velocity, pressure, density)
+
+        # 密度の逆数を計算（ゼロ除算を防止）
+        inv_density = 1.0 / (density + ScalarField(density.shape, density.dx, 1e-10))
+
+        # 時間微分の計算（新しい演算子を活用）
+        result = (
+            -advection  # 移流項
+            + density_gradient  # 密度勾配項
+            + diffusion  # 粘性項
+            - pressure_grad  # 圧力項
+            + force * inv_density  # 外力項
+        )
 
         # 診断情報の更新
         self._update_diagnostics(
@@ -10105,16 +10311,21 @@ class NavierStokesSolver:
 
         return result
 
-    def _update_diagnostics(self, **fields: VectorField) -> None:
-        """
-        診断情報を更新
+    def _update_diagnostics(self, **fields: VectorField):
+        """診断情報を更新（新しいメソッドを活用）"""
+        self._diagnostics = {
+            name: {
+                "max_magnitude": float(field.magnitude().max()),
+                "min_magnitude": float(field.magnitude().min()),
+                "mean_magnitude": float(field.magnitude().mean()),
+                "component_norms": [float(comp.norm()) for comp in field.components],
+            }
+            for name, field in fields.items()
+        }
 
-        Args:
-            **fields: 更新に使用する各VectorField
-        """
-        self._diagnostics = {}
-        for name, field in fields.items():
-            max_value = max(np.max(np.abs(comp.data)) for comp in field.components)
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """診断情報を取得"""
+        return self._diagnostics.copy()
 
 ```
 
@@ -10209,9 +10420,10 @@ class BaseNavierStokesTerm(ABC):
 
 ```
 """
-移流項（対流項）の計算を提供するモジュール
+移流項（対流項）の計算を提供するモジュール（改良版）
 
 Navier-Stokes方程式における u⋅∇u 項を計算します。
+新しい演算子とメソッドを活用して実装を改善しています。
 """
 
 from typing import Dict, Any
@@ -10222,11 +10434,7 @@ from .base import BaseNavierStokesTerm
 
 
 class AdvectionTerm(BaseNavierStokesTerm):
-    """
-    移流項（対流項）を計算するクラス
-
-    速度場の移流（u⋅∇u）を中心差分で近似計算します。
-    """
+    """移流項（対流項）を計算するクラス（改良版）"""
 
     def __init__(
         self,
@@ -10246,6 +10454,7 @@ class AdvectionTerm(BaseNavierStokesTerm):
     def compute(self, velocity: VectorField, **kwargs) -> VectorField:
         """
         移流項の寄与を計算 (u⋅∇)u
+        新しい演算子 @ を使用して内積を計算
 
         Args:
             velocity: 速度場
@@ -10256,28 +10465,20 @@ class AdvectionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        # 速度場の内積演算を活用
-        result = -velocity.dot(velocity.gradient())
+        # @演算子を使用した内積計算
+        result = -(velocity @ velocity.gradient())
 
         # 診断情報の更新
         self._update_diagnostics(result)
-
         return result
 
     def _update_diagnostics(self, result: VectorField):
-        """
-        診断情報を更新
-
-        Args:
-            result: 計算された移流項
-        """
+        """診断情報を更新（新しいメソッドを活用）"""
         self._diagnostics = {
             "scheme": self._scheme,
-            "max_advection": float(
-                max(np.max(np.abs(comp.data)) for comp in result.components)
-            ),
+            "max_magnitude": float(result.magnitude().max()),
             "component_max": {
-                f"component_{i}": float(np.max(np.abs(comp.data)))
+                f"component_{i}": float(comp.norm(ord=np.inf))
                 for i, comp in enumerate(result.components)
             },
         }
@@ -10285,6 +10486,7 @@ class AdvectionTerm(BaseNavierStokesTerm):
     def compute_timestep(self, velocity: VectorField, **kwargs) -> float:
         """
         移流項に基づく時間刻み幅の制限を計算
+        新しいメソッドを活用して最大速度を計算
 
         Args:
             velocity: 速度場
@@ -10295,18 +10497,19 @@ class AdvectionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return float("inf")
 
-        # 最大速度の計算（各成分の最大絶対値）
-        max_velocity = max(np.max(np.abs(comp.data)) for comp in velocity.components)
+        # magnitude()メソッドを使用して最大速度を計算
+        max_velocity = velocity.magnitude().max()
 
         # CFLに基づく時間刻み幅の計算
         cfl = kwargs.get("cfl", 0.5)
-        return cfl * velocity.dx / (max_velocity + 1e-10)
+        return cfl * min(velocity.dx) / (max_velocity + 1e-10)
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""
         diag = super().get_diagnostics()
         diag.update(self._diagnostics)
         return diag
+
 ```
 
 ### physics/navier_stokes/terms/acceleration.py
@@ -10361,7 +10564,9 @@ class AccelerationTerm(BaseNavierStokesTerm):
             return VectorField(velocity.shape, velocity.dx)
 
         # 密度移流計算
-        density_advection = sum(v.data * density.gradient(i) for i, v in enumerate(velocity.components))
+        density_advection = sum(
+            v.data * density.gradient(i) for i, v in enumerate(velocity.components)
+        )
 
         # 密度勾配による加速度
         result = -velocity * density_advection / density
@@ -10444,15 +10649,17 @@ class AccelerationTerm(BaseNavierStokesTerm):
         diag = super().get_diagnostics()
         diag.update(self._diagnostics)
         return diag
+
 ```
 
 ### physics/navier_stokes/terms/diffusion.py
 
 ```
 """
-粘性項（拡散項）の計算を提供するモジュール
+粘性項（拡散項）の計算を提供するモジュール（改良版）
 
 Navier-Stokes方程式における∇⋅(μ(∇u+∇uᵀ)) 項を計算します。
+新しい演算子とメソッドを活用して実装を改善しています。
 """
 
 from typing import Dict, Any, Union
@@ -10463,18 +10670,14 @@ from .base import BaseNavierStokesTerm
 
 
 class DiffusionTerm(BaseNavierStokesTerm):
-    """
-    粘性項（拡散項）を計算するクラス
-
-    速度場の粘性拡散を中心差分で近似計算します。
-    """
+    """粘性項（拡散項）を計算するクラス（改良版）"""
 
     def __init__(self, name: str = "Diffusion", enabled: bool = True, order: int = 2):
         """
         Args:
             name: 項の名前
             enabled: 項を有効にするかどうか
-            order: 差分近似の次数（2次、4次など）
+            order: 差分近似の次数
         """
         super().__init__(name, enabled)
         self._order = order
@@ -10487,11 +10690,11 @@ class DiffusionTerm(BaseNavierStokesTerm):
     ) -> VectorField:
         """
         粘性項 ∇⋅(μ(∇u+∇uᵀ)) を計算
-        各成分 [∇⋅(μ(∇u_i+∇u_i^T))]_i を計算
+        新しい演算子を活用して実装を改善
 
         Args:
             velocity: 速度場
-            viscosity: 粘性係数（スカラー場または定数）
+            viscosity: 粘性係数（スカラー値またはスカラー場）
 
         Returns:
             拡散項をVectorFieldとして返す
@@ -10499,47 +10702,47 @@ class DiffusionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return VectorField(velocity.shape, velocity.dx)
 
-        # 粘性係数の正規化
+        # 粘性係数の正規化（新しいコンストラクタを活用）
         nu_field = (
             viscosity
             if isinstance(viscosity, ScalarField)
-            else ScalarField(velocity.shape, velocity.dx, initial_value=viscosity or 1.0e-3)
+            else ScalarField(
+                velocity.shape, velocity.dx, initial_value=viscosity or 1.0e-3
+            )
         )
 
-        # 対称勾配テンソルと粘性応力の発散
-        result = nu_field * velocity.symmetric_gradient().divergence()
+        # 対称勾配テンソルの計算（新しいメソッドを活用）
+        strain = velocity.symmetric_gradient()
+
+        # 粘性応力の計算と発散（新しい演算子を活用）
+        result = (nu_field * strain).divergence()
 
         # 診断情報の更新
         self._update_diagnostics(result, nu_field)
-
         return result
 
     def _update_diagnostics(self, result: VectorField, viscosity: ScalarField):
-        """
-        診断情報を更新
-
-        Args:
-            result: 計算された拡散項
-            viscosity: 粘性係数場
-        """
-        diffusion_max = [float(np.max(np.abs(comp.data))) for comp in result.components]
-
+        """診断情報を更新（新しいメソッドを活用）"""
         self._diagnostics = {
             "order": self._order,
-            "max_diffusion_x": diffusion_max[0] if len(diffusion_max) > 0 else 0.0,
-            "max_diffusion_y": diffusion_max[1] if len(diffusion_max) > 1 else 0.0,
-            "max_diffusion_z": diffusion_max[2] if len(diffusion_max) > 2 else 0.0,
-            "max_diffusion": float(max(diffusion_max)),
-            "viscosity_range": {
-                "min": float(np.min(viscosity.data)),
-                "max": float(np.max(viscosity.data)),
-                "mean": float(np.mean(viscosity.data)),
+            "diffusion": {
+                "max_magnitude": float(result.magnitude().max()),
+                "component_max": {
+                    f"component_{i}": float(comp.norm(ord=np.inf))
+                    for i, comp in enumerate(result.components)
+                },
+            },
+            "viscosity": {
+                "min": float(viscosity.min()),
+                "max": float(viscosity.max()),
+                "mean": float(viscosity.mean()),
             },
         }
 
     def compute_timestep(self, velocity: VectorField, **kwargs) -> float:
         """
         拡散項に基づく時間刻み幅の制限を計算
+        新しいメソッドを活用
 
         Args:
             velocity: 速度場
@@ -10550,19 +10753,21 @@ class DiffusionTerm(BaseNavierStokesTerm):
         if not self.enabled:
             return float("inf")
 
-        # 粘性の取得（デフォルト値）
+        # 粘性の取得と正規化
         viscosity = kwargs.get("viscosity", 1.0e-3)
         if isinstance(viscosity, ScalarField):
-            viscosity = np.max(viscosity.data)
+            viscosity = viscosity.max()
 
-        # 拡散項に基づく時間刻み幅の制限: dt ≤ dx² / (2ν)
-        return 0.5 * velocity.dx**2 / (viscosity + 1e-10)
+        # von Neumannの安定性解析に基づく制限
+        dx_min = min(velocity.dx)
+        return 0.5 * dx_min * dx_min / (viscosity + 1e-10)
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""
         diag = super().get_diagnostics()
         diag.update(self._diagnostics)
         return diag
+
 ```
 
 ### physics/navier_stokes/terms/__init__.py
@@ -10650,7 +10855,9 @@ class PressureTerm(BaseNavierStokesTerm):
         density_field = (
             density
             if isinstance(density, ScalarField)
-            else ScalarField(velocity.shape, velocity.dx, initial_value=density or 1000.0)
+            else ScalarField(
+                velocity.shape, velocity.dx, initial_value=density or 1000.0
+            )
         )
 
         # 圧力勾配項の計算
@@ -10735,6 +10942,7 @@ class PressureTerm(BaseNavierStokesTerm):
         diag = super().get_diagnostics()
         diag.update(self._diagnostics)
         return diag
+
 ```
 
 ### physics/navier_stokes/__init__.py

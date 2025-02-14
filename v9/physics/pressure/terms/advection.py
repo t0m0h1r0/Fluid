@@ -16,8 +16,8 @@ class AdvectionTerm(PoissonTerm):
     圧力ポアソン方程式の移流項の発散を計算するクラス
 
     式: ∇⋅(u⋅∇u)
-    
-    この項は、速度場の非線形移流効果を表現し、 
+
+    この項は、速度場の非線形移流効果を表現し、
     圧力ポアソン方程式の右辺に寄与します。
     """
 
@@ -33,9 +33,7 @@ class AdvectionTerm(PoissonTerm):
         """
         super().__init__(name, enabled)
 
-    def compute(
-        self, velocity: VectorField, **kwargs
-    ) -> ScalarField:
+    def compute(self, velocity: VectorField, **kwargs) -> ScalarField:
         """
         移流項の発散を計算 ∇⋅(u⋅∇u)
 
@@ -50,17 +48,19 @@ class AdvectionTerm(PoissonTerm):
 
         # 移流項の発散を計算
         result = ScalarField(velocity.shape, velocity.dx)
-        
+
         # u⋅∇u の各成分の発散を計算
         for i in range(velocity.ndim):
             # u_j * ∂u_i/∂x_j の発散
             advection_div = np.zeros_like(velocity.components[i].data)
             for j in range(velocity.ndim):
                 # v_j * ∂u_i/∂x_j
-                advection_term = velocity.components[j].data * velocity.components[i].gradient(j)
+                advection_term = velocity.components[j].data * velocity.components[
+                    i
+                ].gradient(j)
                 # ∂/∂x_j(v_j * ∂u_i/∂x_j)
                 advection_div += np.gradient(advection_term, velocity.dx[j], axis=j)
-            
+
             # 結果に加算（移流項の発散は成分ごとに計算し、合計）
             result.data += advection_div
 
@@ -89,7 +89,7 @@ class AdvectionTerm(PoissonTerm):
                     "max": float(np.max(comp.data)),
                 }
                 for i, comp in enumerate(velocity.components)
-            }
+            },
         }
 
     def get_diagnostics(self) -> Dict[str, Any]:

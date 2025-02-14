@@ -56,10 +56,10 @@ II. 運動量保存則の詳細な導出
 2. 密度と粘性の不連続性
 3. 圧力-速度の結合
 4. 界面での物理量の扱い
+
 """
 
-from typing import Optional
-import numpy as np
+from typing import Optional, Dict, Any
 
 from core.field import VectorField, ScalarField
 from .terms import (
@@ -71,19 +71,15 @@ from .terms import (
 
 
 class NavierStokesSolver:
-    """
-    Navier-Stokes方程式のソルバー
-
-    速度場、密度場、粘性場、圧力場から速度の時間微分を計算します。
-    """
+    """Navier-Stokes方程式のソルバー（改良版）"""
 
     def __init__(self):
         """ソルバーを初期化"""
-        # 各項の初期化
         self.advection_term = AdvectionTerm()
         self.diffusion_term = DiffusionTerm()
         self.pressure_term = PressureTerm()
         self.acceleration_term = AccelerationTerm()
+        self._diagnostics: Dict[str, Any] = {}
 
     def compute(
         self,
@@ -95,9 +91,7 @@ class NavierStokesSolver:
         **kwargs,
     ) -> VectorField:
         """
-        速度の時間微分を計算
-
-        式: ∂u/∂t = -u⋅∇u - 1/ρ u(u⋅∇ρ) - 1/ρ ∇p + 1/ρ ∇⋅(μ(∇u+∇uT)) + 1/ρ f
+        速度の時間微分を計算（新しい演算子を活用）
 
         Args:
             velocity: 速度場
@@ -105,39 +99,31 @@ class NavierStokesSolver:
             viscosity: 粘性場
             pressure: 圧力場
             force: 外力場（オプション）
-            **kwargs: 追加のパラメータ
 
         Returns:
             速度の時間微分をVectorFieldとして返す
         """
-        # 結果を格納するVectorFieldを作成
-        result = VectorField(velocity.shape, velocity.dx)
-
-        # 1. 移流項: -u⋅∇u
-        advection = self.advection_term.compute(velocity)
-
-        # 2. 密度勾配による加速度項: -1/ρ u(u⋅∇ρ)
-        density_gradient = self.acceleration_term.compute(velocity, density)
-
-        # 3. 粘性項: 1/ρ ∇⋅(μ(∇u+∇uT))
-        diffusion = self.diffusion_term.compute(velocity, viscosity)
-
-        # 4. 圧力項: -1/ρ ∇p
-        pressure_grad = self.pressure_term.compute(velocity, pressure, density)
-
-        # 5. 外力項: 1/ρ f
+        # デフォルトの外力場を初期化
         if force is None:
             force = VectorField(velocity.shape, velocity.dx)
 
-        # 各成分の時間微分を計算
-        for i in range(velocity.ndim):
-            result.components[i].data = (
-                -advection.components[i].data  # 移流項
-                + density_gradient.components[i].data  # 密度勾配項
-                + diffusion.components[i].data  # 粘性項
-                - pressure_grad.components[i].data  # 圧力項
-                + force.components[i].data / np.maximum(density.data, 1e-10)  # 外力項
-            )
+        # 各項を新しい演算子を使用して計算
+        advection = self.advection_term.compute(velocity)
+        density_gradient = self.acceleration_term.compute(velocity, density)
+        diffusion = self.diffusion_term.compute(velocity, viscosity)
+        pressure_grad = self.pressure_term.compute(velocity, pressure, density)
+
+        # 密度の逆数を計算（ゼロ除算を防止）
+        inv_density = 1.0 / (density + ScalarField(density.shape, density.dx, 1e-10))
+
+        # 時間微分の計算（新しい演算子を活用）
+        result = (
+            -advection  # 移流項
+            + density_gradient  # 密度勾配項
+            + diffusion  # 粘性項
+            - pressure_grad  # 圧力項
+            + force * inv_density  # 外力項
+        )
 
         # 診断情報の更新
         self._update_diagnostics(
@@ -151,13 +137,18 @@ class NavierStokesSolver:
 
         return result
 
-    def _update_diagnostics(self, **fields: VectorField) -> None:
-        """
-        診断情報を更新
+    def _update_diagnostics(self, **fields: VectorField):
+        """診断情報を更新（新しいメソッドを活用）"""
+        self._diagnostics = {
+            name: {
+                "max_magnitude": float(field.magnitude().max()),
+                "min_magnitude": float(field.magnitude().min()),
+                "mean_magnitude": float(field.magnitude().mean()),
+                "component_norms": [float(comp.norm()) for comp in field.components],
+            }
+            for name, field in fields.items()
+        }
 
-        Args:
-            **fields: 更新に使用する各VectorField
-        """
-        self._diagnostics = {}
-        for name, field in fields.items():
-            max_value = max(np.max(np.abs(comp.data)) for comp in field.components)
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """診断情報を取得"""
+        return self._diagnostics.copy()

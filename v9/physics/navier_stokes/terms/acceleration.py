@@ -47,7 +47,9 @@ class AccelerationTerm(BaseNavierStokesTerm):
             return VectorField(velocity.shape, velocity.dx)
 
         # 密度移流計算
-        density_advection = sum(v.data * density.gradient(i) for i, v in enumerate(velocity.components))
+        density_advection = sum(
+            v.data * density.gradient(i) for i, v in enumerate(velocity.components)
+        )
 
         # 密度勾配による加速度
         result = -velocity * density_advection / density

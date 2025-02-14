@@ -101,7 +101,9 @@ class ScalarField(Field):
 
         return result
 
-    def gradient(self, axis: Optional[int] = None) -> Union[np.ndarray, List[np.ndarray]]:
+    def gradient(
+        self, axis: Optional[int] = None
+    ) -> Union[np.ndarray, List[np.ndarray]]:
         """勾配を計算
 
         Args:
@@ -113,12 +115,9 @@ class ScalarField(Field):
         if axis is not None:
             # 特定の軸の勾配を計算
             return np.gradient(self._data, self._dx[axis], axis=axis)
-        
+
         # すべての軸の勾配を計算
-        return [
-            np.gradient(self._data, self._dx[i], axis=i)
-            for i in range(self.ndim)
-        ]
+        return [np.gradient(self._data, self._dx[i], axis=i) for i in range(self.ndim)]
 
     def integrate(self) -> float:
         """場の積分値を計算"""

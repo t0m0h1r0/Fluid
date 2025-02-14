@@ -53,7 +53,9 @@ class PressureTerm(BaseNavierStokesTerm):
         density_field = (
             density
             if isinstance(density, ScalarField)
-            else ScalarField(velocity.shape, velocity.dx, initial_value=density or 1000.0)
+            else ScalarField(
+                velocity.shape, velocity.dx, initial_value=density or 1000.0
+            )
         )
 
         # 圧力勾配項の計算
