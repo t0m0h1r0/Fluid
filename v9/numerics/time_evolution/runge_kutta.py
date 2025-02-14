@@ -108,9 +108,11 @@ class RungeKutta4(TimeIntegrator):
 
     def _estimate_error(self, k_values: List[FieldType], dt: float) -> None:
         """RK4の誤差を推定（エンベディッドRK4(5)法による）"""
-        # 5次法と4次法の差による誤差推定
-        error = dt * abs(
-            k_values[0].norm() / 6 - k_values[2].norm() / 3 + k_values[3].norm() / 6
+        # 誤差の推定方法を変更
+        error = dt * max(
+            comp.norm()
+            for k in k_values
+            for comp in (k.components if hasattr(k, "components") else [k])
         )
         self._error_history.append(error)
 

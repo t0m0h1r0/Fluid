@@ -125,11 +125,11 @@ class ScalarField(Field):
             return [np.gradient(self.data, self.dx, axis=i) for i in range(self.ndim)]
         return np.gradient(self.data, self.dx, axis=axis)
 
-    def dot(self, other: 'VectorField') -> 'ScalarField':
+    def dot(self, other: "VectorField") -> "ScalarField":
         """内積計算（NumPyのdot演算に準じる）"""
         result = ScalarField(self.shape, self.dx)
         result.data = sum(
-            comp.data * other_comp.data 
+            comp.data * other_comp.data
             for comp, other_comp in zip(other.components, other.components)
         )
         return result

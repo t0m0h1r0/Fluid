@@ -67,21 +67,21 @@ class VectorField:
         """次元数を取得"""
         return len(self._shape)
 
-    def __add__(self, other: 'VectorField') -> 'VectorField':
+    def __add__(self, other: "VectorField") -> "VectorField":
         """NumPyの+演算子に準じた加算"""
         if not isinstance(other, VectorField):
             raise TypeError(f"サポートされていない型との加算: {type(other)}")
-        
+
         result = VectorField(self.shape, self.dx)
         for i, (c1, c2) in enumerate(zip(self.components, other.components)):
             result.components[i] = c1 + c2
         return result
 
-    def __sub__(self, other: 'VectorField') -> 'VectorField':
+    def __sub__(self, other: "VectorField") -> "VectorField":
         """NumPyの-演算子に準じた減算"""
         if not isinstance(other, VectorField):
             raise TypeError(f"サポートされていない型との減算: {type(other)}")
-        
+
         result = VectorField(self.shape, self.dx)
         for i, (c1, c2) in enumerate(zip(self.components, other.components)):
             result.components[i] = c1 - c2
@@ -106,11 +106,11 @@ class VectorField:
         """右側からの乗算"""
         return self.__mul__(other)
 
-    def __matmul__(self, other: ScalarField) -> 'VectorField':
+    def __matmul__(self, other: ScalarField) -> "VectorField":
         """NumPyの@演算子に準じた重み付け"""
         if not isinstance(other, ScalarField):
             raise TypeError("@演算子はScalarFieldとの演算のみ可能です")
-        
+
         result = VectorField(self.shape, self.dx)
         for i, comp in enumerate(self.components):
             result.components[i] = comp * other
@@ -132,7 +132,7 @@ class VectorField:
         result.data = sum(comp.gradient(i) for i, comp in enumerate(self.components))
         return result
 
-    def dot(self, other: 'VectorField') -> ScalarField:
+    def dot(self, other: "VectorField") -> ScalarField:
         """NumPyのdot演算に準じた内積計算"""
         result = ScalarField(self.shape, self.dx)
         result.data = sum(
@@ -140,11 +140,11 @@ class VectorField:
         )
         return result
 
-    def cross(self, other: 'VectorField') -> Optional['VectorField']:
+    def cross(self, other: "VectorField") -> Optional["VectorField"]:
         """NumPyのcross演算に準じた外積計算（3次元のみ）"""
         if self.ndim != 3:
             return None
-        
+
         result = VectorField(self.shape, self.dx)
         u1, v1, w1 = [c.data for c in self.components]
         u2, v2, w2 = [c.data for c in other.components]
@@ -155,7 +155,7 @@ class VectorField:
 
         return result
 
-    def curl(self) -> Optional['VectorField']:
+    def curl(self) -> Optional["VectorField"]:
         """回転を計算
 
         Returns:

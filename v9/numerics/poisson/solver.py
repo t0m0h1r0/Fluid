@@ -1,14 +1,17 @@
-"""Poisson方程式のソルバーを提供するモジュール
+"""
+Poisson方程式のソルバー
 
-このモジュールは、Poisson方程式 ∇²φ = f を解くための反復法ソルバーを実装します。
+Poisson方程式 ∇²φ = f を解くための反復法ソルバーを実装します。
 """
 
 import numpy as np
 from typing import Optional, List, Dict, Any, Union
 
+from core.field import ScalarField
 from core.solver import IterativeSolver
 from core.boundary import BoundaryCondition
-from .base import PoissonSolverBase, PoissonSolverConfig, PoissonSolverTerm
+from .base import PoissonSolverBase, PoissonSolverTerm
+from .config import PoissonSolverConfig
 
 
 class PoissonSolver(PoissonSolverBase, IterativeSolver):
@@ -55,18 +58,20 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
 
         # 収束判定フラグ
         self._converged = False
+        # 初期残差
+        self._initial_residual = None
 
     def solve(
         self,
-        rhs: np.ndarray,
-        initial_solution: Optional[np.ndarray] = None,
+        rhs: Union[np.ndarray, ScalarField],
+        initial_solution: Optional[Union[np.ndarray, ScalarField]] = None,
         dx: Union[float, np.ndarray] = 1.0,
         **kwargs,
-    ) -> np.ndarray:
+    ) -> Union[np.ndarray, ScalarField]:
         """Poisson方程式を解く
 
         Args:
-            rhs: 右辺ベクトル
+            rhs: 右辺
             initial_solution: 初期推定解
             dx: グリッド間隔
             **kwargs: 追加のパラメータ
@@ -75,9 +80,15 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
             計算された解
         """
         try:
+            # 入力が ScalarField の場合は numpy 配列に変換
+            if isinstance(rhs, ScalarField):
+                rhs = rhs.data
+
             # 初期解のセットアップ
             if initial_solution is None:
                 initial_solution = np.zeros_like(rhs)
+            elif isinstance(initial_solution, ScalarField):
+                initial_solution = initial_solution.data
 
             # dx の正規化
             if np.isscalar(dx):
@@ -91,7 +102,12 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
 
             # 反復解法の実行
             solution = initial_solution.copy()
-            residual = float("inf")  # 初期残差
+
+            # 初期残差の計算
+            self._initial_residual = self.compute_residual(solution, rhs, dx)
+            self._residual_history = [self._initial_residual]
+
+            residual = self._initial_residual
 
             diagnostics_config = self.config.get_config_for_component("diagnostics")
             log_frequency = diagnostics_config.get("log_frequency", 10)
@@ -124,7 +140,7 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
             if not self._converged and self.logger:
                 self.logger.warning(
                     f"最大反復回数に到達: 残差 = {residual:.3e}, "
-                    f"相対残差 = {residual / self._residual_history[0]:.3e}"
+                    f"相対残差 = {residual / self._initial_residual:.3e}"
                 )
 
             return solution
@@ -203,16 +219,15 @@ class PoissonSolver(PoissonSolverBase, IterativeSolver):
         convergence_config = self.config.get_config_for_component("convergence")
         relative_tolerance = convergence_config.get("relative_tolerance", False)
 
-        # 初期残差の記録（最初の呼び出し時）
-        if not self._residual_history:
-            return False
+        # 初期残差が非常に小さい場合の特別な処理
+        if self._initial_residual < 1e-15:
+            return residual < 1e-10
 
-        # 絶対残差または相対残差による収束判定
+        # 相対残差または絶対残差による収束判定
         if relative_tolerance:
             # 相対残差
             return (
-                residual / self._residual_history[0] < self.tolerance
-                and residual < self.tolerance
+                residual / self._initial_residual < self.tolerance and residual < 1e-10
             )
         else:
             # 絶対残差
