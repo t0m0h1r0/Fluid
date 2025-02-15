@@ -1,71 +1,31 @@
 """
-時間発展ソルバーの抽象基底クラス
-
-数値時間発展計算のための抽象インターフェースを定義します。
+Poisson方程式ソルバーの抽象基底クラス
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 import numpy as np
 import jax.numpy as jnp
 
+from ..config import PoissonSolverConfig
 from core.field import ScalarField
 
 
-@dataclass
-class PoissonSolverConfig:
-    """Poisson方程式ソルバーの設定"""
-
-    max_iterations: int = 1000
-    tolerance: float = 1e-6
-    relaxation_parameter: float = 1.0
-    dx: Optional[np.ndarray] = None
-
-
 class PoissonSolverBase(ABC):
-    """
-    Poisson方程式ソルバーの抽象基底クラス
-
-    汎用的な時間積分のためのテンプレートメソッドパターンを提供
-    """
+    """Poisson方程式ソルバーの抽象基底クラス"""
 
     def __init__(self, config: Optional[PoissonSolverConfig] = None):
         """
-        時間積分器を初期化
-
         Args:
-            config: 時間積分の設定パラメータ
+            config: ソルバーの設定パラメータ
         """
-        # 設定パラメータの検証
-        self._validate_config(config or PoissonSolverConfig())
-
-        # 設定の保存
         self.config = config or PoissonSolverConfig()
+        self.config.validate()
 
         # 状態追跡用のプロパティ
         self._iteration_count: int = 0
         self._error_history: List[float] = []
         self._converged: bool = False
-
-    def _validate_config(self, config: PoissonSolverConfig):
-        """
-        設定パラメータの妥当性を検証
-
-        Args:
-            config: 検証する設定パラメータ
-
-        Raises:
-            ValueError: 不正な設定が見つかった場合
-        """
-        if config.max_iterations <= 0:
-            raise ValueError("最大反復回数は正の整数である必要があります")
-
-        if config.tolerance <= 0:
-            raise ValueError("収束判定の許容誤差は正の値である必要があります")
-
-        if not 0 < config.relaxation_parameter <= 2:
-            raise ValueError("緩和パラメータは0から2の間である必要があります")
 
     @abstractmethod
     def solve(

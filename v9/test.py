@@ -1,6 +1,6 @@
 import numpy as np
 from numerics.poisson import PoissonSORSolver, PoissonMultigridSolver, PoissonCGSolver
-from numerics.poisson import PoissonConfig
+from numerics.poisson.config import PoissonSolverConfig
 from core.field import ScalarField, GridInfo
 
 
@@ -28,17 +28,22 @@ def test_poisson_solvers():
     z = np.linspace(0, 1, nz)
     X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
 
-    # 解析解とラプラシアンの計算（NumPyで計算）
+    # 解析解とラプラシアンの計算
     analytical_sol = analytical_solution(X, Y, Z)
     analytical_lap = analytical_laplacian(X, Y, Z)
 
-    # 右辺項の設定（ScalarFieldとして）
+    # 右辺項の設定
     rhs = ScalarField(grid, analytical_lap)
 
-    # ソルバーの設定（dx情報を追加）
-    config = PoissonConfig()
-    config.dx = np.array(dx)  # dx情報をconfig経由で渡す
+    # ソルバーの設定
+    config = PoissonSolverConfig(
+        max_iterations=1000,
+        tolerance=1e-6,
+        relaxation_parameter=1.5,
+        dx=np.array(dx),
+    )
 
+    # ソルバーの初期化
     solvers = [
         PoissonSORSolver(config),
         PoissonMultigridSolver(config),
@@ -50,7 +55,7 @@ def test_poisson_solvers():
         print(f"Testing {solver.__class__.__name__}")
         numerical_sol = solver.solve(rhs)
 
-        # 誤差の評価
+        # 結果の比較
         error = np.max(np.abs(numerical_sol - analytical_sol))
         print(f"Max error: {error:.6e}")
         assert error < 1e-6, f"Error is too large for {solver.__class__.__name__}"

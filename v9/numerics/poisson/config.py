@@ -1,104 +1,33 @@
 from dataclasses import dataclass, field
 from typing import Dict, Any
-import yaml
+import numpy as np
 
 
 @dataclass
 class PoissonSolverConfig:
-    """Poisson方程式ソルバーの数値計算パラメータ"""
+    """Poisson方程式ソルバーの設定を管理するクラス"""
 
     # 収束判定パラメータ
-    convergence: Dict[str, Any] = field(
-        default_factory=lambda: {
-            "tolerance": 1e-6,
-            "max_iterations": 1000,
-            "relative_tolerance": False,
-        }
-    )
+    max_iterations: int = 1000
+    tolerance: float = 1e-6
+    absolute_tolerance: bool = False
+    relaxation_parameter: float = 1.0
 
-    # ソルバー固有のパラメータ
-    solver_specific: Dict[str, Any] = field(
-        default_factory=lambda: {
-            "relaxation_parameter": 1.5,  # SORなどで使用
-            "auto_tune": False,
-            "method": "sor",
-        }
-    )
+    # グリッド情報
+    dx: np.ndarray | None = None
 
-    # 診断情報の保存設定
+    # 診断情報の設定
     diagnostics: Dict[str, Any] = field(
         default_factory=lambda: {"save_residual_history": True, "log_frequency": 10}
     )
 
-    def validate(self):
+    def validate(self) -> None:
         """設定値の妥当性を検証"""
-        # 収束判定パラメータの検証
-        if not 0 < self.convergence.get("tolerance", 1e-6) < 1:
-            raise ValueError("許容誤差は0から1の間である必要があります")
+        if self.max_iterations <= 0:
+            raise ValueError("最大反復回数は正の整数である必要があります")
 
-        if not isinstance(self.convergence.get("max_iterations", 1000), int):
-            raise ValueError("最大反復回数は整数である必要があります")
+        if self.tolerance <= 0:
+            raise ValueError("収束判定の許容誤差は正の値である必要があります")
 
-        # ソルバー固有のパラメータ検証
-        if not 0 < self.solver_specific.get("relaxation_parameter", 1.5) <= 2:
+        if not 0 < self.relaxation_parameter <= 2:
             raise ValueError("緩和パラメータは0から2の間である必要があります")
-
-        # 有効なソルバー方法のチェック
-        valid_methods = ["sor", "jacobi", "gauss_seidel"]
-        if self.solver_specific.get("method") not in valid_methods:
-            raise ValueError(f"無効なソルバー方法。選択肢: {valid_methods}")
-
-    def get_config_for_component(self, component: str) -> Dict[str, Any]:
-        """特定のコンポーネントの設定を取得
-
-        Args:
-            component: 設定を取得するコンポーネント名
-
-        Returns:
-            コンポーネント固有の設定
-        """
-        component_configs = {
-            "convergence": self.convergence,
-            "solver_specific": self.solver_specific,
-            "diagnostics": self.diagnostics,
-        }
-        return component_configs.get(component, {})
-
-    def save(self, filepath: str):
-        """設定をYAMLファイルに保存
-
-        Args:
-            filepath: 保存先のパス
-        """
-        with open(filepath, "w", encoding="utf-8") as f:
-            yaml.dump(
-                {
-                    "convergence": self.convergence,
-                    "solver_specific": self.solver_specific,
-                    "diagnostics": self.diagnostics,
-                },
-                f,
-                default_flow_style=False,
-            )
-
-    @classmethod
-    def from_yaml(cls, filepath: str) -> "PoissonSolverConfig":
-        """YAMLファイルから設定を読み込む
-
-        Args:
-            filepath: 読み込むYAMLファイルのパス
-
-        Returns:
-            読み込まれた設定インスタンス
-        """
-        with open(filepath, "r", encoding="utf-8") as f:
-            config_dict = yaml.safe_load(f)
-
-        # 設定の検証を含めた初期化
-        config = cls(
-            convergence=config_dict.get("convergence", {}),
-            solver_specific=config_dict.get("solver_specific", {}),
-            diagnostics=config_dict.get("diagnostics", {}),
-        )
-        config.validate()
-        return config
