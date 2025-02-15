@@ -45,9 +45,9 @@ def test_poisson_solvers():
 
     # ソルバーの初期化
     solvers = [
-        PoissonSORSolver(config),
         PoissonMultigridSolver(config),
         PoissonCGSolver(config),
+        PoissonSORSolver(config),
     ]
 
     # 各ソルバーをテスト
