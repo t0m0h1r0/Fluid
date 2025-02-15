@@ -6,8 +6,7 @@ Poisson方程式の解法（JAX最適化版）
 from typing import Optional, Dict, Any, Union
 import numpy as np
 import jax.numpy as jnp
-from jax import jit, lax
-from functools import partial
+from jax import jit
 
 from ..config import PoissonSolverConfig
 from .base import PoissonSolverBase
@@ -30,48 +29,7 @@ class PoissonSORSolver(PoissonSolverBase):
 
     def _init_sor_operators(self):
         """SOR法に特化したJAX最適化演算子を初期化"""
-
-        @partial(jit, static_argnums=(0,))
-        def sor_update(self, solution: jnp.ndarray, rhs: jnp.ndarray) -> jnp.ndarray:
-            dx2 = jnp.square(self.config.dx)
-            omega = self.config.relaxation_parameter
-
-            def body_fun(i, sol):
-                def inner_body_fun(j, sol_i):
-                    def innermost_body_fun(k, sol_ij):
-                        # 隣接点からの寄与
-                        neighbors_sum = (
-                            (sol_ij[i + 1, j, k] + sol_ij[i - 1, j, k]) / dx2[0]
-                            + (sol_ij[i, j + 1, k] + sol_ij[i, j - 1, k]) / dx2[1]
-                            + (sol_ij[i, j, k + 1] + sol_ij[i, j, k - 1]) / dx2[2]
-                        )
-
-                        # 係数の計算
-                        coeff = 2.0 * (1 / dx2[0] + 1 / dx2[1] + 1 / dx2[2])
-
-                        # SOR更新
-                        new_value = (1 - omega) * sol_ij[i, j, k] + (omega / coeff) * (
-                            neighbors_sum - rhs[i, j, k]
-                        )
-
-                        return sol_ij.at[i, j, k].set(new_value)
-
-                    return lax.fori_loop(
-                        1, sol_i.shape[2] - 1, innermost_body_fun, sol_i
-                    )
-
-                return lax.fori_loop(1, sol.shape[1] - 1, inner_body_fun, sol)
-
-            return lax.fori_loop(1, solution.shape[0] - 1, body_fun, solution)
-
-        @partial(jit, static_argnums=(0,))
-        def compute_residual(self, solution: jnp.ndarray, rhs: jnp.ndarray) -> float:
-            """残差ノルムを計算（JAX最適化版）"""
-            residual = self.laplacian_operator(solution) - rhs
-            return jnp.max(jnp.abs(residual))
-
-        self.sor_update = sor_update
-        self.compute_residual = compute_residual
+        pass  # 初期化は solve メソッド内で動的に行う
 
     def solve(
         self,
@@ -96,28 +54,71 @@ class PoissonSORSolver(PoissonSolverBase):
         else:
             solution = initial_array
 
-        # SORの反復
-        def sor_iteration(carry):
-            solution, step = carry
-            new_solution = self.sor_update(solution, rhs_array)
-            residual = self.compute_residual(new_solution, rhs_array)
-            self._error_history.append(float(residual))
-            return (new_solution, step + 1), residual
+        # グリッド間隔と緩和パラメータの取得
+        dx2 = jnp.square(jnp.array(self.config.dx))
+        omega = self.config.relaxation_parameter
 
-        def cond_fun(carry_and_residual):
-            _, step = carry_and_residual[0]
-            residual = carry_and_residual[1]
+        # メインループ用の状態を定義
+        initial_state = {"solution": solution, "residual": jnp.inf, "step_count": 0}
+
+        # JAX最適化された SOR 更新関数
+        @jit
+        def sor_update_and_check(state):
+            sol = state["solution"]
+
+            def update_solution(sol):
+                for i in range(1, sol.shape[0] - 1):
+                    for j in range(1, sol.shape[1] - 1):
+                        for k in range(1, sol.shape[2] - 1):
+                            # 隣接点からの寄与
+                            neighbors_sum = (
+                                (sol[i + 1, j, k] + sol[i - 1, j, k]) / dx2[0]
+                                + (sol[i, j + 1, k] + sol[i, j - 1, k]) / dx2[1]
+                                + (sol[i, j, k + 1] + sol[i, j, k - 1]) / dx2[2]
+                            )
+
+                            # 係数の計算
+                            coeff = 2.0 * (1 / dx2[0] + 1 / dx2[1] + 1 / dx2[2])
+
+                            # SOR更新
+                            new_value = (1 - omega) * sol[i, j, k] + (omega / coeff) * (
+                                neighbors_sum - rhs_array[i, j, k]
+                            )
+
+                            sol = sol.at[i, j, k].set(new_value)
+                return sol
+
+            # ソリューションの更新
+            new_solution = update_solution(sol)
+
+            # 残差の計算（収束判定用）
+            residual = jnp.max(jnp.abs(new_solution - sol))
+
+            # 状態の更新
+            return {
+                "solution": new_solution,
+                "residual": residual,
+                "step_count": state["step_count"] + 1,
+            }
+
+        # 停止条件
+        def cond_fun(state):
             return jnp.logical_and(
-                step < self.config.max_iterations, residual > self.config.tolerance
+                state["residual"] > self.config.tolerance,
+                state["step_count"] < self.config.max_iterations,
             )
 
         # メインループ
-        (solution, step), final_residual = lax.while_loop(
-            cond_fun, lambda x: sor_iteration(x[0]), ((solution, 0), jnp.inf)
-        )
+        result_state = initial_state
+        while cond_fun(result_state):
+            result_state = sor_update_and_check(result_state)
 
-        self._iteration_count = int(step)
+        # ステップ数と収束状態の更新
+        solution = result_state["solution"]
+        final_residual = result_state["residual"]
+        self._iteration_count = result_state["step_count"]
         self._converged = final_residual <= self.config.tolerance
+        self._error_history.append(float(final_residual))
 
         return solution
 
