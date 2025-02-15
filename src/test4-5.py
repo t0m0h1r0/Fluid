@@ -10,7 +10,7 @@ ScalarFieldとVectorField間の相互作用をテストするモジュール
 """
 
 import unittest
-import numpy as np
+import jax.numpy as jnp
 from pathlib import Path
 import sys
 
@@ -37,24 +37,24 @@ class TestFieldInteractions(unittest.TestCase):
         self.grid = GridInfo(shape=self.shape, dx=(self.dx, self.dy, self.dz))
 
         # 座標格子の生成
-        x = np.linspace(0, self.Lx, self.nx)
-        y = np.linspace(0, self.Ly, self.ny)
-        z = np.linspace(0, self.Lz, self.nz)
-        self.X, self.Y, self.Z = np.meshgrid(x, y, z, indexing="ij")
+        x = jnp.linspace(0, self.Lx, self.nx)
+        y = jnp.linspace(0, self.Ly, self.ny)
+        z = jnp.linspace(0, self.Lz, self.nz)
+        self.X, self.Y, self.Z = jnp.meshgrid(x, y, z, indexing="ij")
 
         # テストスカラー場: φ = sin(2πx/Lx)cos(2πy/Ly)exp(-z/Lz)
         self.scalar_data = (
-            np.sin(2 * np.pi * self.X / self.Lx)
-            * np.cos(2 * np.pi * self.Y / self.Ly)
-            * np.exp(-self.Z / self.Lz)
+            jnp.sin(2 * jnp.pi * self.X / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.Y / self.Ly)
+            * jnp.exp(-self.Z / self.Lz)
         )
         self.scalar_field = ScalarField(self.grid, self.scalar_data)
 
         # テストベクトル場: u = (sin(2πx/Lx), cos(2πy/Ly), exp(-z/Lz))
         self.vector_data = [
-            np.sin(2 * np.pi * self.X / self.Lx),
-            np.cos(2 * np.pi * self.Y / self.Ly),
-            np.exp(-self.Z / self.Lz),
+            jnp.sin(2 * jnp.pi * self.X / self.Lx),
+            jnp.cos(2 * jnp.pi * self.Y / self.Ly),
+            jnp.exp(-self.Z / self.Lz),
         ]
         self.vector_field = VectorField(self.grid, self.vector_data)
 
@@ -64,25 +64,25 @@ class TestFieldInteractions(unittest.TestCase):
         result1 = self.scalar_field * self.vector_field
         for i in range(3):
             expected = self.scalar_data * self.vector_data[i]
-            np.testing.assert_allclose(result1.components[i].data, expected)
+            jnp.testing.assert_allclose(result1.components[i].data, expected)
 
         # VectorField * ScalarField (交換法則の確認)
         result2 = self.vector_field * self.scalar_field
         for i in range(3):
-            np.testing.assert_allclose(
+            jnp.testing.assert_allclose(
                 result2.components[i].data, result1.components[i].data
             )
 
     def test_scalar_vector_division(self):
         """スカラー場によるベクトル場の除算テスト"""
         # 非ゼロのスカラー場を作成
-        nonzero_scalar = ScalarField(self.grid, np.abs(self.scalar_data) + 1.0)
+        nonzero_scalar = ScalarField(self.grid, jnp.abs(self.scalar_data) + 1.0)
 
         # VectorField / ScalarField
         result = self.vector_field / nonzero_scalar
         for i in range(3):
             expected = self.vector_data[i] / nonzero_scalar.data
-            np.testing.assert_allclose(result.components[i].data, expected)
+            jnp.testing.assert_allclose(result.components[i].data, expected)
 
     def test_gradient_divergence_continuity(self):
         """スカラー場の勾配の発散がラプラシアンと一致することを確認"""
@@ -93,7 +93,7 @@ class TestFieldInteractions(unittest.TestCase):
         # 直接ラプラシアンを計算
         laplacian = self.scalar_field.divergence()
 
-        np.testing.assert_allclose(div_grad.data, laplacian.data, rtol=1e-10)
+        jnp.testing.assert_allclose(div_grad.data, laplacian.data, rtol=1e-10)
 
     def test_vector_field_scalar_components(self):
         """ベクトル場の各成分をスカラー場として取得・操作"""
@@ -105,7 +105,7 @@ class TestFieldInteractions(unittest.TestCase):
             # スカラー場との演算
             result = component * self.scalar_field
             expected = self.vector_data[i] * self.scalar_data
-            np.testing.assert_allclose(result.data, expected)
+            jnp.testing.assert_allclose(result.data, expected)
 
     def test_gradient_curl_identity(self):
         """grad(φ)の回転が0になることを確認（数値誤差の範囲で）"""
@@ -115,7 +115,7 @@ class TestFieldInteractions(unittest.TestCase):
 
         # 結果が十分0に近いことを確認
         for component in curl_grad.components:
-            self.assertTrue(np.allclose(component.data, 0.0, atol=1e-10))
+            self.assertTrue(jnp.allclose(component.data, 0.0, atol=1e-10))
 
     def test_vector_decomposition(self):
         """ベクトル場のヘルムホルツ分解の基本性質をテスト"""
@@ -132,7 +132,7 @@ class TestFieldInteractions(unittest.TestCase):
 
         # 結果が十分0に近いことを確認（境界の影響を考慮）
         interior_points = dot_product.data[1:-1, 1:-1, 1:-1]
-        self.assertTrue(np.allclose(interior_points, 0.0, atol=1e-8))
+        self.assertTrue(jnp.allclose(interior_points, 0.0, atol=1e-8))
 
     def test_mixed_operations(self):
         """複合的な演算のテスト"""
@@ -146,7 +146,7 @@ class TestFieldInteractions(unittest.TestCase):
             self.scalar_data * self.vector_data[i] * grad_scalar.components[i].data
             for i in range(3)
         )
-        np.testing.assert_allclose(result.data, expected)
+        jnp.testing.assert_allclose(result.data, expected)
 
     def test_boundary_consistency(self):
         """境界での一貫性テスト"""
@@ -155,11 +155,11 @@ class TestFieldInteractions(unittest.TestCase):
         div = grad.divergence()
 
         # 境界でも値が発散していないことを確認
-        self.assertTrue(np.all(np.isfinite(div.data)))
+        self.assertTrue(jnp.all(jnp.isfinite(div.data)))
 
         # 境界での値が内部と大きく異ならないことを確認
-        interior_max = np.max(np.abs(div.data[1:-1, 1:-1, 1:-1]))
-        boundary_max = np.max(np.abs(div.data[0, :, :]))  # x=0面
+        interior_max = jnp.max(jnp.abs(div.data[1:-1, 1:-1, 1:-1]))
+        boundary_max = jnp.max(jnp.abs(div.data[0, :, :]))  # x=0面
         self.assertLess(boundary_max, 2 * interior_max)
 
     def test_error_handling(self):
@@ -167,7 +167,9 @@ class TestFieldInteractions(unittest.TestCase):
         # 異なる形状のフィールド間の演算
         different_shape = (8, 8, 8)
         different_grid = GridInfo(shape=different_shape, dx=self.grid.dx)
-        different_scalar = ScalarField(different_grid, np.random.rand(*different_shape))
+        different_scalar = ScalarField(
+            different_grid, jnp.random.uniform(size=different_shape)
+        )
 
         # 形状の不一致による例外の確認
         with self.assertRaises(ValueError):

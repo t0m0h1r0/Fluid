@@ -43,7 +43,26 @@ class ScalarField(Field):
         """フィールドデータを取得"""
         return self._data
 
-    def gradient(self, axis: Optional[int] = None) -> Union[ScalarField, 'VectorField']:
+    def abs(self) -> ScalarField:
+        """絶対値を返すメソッド"""
+        return FieldFactory.create_scalar_field(self.grid, jnp.abs(self._data))
+
+    def power(self, power: Union[int, float]) -> ScalarField:
+        """累乗を計算するメソッド"""
+        abs_data = jnp.abs(self._data)
+        return FieldFactory.create_scalar_field(
+            self.grid, jnp.power(abs_data, jnp.float64(power))
+        )
+
+    def __abs__(self) -> ScalarField:
+        """組み込みのabs関数をサポート"""
+        return self.abs()
+
+    def __pow__(self, power: Union[int, float]) -> ScalarField:
+        """累乗演算子"""
+        return self.power(power)
+
+    def gradient(self, axis: Optional[int] = None) -> Union[ScalarField, "VectorField"]:
         """勾配を計算
 
         Args:
@@ -61,9 +80,7 @@ class ScalarField(Field):
             return FieldFactory.create_scalar_field(self.grid, grad_data)
         else:
             # 全方向の勾配
-            grads = [
-                jnp.gradient(self._data, d, axis=i) for i, d in enumerate(self.dx)
-            ]
+            grads = [jnp.gradient(self._data, d, axis=i) for i, d in enumerate(self.dx)]
             return FieldFactory.create_vector_field(self.grid, tuple(grads))
 
     def divergence(self) -> ScalarField:
@@ -112,9 +129,11 @@ class ScalarField(Field):
         return NotImplemented
 
     def __mul__(
-        self, other: Union[ScalarField, float, 'VectorField']
-    ) -> Union[ScalarField, 'VectorField']:
+        self, other: Union[ScalarField, float, "VectorField"]
+    ) -> Union[ScalarField, "VectorField"]:
         """乗算演算子"""
+        from .vector import VectorField  # 動的インポート
+
         if jnp.isscalar(other):
             return FieldFactory.create_scalar_field(
                 self.grid, self._data * jnp.float64(other)
@@ -145,12 +164,6 @@ class ScalarField(Field):
                 self.grid, self._data / (other._data + epsilon)
             )
         return NotImplemented
-
-    def __pow__(self, power: Union[int, float]) -> ScalarField:
-        """累乗演算子"""
-        return FieldFactory.create_scalar_field(
-            self.grid, jnp.power(self._data, jnp.float64(power))
-        )
 
     def __neg__(self) -> ScalarField:
         """単項マイナス演算子"""

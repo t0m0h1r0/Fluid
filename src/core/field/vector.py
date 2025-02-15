@@ -91,10 +91,7 @@ class VectorField(Field):
         """回転を計算: ∇×v"""
         # 3次元の場合の回転を計算
         derivs = [
-            [
-                jnp.gradient(comp.data, self.dx[j], axis=j)
-                for j in range(len(self.dx))
-            ]
+            [jnp.gradient(comp.data, self.dx[j], axis=j) for j in range(len(self.dx))]
             for comp in self._components
         ]
 
@@ -115,8 +112,8 @@ class VectorField(Field):
                 forward_j = jnp.roll(self._components[j].data, -1, axis=i)
                 backward_j = jnp.roll(self._components[j].data, 1, axis=i)
                 component = 0.5 * (
-                    (forward_i - backward_i) / (2 * self.dx[j]) +
-                    (forward_j - backward_j) / (2 * self.dx[i])
+                    (forward_i - backward_i) / (2 * self.dx[j])
+                    + (forward_j - backward_j) / (2 * self.dx[i])
                 )
                 components.append(component)
 

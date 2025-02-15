@@ -9,7 +9,7 @@ VectorFieldの微分演算をテストするモジュール
 """
 
 import unittest
-import numpy as np
+import jax.numpy as jnp
 from pathlib import Path
 import sys
 
@@ -36,17 +36,19 @@ class TestVectorFieldDerivatives(unittest.TestCase):
         self.grid = GridInfo(shape=self.shape, dx=(self.dx, self.dy, self.dz))
 
         # 座標格子の生成
-        x = np.linspace(0, self.Lx, self.nx)
-        y = np.linspace(0, self.Ly, self.ny)
-        z = np.linspace(0, self.Lz, self.nz)
-        self.X, self.Y, self.Z = np.meshgrid(x, y, z, indexing="ij")
+        x = jnp.linspace(0, self.Lx, self.nx)
+        y = jnp.linspace(0, self.Ly, self.ny)
+        z = jnp.linspace(0, self.Lz, self.nz)
+        self.X, self.Y, self.Z = jnp.meshgrid(x, y, z, indexing="ij")
 
         # テストベクトル場の設定（解析的に微分可能な関数）
         # u = (sin(2πx/Lx)cos(2πy/Ly), cos(2πx/Lx)sin(2πy/Ly), exp(-z/Lz))
         self.data = [
-            np.sin(2 * np.pi * self.X / self.Lx) * np.cos(2 * np.pi * self.Y / self.Ly),
-            np.cos(2 * np.pi * self.X / self.Lx) * np.sin(2 * np.pi * self.Y / self.Ly),
-            np.exp(-self.Z / self.Lz),
+            jnp.sin(2 * jnp.pi * self.X / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.Y / self.Ly),
+            jnp.cos(2 * jnp.pi * self.X / self.Lx)
+            * jnp.sin(2 * jnp.pi * self.Y / self.Ly),
+            jnp.exp(-self.Z / self.Lz),
         ]
         self.field = VectorField(self.grid, self.data)
 
@@ -55,43 +57,43 @@ class TestVectorFieldDerivatives(unittest.TestCase):
         # 発散の解析解: ∂u/∂x + ∂v/∂y + ∂w/∂z
         expected_div = (
             # ∂u/∂x
-            (2 * np.pi / self.Lx)
-            * np.cos(2 * np.pi * self.X / self.Lx)
-            * np.cos(2 * np.pi * self.Y / self.Ly)
+            (2 * jnp.pi / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.X / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.Y / self.Ly)
             +
             # ∂v/∂y
-            (2 * np.pi / self.Ly)
-            * np.cos(2 * np.pi * self.X / self.Lx)
-            * np.cos(2 * np.pi * self.Y / self.Ly)
+            (2 * jnp.pi / self.Ly)
+            * jnp.cos(2 * jnp.pi * self.X / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.Y / self.Ly)
             +
             # ∂w/∂z
-            (-1 / self.Lz) * np.exp(-self.Z / self.Lz)
+            (-1 / self.Lz) * jnp.exp(-self.Z / self.Lz)
         )
 
         div = self.field.divergence()
-        np.testing.assert_allclose(div.data, expected_div, rtol=1e-2)
+        jnp.testing.assert_allclose(div.data, expected_div, rtol=1e-2)
 
     def test_curl(self):
         """回転のテスト: ∇×u"""
         # 回転の解析解
         expected_curl = [
             # (∂w/∂y - ∂v/∂z)
-            (-2 * np.pi / self.Ly)
-            * np.cos(2 * np.pi * self.X / self.Lx)
-            * np.cos(2 * np.pi * self.Y / self.Ly),
+            (-2 * jnp.pi / self.Ly)
+            * jnp.cos(2 * jnp.pi * self.X / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.Y / self.Ly),
             # (∂u/∂z - ∂w/∂x)
-            (-2 * np.pi / self.Lx)
-            * np.cos(2 * np.pi * self.X / self.Lx)
-            * np.cos(2 * np.pi * self.Y / self.Ly),
+            (-2 * jnp.pi / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.X / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.Y / self.Ly),
             # (∂v/∂x - ∂u/∂y)
-            (-4 * np.pi**2 / (self.Lx * self.Ly))
-            * np.sin(2 * np.pi * self.X / self.Lx)
-            * np.sin(2 * np.pi * self.Y / self.Ly),
+            (-4 * jnp.pi**2 / (self.Lx * self.Ly))
+            * jnp.sin(2 * jnp.pi * self.X / self.Lx)
+            * jnp.sin(2 * jnp.pi * self.Y / self.Ly),
         ]
 
         curl = self.field.curl()
         for i in range(3):
-            np.testing.assert_allclose(
+            jnp.testing.assert_allclose(
                 curl.components[i].data, expected_curl[i], rtol=1e-2
             )
 
@@ -109,7 +111,7 @@ class TestVectorFieldDerivatives(unittest.TestCase):
 
                 # テンソルの(i,j)成分の取得
                 tensor_comp = sym_grad.components[i * 3 + j]
-                np.testing.assert_allclose(tensor_comp.data, expected, rtol=1e-2)
+                jnp.testing.assert_allclose(tensor_comp.data, expected, rtol=1e-2)
 
     def test_gradient(self):
         """勾配のテスト（各成分について）"""
@@ -118,39 +120,39 @@ class TestVectorFieldDerivatives(unittest.TestCase):
         # x成分の勾配
         expected_grad_x = [
             # ∂u/∂x
-            (2 * np.pi / self.Lx)
-            * np.cos(2 * np.pi * self.X / self.Lx)
-            * np.cos(2 * np.pi * self.Y / self.Ly),
+            (2 * jnp.pi / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.X / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.Y / self.Ly),
             # ∂u/∂y
-            (-2 * np.pi / self.Ly)
-            * np.sin(2 * np.pi * self.X / self.Lx)
-            * np.sin(2 * np.pi * self.Y / self.Ly),
+            (-2 * jnp.pi / self.Ly)
+            * jnp.sin(2 * jnp.pi * self.X / self.Lx)
+            * jnp.sin(2 * jnp.pi * self.Y / self.Ly),
             # ∂u/∂z
-            np.zeros_like(self.X),
+            jnp.zeros_like(self.X),
         ]
 
         # y成分の勾配
         expected_grad_y = [
             # ∂v/∂x
-            (-2 * np.pi / self.Lx)
-            * np.sin(2 * np.pi * self.X / self.Lx)
-            * np.sin(2 * np.pi * self.Y / self.Ly),
+            (-2 * jnp.pi / self.Lx)
+            * jnp.sin(2 * jnp.pi * self.X / self.Lx)
+            * jnp.sin(2 * jnp.pi * self.Y / self.Ly),
             # ∂v/∂y
-            (2 * np.pi / self.Ly)
-            * np.cos(2 * np.pi * self.X / self.Lx)
-            * np.cos(2 * np.pi * self.Y / self.Ly),
+            (2 * jnp.pi / self.Ly)
+            * jnp.cos(2 * jnp.pi * self.X / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.Y / self.Ly),
             # ∂v/∂z
-            np.zeros_like(self.X),
+            jnp.zeros_like(self.X),
         ]
 
         # z成分の勾配
         expected_grad_z = [
             # ∂w/∂x
-            np.zeros_like(self.X),
+            jnp.zeros_like(self.X),
             # ∂w/∂y
-            np.zeros_like(self.X),
+            jnp.zeros_like(self.X),
             # ∂w/∂z
-            (-1 / self.Lz) * np.exp(-self.Z / self.Lz),
+            (-1 / self.Lz) * jnp.exp(-self.Z / self.Lz),
         ]
 
         expected_grads = [expected_grad_x, expected_grad_y, expected_grad_z]
@@ -159,7 +161,7 @@ class TestVectorFieldDerivatives(unittest.TestCase):
         for i in range(3):
             grad_component = grad.components[i]
             for j in range(3):
-                np.testing.assert_allclose(
+                jnp.testing.assert_allclose(
                     grad_component.gradient(j).data, expected_grads[i][j], rtol=1e-2
                 )
 
@@ -174,16 +176,16 @@ class TestVectorFieldDerivatives(unittest.TestCase):
         grid2 = GridInfo(shape=shape2, dx=(dx2, dy2, dz2))
 
         # 新しい格子での座標
-        x2 = np.linspace(0, self.Lx, nx2)
-        y2 = np.linspace(0, self.Ly, ny2)
-        z2 = np.linspace(0, self.Lz, nz2)
-        X2, Y2, Z2 = np.meshgrid(x2, y2, z2, indexing="ij")
+        x2 = jnp.linspace(0, self.Lx, nx2)
+        y2 = jnp.linspace(0, self.Ly, ny2)
+        z2 = jnp.linspace(0, self.Lz, nz2)
+        X2, Y2, Z2 = jnp.meshgrid(x2, y2, z2, indexing="ij")
 
-        # より細かい格子でのテストベクトル場
+        # 新しい格子でのテストベクトル場
         data2 = [
-            np.sin(2 * np.pi * X2 / self.Lx) * np.cos(2 * np.pi * Y2 / self.Ly),
-            np.cos(2 * np.pi * X2 / self.Lx) * np.sin(2 * np.pi * Y2 / self.Ly),
-            np.exp(-Z2 / self.Lz),
+            jnp.sin(2 * jnp.pi * X2 / self.Lx) * jnp.cos(2 * jnp.pi * Y2 / self.Ly),
+            jnp.cos(2 * jnp.pi * X2 / self.Lx) * jnp.sin(2 * jnp.pi * Y2 / self.Ly),
+            jnp.exp(-Z2 / self.Lz),
         ]
         field2 = VectorField(grid2, data2)
 
@@ -193,30 +195,30 @@ class TestVectorFieldDerivatives(unittest.TestCase):
 
         # 解析解
         expected_div1 = (
-            (2 * np.pi / self.Lx)
-            * np.cos(2 * np.pi * self.X / self.Lx)
-            * np.cos(2 * np.pi * self.Y / self.Ly)
-            + (2 * np.pi / self.Ly)
-            * np.cos(2 * np.pi * self.X / self.Lx)
-            * np.cos(2 * np.pi * self.Y / self.Ly)
-            + (-1 / self.Lz) * np.exp(-self.Z / self.Lz)
+            (2 * jnp.pi / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.X / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.Y / self.Ly)
+            + (2 * jnp.pi / self.Ly)
+            * jnp.cos(2 * jnp.pi * self.X / self.Lx)
+            * jnp.cos(2 * jnp.pi * self.Y / self.Ly)
+            + (-1 / self.Lz) * jnp.exp(-self.Z / self.Lz)
         )
         expected_div2 = (
-            (2 * np.pi / self.Lx)
-            * np.cos(2 * np.pi * X2 / self.Lx)
-            * np.cos(2 * np.pi * Y2 / self.Ly)
-            + (2 * np.pi / self.Ly)
-            * np.cos(2 * np.pi * X2 / self.Lx)
-            * np.cos(2 * np.pi * Y2 / self.Ly)
-            + (-1 / self.Lz) * np.exp(-Z2 / self.Lz)
+            (2 * jnp.pi / self.Lx)
+            * jnp.cos(2 * jnp.pi * X2 / self.Lx)
+            * jnp.cos(2 * jnp.pi * Y2 / self.Ly)
+            + (2 * jnp.pi / self.Ly)
+            * jnp.cos(2 * jnp.pi * X2 / self.Lx)
+            * jnp.cos(2 * jnp.pi * Y2 / self.Ly)
+            + (-1 / self.Lz) * jnp.exp(-Z2 / self.Lz)
         )
 
         # 誤差の計算
-        error1 = np.max(np.abs(div1.data - expected_div1))
-        error2 = np.max(np.abs(div2.data - expected_div2))
+        error1 = jnp.max(jnp.abs(div1.data - expected_div1))
+        error2 = jnp.max(jnp.abs(div2.data - expected_div2))
 
         # 収束次数の計算
-        order = -np.log2(error2 / error1)
+        order = -jnp.log2(error2 / error1)
         self.assertGreater(order, 1.8, "空間精度が2次より低いです")
         self.assertLess(order, 2.2, "空間精度が2次より高いです")
 
