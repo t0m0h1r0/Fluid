@@ -1,246 +1,114 @@
 """
-JAX共役勾配法によるPoisson方程式の数値解法
-
-理論的背景:
-- 対称正定値行列に対する高効率な反復解法
-- 自動微分と追跡可能な計算グラフを活用
-- JAXの最適化機能による高速な数値計算
-
-数学的定式化:
-∇²u = f の離散化された形式を解く
+共役勾配法によるPoisson方程式の数値解法
 """
 
 from typing import Optional, Dict, Any
-
-import jax
+import numpy as np
 import jax.numpy as jnp
-from jax import jit
-from functools import partial
 
+from ..config import PoissonSolverConfig
+from .base import PoissonSolverBase
 from core.field import ScalarField
-from .base import PoissonSolverBase, PoissonSolverConfig
 
 
 class PoissonCGSolver(PoissonSolverBase):
-    """
-    JAX共役勾配法によるPoissonソルバー
-
-    対称正定値な線形システムに対する高速な反復解法
-    """
+    """共役勾配法によるPoissonソルバー"""
 
     def __init__(
         self,
         config: Optional[PoissonSolverConfig] = None,
-        preconditioner: Optional[str] = None,
     ):
         """
-        JAX共役勾配法ソルバーを初期化
-
         Args:
-            config: ソルバー設定
-            preconditioner: 前処理の種類 ('jacobi', None)
+            config: ソルバーの設定
         """
-        super().__init__(config or PoissonSolverConfig())
-        self.preconditioner = preconditioner
+        super().__init__(config)
 
-    @partial(jit, static_argnums=(0,))
-    def _apply_laplacian(self, solution: ScalarField) -> ScalarField:
-        """
-        ラプラシアン演算子を適用
-
-        Args:
-            solution: 解候補のスカラー場
-
-        Returns:
-            ラプラシアンを適用した結果
-        """
-        # 各軸方向の2階微分の和を計算
-        result = ScalarField(solution.shape, solution.dx)
-
-        for axis in range(solution.ndim):
-            # 中心差分による2階微分
-            grad1 = jnp.gradient(solution.data, solution.dx[axis], axis=axis)
-            grad2 = jnp.gradient(grad1, solution.dx[axis], axis=axis)
-            result.data += grad2
-
-        return result
-
-    @partial(jit, static_argnums=(0,))
-    def _inner_product(self, field1: ScalarField, field2: ScalarField) -> jnp.ndarray:
-        """
-        スカラー場の内積を計算
-
-        Args:
-            field1: 第1のスカラー場
-            field2: 第2のスカラー場
-
-        Returns:
-            内積値
-        """
-        return jnp.sum(field1.data * field2.data)
-
-    @partial(jit, static_argnums=(0,))
-    def _jacobi_precondition(self, residual: ScalarField) -> ScalarField:
-        """
-        ヤコビ前処理を適用
-
-        Args:
-            residual: 残差場
-
-        Returns:
-            前処理を適用した残差場
-        """
-        # ラプラシアン演算子の対角成分の逆数を計算
-        diagonal_inv = ScalarField(residual.shape, residual.dx)
-        for axis in range(residual.ndim):
-            diagonal_inv.data += 1.0 / (residual.dx[axis] ** 2)
-
-        # 前処理された残差
-        preconditioned = ScalarField(residual.shape, residual.dx)
-        preconditioned.data = residual.data / diagonal_inv.data
-
-        return preconditioned
-
-    @partial(jit, static_argnums=(0,))
     def solve(
-        self, rhs: ScalarField, initial_guess: Optional[ScalarField] = None
-    ) -> ScalarField:
-        """
-        Poisson方程式を共役勾配法で解く
+        self,
+        rhs: np.ndarray | jnp.ndarray | ScalarField,
+        initial_guess: Optional[np.ndarray | jnp.ndarray | ScalarField] = None,
+    ) -> np.ndarray:
+        """Poisson方程式を解く
 
         Args:
-            rhs: 右辺項 f
-            initial_guess: 初期推定解（省略時はゼロベクトル）
+            rhs: 右辺項
+            initial_guess: 初期推定解（オプション）
 
         Returns:
-            解 u
+            解
         """
-        # 入力の妥当性検証
-        self.validate_input(rhs, initial_guess)
+        # 入力の検証と配列への変換
+        rhs_array, initial_array = self.validate_input(rhs, initial_guess)
 
         # 初期解の準備
-        solution = (
-            initial_guess.copy()
-            if initial_guess is not None
-            else ScalarField(rhs.shape, rhs.dx, initial_value=0.0)
-        )
-
-        def cg_step(state):
-            """共役勾配法の1ステップを定義"""
-            solution, residual, direction, rz_old = state
-
-            # Aの行列ベクトル積（ラプラシアン）
-            A_direction = self._apply_laplacian(
-                ScalarField(direction.shape, direction.dx, direction.data)
-            )
-
-            # ステップサイズの計算
-            alpha_numerator = rz_old
-            alpha_denominator = self._inner_product(direction, A_direction)
-            alpha = alpha_numerator / (alpha_denominator + 1e-10)
-
-            # 解と残差の更新
-            new_solution = ScalarField(
-                solution.shape, solution.dx, solution.data + alpha * direction.data
-            )
-            new_residual = ScalarField(
-                residual.shape, residual.dx, residual.data - alpha * A_direction.data
-            )
-
-            # 前処理
-            if self.preconditioner == "jacobi":
-                preconditioned_residual = self._jacobi_precondition(new_residual)
-            else:
-                preconditioned_residual = new_residual
-
-            # 内積の計算
-            rz_new = self._inner_product(new_residual, preconditioned_residual)
-
-            # 共役方向の更新
-            beta = rz_new / (rz_old + 1e-10)
-            new_direction = ScalarField(
-                preconditioned_residual.shape,
-                preconditioned_residual.dx,
-                preconditioned_residual.data + beta * direction.data,
-            )
-
-            return (new_solution, new_residual, new_direction, rz_new)
-
-        # 初期状態の準備
-        initial_residual = rhs - self._apply_laplacian(solution)
-
-        if self.preconditioner == "jacobi":
-            preconditioned_residual = self._jacobi_precondition(initial_residual)
+        if initial_array is None:
+            solution = np.zeros_like(rhs_array)
         else:
-            preconditioned_residual = initial_residual
+            solution = initial_array.copy()
 
-        initial_direction = preconditioned_residual
-        initial_rz = self._inner_product(initial_residual, preconditioned_residual)
+        # グリッド間隔の二乗の逆数を計算
+        dx = self.config.dx
+        idx2 = 1.0 / (dx * dx)
 
-        initial_state = (solution, initial_residual, initial_direction, initial_rz)
+        # ラプラシアン演算子の適用
+        def apply_laplacian(x):
+            result = np.zeros_like(x)
+            for i in range(1, x.shape[0] - 1):
+                for j in range(1, x.shape[1] - 1):
+                    for k in range(1, x.shape[2] - 1):
+                        result[i,j,k] = (
+                            (x[i+1,j,k] + x[i-1,j,k] - 2*x[i,j,k]) * idx2[0] +
+                            (x[i,j+1,k] + x[i,j-1,k] - 2*x[i,j,k]) * idx2[1] +
+                            (x[i,j,k+1] + x[i,j,k-1] - 2*x[i,j,k]) * idx2[2]
+                        )
+            return result
 
-        # メイン反復
-        def cg_loop(i, state):
-            """共役勾配法の収束判定を含むループ"""
-            solution, residual, direction, rz_old = state
+        # 初期残差の計算
+        r = rhs_array - apply_laplacian(solution)
+        p = r.copy()
 
-            # 残差のノルムを計算
-            residual_norm = jnp.linalg.norm(residual.data)
-            max_norm = jnp.linalg.norm(rhs.data)
+        # ノルムの計算
+        def compute_norm(x):
+            return np.sqrt(np.sum(x * x))
+
+        # 内積の計算
+        def compute_inner_product(x, y):
+            return np.sum(x * y)
+
+        # CG反復
+        for iter_count in range(self.config.max_iterations):
+            Ap = apply_laplacian(p)
+            alpha = compute_inner_product(r, r) / (compute_inner_product(p, Ap) + 1e-15)
+
+            # 解の更新
+            solution += alpha * p
+
+            # 残差の更新
+            r_new = r - alpha * Ap
+            beta = compute_inner_product(r_new, r_new) / (compute_inner_product(r, r) + 1e-15)
+            r = r_new
+
+            # 探索方向の更新
+            p = r + beta * p
 
             # 収束判定
-            is_converged = residual_norm <= self.config.tolerance * max_norm
+            residual = compute_norm(r)
+            self._error_history.append(float(residual))
 
-            # 最大反復回数による制限
-            is_max_iter = i >= self.config.max_iterations
+            if residual < self.config.tolerance:
+                self._converged = True
+                break
 
-            # 条件分岐
-            new_state = jax.lax.cond(
-                is_converged | is_max_iter,
-                lambda _: state,
-                lambda _: cg_step(state),
-                operand=None,
-            )
+        self._iteration_count = iter_count + 1
 
-            return new_state
-
-        # 反復計算の実行
-        final_state = jax.lax.fori_loop(
-            0, self.config.max_iterations, cg_loop, initial_state
-        )
-
-        # 最終的な解を返却
-        return final_state[0]
-
-    def compute_residual(self, solution: ScalarField, rhs: ScalarField) -> float:
-        """
-        残差を計算
-
-        Args:
-            solution: 解
-            rhs: 右辺項
-
-        Returns:
-            残差のノルム
-        """
-        # ラプラシアンと残差の計算
-        residual = rhs - self._apply_laplacian(solution)
-
-        # 残差のノルムを返却
-        return float(jnp.linalg.norm(residual.data))
+        return solution
 
     def get_diagnostics(self) -> Dict[str, Any]:
-        """
-        ソルバーの診断情報を取得
-
-        Returns:
-            診断情報の辞書
-        """
-        # 親クラスの診断情報を取得し拡張
+        """診断情報を取得"""
         diag = super().get_diagnostics()
-        diag.update(
-            {
-                "preconditioner": self.preconditioner,
-            }
-        )
+        diag.update({
+            "solver_type": "Conjugate Gradient",
+            "final_residual": self._error_history[-1] if self._error_history else None,
+        })
         return diag

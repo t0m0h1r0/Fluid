@@ -1,33 +1,18 @@
 """
 マルチグリッド法によるPoisson方程式の高速解法
-
-理論的背景:
-- 異なる解像度のグリッドを用いて高速に収束
-- 誤差の異なるスケールを効率的に抑制
-- 計算量を大幅に削減
-
-主要な実装戦略:
-1. 粗いグリッドと細かいグリッドの交互使用
-2. 平滑化（Smoothing）と制限（Restriction）
-3. 補間（Prolongation）による誤差修正
 """
 
-from typing import Optional
-
+from typing import Optional, Dict, Any, Tuple
+import numpy as np
 import jax.numpy as jnp
-from jax import jit
-from functools import partial
 
+from ..config import PoissonSolverConfig
+from .base import PoissonSolverBase
 from core.field import ScalarField
-from .base import PoissonSolverBase, PoissonSolverConfig
 
 
 class PoissonMultigridSolver(PoissonSolverBase):
-    """
-    マルチグリッド法によるPoissonソルバー
-
-    高速かつ高精度な数値解法を提供
-    """
+    """マルチグリッド法によるPoissonソルバー"""
 
     def __init__(
         self,
@@ -36,305 +21,187 @@ class PoissonMultigridSolver(PoissonSolverBase):
         num_levels: int = 3,
     ):
         """
-        マルチグリッドソルバーを初期化
-
         Args:
-            config: ソルバー設定
+            config: ソルバーの設定
             cycle_type: マルチグリッドサイクルの種類 ('V', 'W')
             num_levels: グリッドの階層数
         """
-        super().__init__(config or PoissonSolverConfig())
+        super().__init__(config)
         self.cycle_type = cycle_type
         self.num_levels = num_levels
 
-    @partial(jit, static_argnums=(0,))
-    def _restriction(self, field: ScalarField) -> ScalarField:
-        """
-        グリッドを粗くする（制限演算子）
+    def _restrict(self, fine_grid: np.ndarray) -> np.ndarray:
+        """細かいグリッドから粗いグリッドへの制限"""
+        nx, ny, nz = fine_grid.shape
+        coarse_grid = np.zeros((nx//2, ny//2, nz//2))
 
-        Args:
-            field: 入力スカラー場
-
-        Returns:
-            粗いグリッドのスカラー場
-        """
-        # 2倍の粗さのグリッドを生成
-        restricted_shape = tuple(max(1, s // 2) for s in field.shape)
-        restricted_dx = tuple(2.0 * d for d in field.dx)
-
-        restricted_data = jnp.zeros(restricted_shape)
-
-        # バイリニア補間による制限
-        for i in range(restricted_shape[0]):
-            for j in range(restricted_shape[1]):
-                for k in range(restricted_shape[2]):
-                    slice_x = slice(2 * i, 2 * i + 2)
-                    slice_y = slice(2 * j, 2 * j + 2)
-                    slice_z = slice(2 * k, 2 * k + 2)
-
-                    local_patch = field.data[slice_x, slice_y, slice_z]
-                    restricted_data = restricted_data.at[i, j, k].set(
-                        jnp.mean(local_patch)
+        for i in range(nx//2):
+            for j in range(ny//2):
+                for k in range(nz//2):
+                    coarse_grid[i,j,k] = np.mean(
+                        fine_grid[2*i:2*i+2, 2*j:2*j+2, 2*k:2*k+2]
                     )
 
-        return ScalarField(
-            restricted_shape, restricted_dx, initial_value=restricted_data
-        )
+        return coarse_grid
 
-    @partial(jit, static_argnums=(0,))
-    def _prolongation(self, field: ScalarField) -> ScalarField:
-        """
-        グリッドを細かくする（補間演算子）
-
-        Args:
-            field: 入力スカラー場
-
-        Returns:
-            細かいグリッドのスカラー場
-        """
-        # 2倍の細かさのグリッドを生成
-        prolonged_shape = tuple(s * 2 for s in field.shape)
-        prolonged_dx = tuple(d / 2 for d in field.dx)
-
-        prolonged_data = jnp.zeros(prolonged_shape)
-
-        # バイリニア補間による拡大
-        for i in range(field.shape[0]):
-            for j in range(field.shape[1]):
-                for k in range(field.shape[2]):
-                    prolonged_data = prolonged_data.at[2 * i, 2 * j, 2 * k].set(
-                        field.data[i, j, k]
-                    )
-
-                    # 補間点の追加
-                    if (
-                        i + 1 < field.shape[0]
-                        and j + 1 < field.shape[1]
-                        and k + 1 < field.shape[2]
-                    ):
-                        prolonged_data = prolonged_data.at[
-                            2 * i + 1, 2 * j + 1, 2 * k + 1
-                        ].set(
-                            0.125
-                            * (
-                                field.data[i, j, k]
-                                + field.data[i + 1, j, k]
-                                + field.data[i, j + 1, k]
-                                + field.data[i, j, k + 1]
-                                + field.data[i + 1, j + 1, k]
-                                + field.data[i + 1, j, k + 1]
-                                + field.data[i, j + 1, k + 1]
-                                + field.data[i + 1, j + 1, k + 1]
-                            )
+    def _prolongate(self, coarse_grid: np.ndarray, fine_shape: Tuple[int, ...]) -> np.ndarray:
+        """粗いグリッドから細かいグリッドへの補間"""
+        fine_grid = np.zeros(fine_shape)
+        
+        for i in range(coarse_grid.shape[0]):
+            for j in range(coarse_grid.shape[1]):
+                for k in range(coarse_grid.shape[2]):
+                    # 直接点の補間
+                    fine_grid[2*i, 2*j, 2*k] = coarse_grid[i,j,k]
+                    
+                    # エッジの補間
+                    if 2*i+1 < fine_shape[0]:
+                        fine_grid[2*i+1, 2*j, 2*k] = 0.5 * (
+                            coarse_grid[i,j,k] +
+                            (coarse_grid[i+1,j,k] if i+1 < coarse_grid.shape[0] else coarse_grid[i,j,k])
+                        )
+                    if 2*j+1 < fine_shape[1]:
+                        fine_grid[2*i, 2*j+1, 2*k] = 0.5 * (
+                            coarse_grid[i,j,k] +
+                            (coarse_grid[i,j+1,k] if j+1 < coarse_grid.shape[1] else coarse_grid[i,j,k])
+                        )
+                    if 2*k+1 < fine_shape[2]:
+                        fine_grid[2*i, 2*j, 2*k+1] = 0.5 * (
+                            coarse_grid[i,j,k] +
+                            (coarse_grid[i,j,k+1] if k+1 < coarse_grid.shape[2] else coarse_grid[i,j,k])
                         )
 
-        return ScalarField(prolonged_shape, prolonged_dx, initial_value=prolonged_data)
+        return fine_grid
 
-    @partial(jit, static_argnums=(0,))
     def _smooth(
-        self, solution: ScalarField, rhs: ScalarField, num_smoothing_steps: int = 3
-    ) -> ScalarField:
-        """
-        ガウス・ザイデル平滑化
-
-        Args:
-            solution: 現在の解
-            rhs: 右辺項
-            num_smoothing_steps: 平滑化のステップ数
-
-        Returns:
-            平滑化された解
-        """
-
-        def single_smooth_step(x):
-            """単一の平滑化ステップ"""
-            smoothed = x.copy()
-
-            for axis in range(x.ndim):
-                # 中心差分による近似
-                laplacian = jnp.zeros_like(x.data)
-                for offset in [-1, 1]:
-                    shifted = jnp.roll(x.data, offset, axis=axis)
-                    laplacian += (shifted - x.data) / (x.dx[axis] ** 2)
-
-                # SOR法による更新
-                omega = 1.5  # 緩和パラメータ
-                smoothed.data += omega * (rhs.data - laplacian) / (2 * x.ndim)
-
-            return smoothed
-
-        # 指定された回数の平滑化を実行
-        for _ in range(num_smoothing_steps):
-            solution = single_smooth_step(solution)
+        self,
+        solution: np.ndarray,
+        rhs: np.ndarray,
+        num_iterations: int = 2
+    ) -> np.ndarray:
+        """Gauss-Seidelスムーサー"""
+        dx = self.config.dx
+        idx2 = 1.0 / (dx * dx)
+        
+        for _ in range(num_iterations):
+            for i in range(1, solution.shape[0] - 1):
+                for j in range(1, solution.shape[1] - 1):
+                    for k in range(1, solution.shape[2] - 1):
+                        solution[i,j,k] = (
+                            ((solution[i+1,j,k] + solution[i-1,j,k]) * idx2[0] +
+                             (solution[i,j+1,k] + solution[i,j-1,k]) * idx2[1] +
+                             (solution[i,j,k+1] + solution[i,j,k-1]) * idx2[2] -
+                             rhs[i,j,k]) /
+                            (2.0 * (idx2[0] + idx2[1] + idx2[2]))
+                        )
 
         return solution
 
-    @partial(jit, static_argnums=(0,))
-    def _compute_residual(self, solution: ScalarField, rhs: ScalarField) -> ScalarField:
-        """
-        残差を計算
+    def _solve_coarse(self, solution: np.ndarray, rhs: np.ndarray) -> np.ndarray:
+        """最も粗いグリッドでの解法"""
+        # 簡単なGauss-Seidel反復
+        return self._smooth(solution, rhs, num_iterations=50)
 
-        Args:
-            solution: 現在の解
-            rhs: 右辺項
-
-        Returns:
-            残差場
-        """
-        # ラプラシアンの計算
-        laplacian = ScalarField(solution.shape, solution.dx)
-
-        for axis in range(solution.ndim):
-            # 2階微分の計算
-            grad1 = jnp.gradient(solution.data, solution.dx[axis], axis=axis)
-            grad2 = jnp.gradient(grad1, solution.dx[axis], axis=axis)
-            laplacian.data += grad2
-
-        # 残差の計算
-        residual = ScalarField(rhs.shape, rhs.dx)
-        residual.data = rhs.data - laplacian.data
-
+    def _compute_residual(self, solution: np.ndarray, rhs: np.ndarray) -> np.ndarray:
+        """残差を計算"""
+        dx = self.config.dx
+        idx2 = 1.0 / (dx * dx)
+        
+        residual = np.zeros_like(solution)
+        for i in range(1, solution.shape[0] - 1):
+            for j in range(1, solution.shape[1] - 1):
+                for k in range(1, solution.shape[2] - 1):
+                    residual[i,j,k] = rhs[i,j,k] - (
+                        ((solution[i+1,j,k] + solution[i-1,j,k] - 2*solution[i,j,k]) * idx2[0] +
+                         (solution[i,j+1,k] + solution[i,j-1,k] - 2*solution[i,j,k]) * idx2[1] +
+                         (solution[i,j,k+1] + solution[i,j,k-1] - 2*solution[i,j,k]) * idx2[2])
+                    )
         return residual
 
-    def solve(
-        self, rhs: ScalarField, initial_guess: Optional[ScalarField] = None
-    ) -> ScalarField:
-        """
-        マルチグリッド法でPoisson方程式を解く
+    def _multigrid_cycle(
+        self,
+        solution: np.ndarray,
+        rhs: np.ndarray,
+        level: int
+    ) -> np.ndarray:
+        """マルチグリッドサイクルの実行"""
+        # 最も粗いレベルでは直接解く
+        if level == self.num_levels - 1:
+            return self._solve_coarse(solution, rhs)
 
-        Args:
-            rhs: 右辺項
-            initial_guess: 初期推定解
+        # 前平滑化
+        solution = self._smooth(solution, rhs)
 
-        Returns:
-            解
-        """
-        # 入力の妥当性検証
-        self.validate_input(rhs, initial_guess)
-
-        # 初期解の準備
-        solution = (
-            initial_guess.copy()
-            if initial_guess is not None
-            else ScalarField(rhs.shape, rhs.dx, initial_value=0.0)
+        # 残差の計算と制限
+        residual = self._compute_residual(solution, rhs)
+        coarse_residual = self._restrict(residual)
+        
+        # 粗いグリッドでの補正を計算
+        coarse_correction = np.zeros_like(coarse_residual)
+        coarse_correction = self._multigrid_cycle(
+            coarse_correction,
+            coarse_residual,
+            level + 1
         )
 
-        # 各階層のグリッドを準備
-        grids = [solution]
-        rhs_levels = [rhs]
+        # 補正を補間して加える
+        correction = self._prolongate(coarse_correction, solution.shape)
+        solution += correction
 
-        # グリッド階層の生成
-        for _ in range(self.num_levels - 1):
-            grids.append(self._restriction(grids[-1]))
-            rhs_levels.append(self._restriction(rhs_levels[-1]))
-
-        def multigrid_cycle(
-            solution: ScalarField, rhs: ScalarField, level: int
-        ) -> ScalarField:
-            """
-            マルチグリッドサイクル
-
-            Args:
-                solution: 現在の解
-                rhs: 右辺項
-                level: 現在のグリッドレベル
-
-            Returns:
-                修正された解
-            """
-            # ベースケース（最も粗いグリッド）
-            if level == self.num_levels - 1:
-                # 直接法で解く（最も粗いグリッドなので）
-                return self._solve_coarse_grid(solution, rhs)
-
-            # 前平滑化
-            solution = self._smooth(solution, rhs, num_smoothing_steps=3)
-
-            # 残差の計算
-            residual = self._compute_residual(solution, rhs)
-
-            # 残差を粗いグリッドに制限
-            coarse_residual = self._restriction(residual)
-
-            # 粗いグリッドで誤差を計算
-            coarse_solution = ScalarField(
-                coarse_residual.shape,
-                coarse_residual.dx,
-                initial_value=jnp.zeros_like(coarse_residual.data),
-            )
-
-            # 再帰的に誤差を修正
-            error = multigrid_cycle(coarse_solution, coarse_residual, level + 1)
-
-            # 補間によって誤差を拡大
-            prolonged_error = self._prolongation(error)
-
-            # 解の修正
-            solution.data += prolonged_error.data
-
-            # 後平滑化
-            solution = self._smooth(solution, rhs, num_smoothing_steps=3)
-
-            return solution
-
-        # サイクルタイプに応じた実行
-        for _ in range(self.config.max_iterations):
-            solution = multigrid_cycle(solution, rhs, 0)
-
-            # 収束判定
-            residual_norm = jnp.linalg.norm(self._compute_residual(solution, rhs).data)
-            rhs_norm = jnp.linalg.norm(rhs.data)
-
-            if residual_norm <= self.config.tolerance * rhs_norm:
-                break
+        # 後平滑化
+        solution = self._smooth(solution, rhs)
 
         return solution
 
-    def _solve_coarse_grid(
-        self, solution: ScalarField, rhs: ScalarField
-    ) -> ScalarField:
-        """
-        最も粗いグリッドで直接解を計算
+    def solve(
+        self,
+        rhs: np.ndarray | jnp.ndarray | ScalarField,
+        initial_guess: Optional[np.ndarray | jnp.ndarray | ScalarField] = None,
+    ) -> np.ndarray:
+        """Poisson方程式を解く
 
         Args:
-            solution: 初期解
             rhs: 右辺項
+            initial_guess: 初期推定解（オプション）
 
         Returns:
             解
         """
-        # 最も粗いグリッドなので直接法で解く
-        # 簡略化のため、NumPyの線形代数ソルバーを使用
-        # 実際の実装では、グリッドサイズに応じた適切な方法を選択
-        grid_matrix = jnp.zeros((solution.shape[0], solution.shape[0]))
+        # 入力の検証と配列への変換
+        rhs_array, initial_array = self.validate_input(rhs, initial_guess)
 
-        # 簡易的な離散化（より精密な実装が必要）
-        for i in range(solution.shape[0]):
-            grid_matrix = grid_matrix.at[i, i].set(1.0)
-            if i > 0:
-                grid_matrix = grid_matrix.at[i, i - 1].set(-0.5)
-            if i < solution.shape[0] - 1:
-                grid_matrix = grid_matrix.at[i, i + 1].set(-0.5)
+        # 初期解の準備
+        if initial_array is None:
+            solution = np.zeros_like(rhs_array)
+        else:
+            solution = initial_array.copy()
 
-        # 線形方程式を解く
-        coeff_solution = jnp.linalg.solve(grid_matrix, rhs.data.reshape(-1))
+        # マルチグリッド反復
+        for iter_count in range(self.config.max_iterations):
+            old_solution = solution.copy()
+            
+            # マルチグリッドサイクルの実行
+            solution = self._multigrid_cycle(solution, rhs_array, 0)
 
-        return ScalarField(
-            solution.shape,
-            solution.dx,
-            initial_value=coeff_solution.reshape(solution.shape),
-        )
+            # 収束判定
+            residual = np.max(np.abs(solution - old_solution))
+            self._error_history.append(float(residual))
 
-    def compute_residual(self, solution: ScalarField, rhs: ScalarField) -> float:
-        """
-        残差のノルムを計算
+            if residual < self.config.tolerance:
+                self._converged = True
+                break
 
-        Args:
-            solution: 解
-            rhs: 右辺項
+        self._iteration_count = iter_count + 1
 
-        Returns:
-            残差のノルム
-        """
-        residual = self._compute_residual(solution, rhs)
-        return float(jnp.linalg.norm(residual.data))
+        return solution
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """診断情報を取得"""
+        diag = super().get_diagnostics()
+        diag.update({
+            "solver_type": "Multigrid",
+            "cycle_type": self.cycle_type,
+            "num_levels": self.num_levels,
+            "final_residual": self._error_history[-1] if self._error_history else None,
+        })
+        return diag
