@@ -35,139 +35,63 @@ class PoissonMultigridSolver(PoissonSolverBase):
 
     def _init_multigrid_operators(self):
         """マルチグリッド法に特化したJAX最適化演算子を初期化"""
-
-        @partial(jit, static_argnums=(0,))
-        def restrict(self, fine_grid: jnp.ndarray) -> jnp.ndarray:
+        @jit
+        def restrict(fine_grid: jnp.ndarray) -> jnp.ndarray:
             """制限演算子（JAX最適化版）"""
-            # パディングを使用して2x2x2ブロックの平均を計算
-            padded = jnp.pad(fine_grid, 1, mode="edge")
+            shape = fine_grid.shape
+            coarse_shape = tuple(s // 2 for s in shape)
+            result = jnp.zeros(coarse_shape)
+            
+            for i in range(coarse_shape[0]):
+                for j in range(coarse_shape[1]):
+                    for k in range(coarse_shape[2]):
+                        result = result.at[i,j,k].set(jnp.mean(
+                            fine_grid[2*i:2*i+2, 2*j:2*j+2, 2*k:2*k+2]
+                        ))
+            return result
 
-            # vmapを使用して効率的に平均を計算
-            average_op = vmap(vmap(vmap(lambda x: jnp.mean(x.reshape(-1)))))
-            blocks = jnp.lib.stride_tricks.sliding_window_view(padded, (2, 2, 2))
-
-            return average_op(blocks[::2, ::2, ::2])
-
-        @partial(jit, static_argnums=(0,))
-        def prolongate(
-            self, coarse_grid: jnp.ndarray, fine_shape: Tuple[int, ...]
-        ) -> jnp.ndarray:
+        @jit
+        def prolongate(coarse_grid: jnp.ndarray, fine_shape: Tuple[int, ...]) -> jnp.ndarray:
             """補間演算子（JAX最適化版）"""
-            # 直接補間
             fine_grid = jnp.zeros(fine_shape)
-
-            # 基本点の設定
-            fine_grid = fine_grid.at[::2, ::2, ::2].set(coarse_grid)
-
-            # 面の補間
-            fine_grid = fine_grid.at[1::2, ::2, ::2].set(
-                (fine_grid[:-1:2, ::2, ::2] + fine_grid[2::2, ::2, ::2]) / 2
-            )
-            fine_grid = fine_grid.at[::2, 1::2, ::2].set(
-                (fine_grid[::2, :-1:2, ::2] + fine_grid[::2, 2::2, ::2]) / 2
-            )
-            fine_grid = fine_grid.at[::2, ::2, 1::2].set(
-                (fine_grid[::2, ::2, :-1:2] + fine_grid[::2, ::2, 2::2]) / 2
-            )
-
+            
+            # 直接点の補間
+            fine_grid = fine_grid.at[::2,::2,::2].set(coarse_grid)
+            
             # エッジの補間
-            fine_grid = fine_grid.at[1::2, 1::2, ::2].set(
-                (fine_grid[1::2, :-1:2, ::2] + fine_grid[1::2, 2::2, ::2]) / 2
-            )
-            fine_grid = fine_grid.at[1::2, ::2, 1::2].set(
-                (fine_grid[1::2, ::2, :-1:2] + fine_grid[1::2, ::2, 2::2]) / 2
-            )
-            fine_grid = fine_grid.at[::2, 1::2, 1::2].set(
-                (fine_grid[::2, 1::2, :-1:2] + fine_grid[::2, 1::2, 2::2]) / 2
-            )
-
+            fine_grid = fine_grid.at[1::2,::2,::2].set(
+                (fine_grid[:-1:2,::2,::2] + fine_grid[2::2,::2,::2]) / 2)
+            fine_grid = fine_grid.at[::2,1::2,::2].set(
+                (fine_grid[::2,:-1:2,::2] + fine_grid[::2,2::2,::2]) / 2)
+            fine_grid = fine_grid.at[::2,::2,1::2].set(
+                (fine_grid[::2,::2,:-1:2] + fine_grid[::2,::2,2::2]) / 2)
+            
             return fine_grid
 
-        @partial(jit, static_argnums=(0,))
-        def smooth(
-            self, solution: jnp.ndarray, rhs: jnp.ndarray, num_iterations: int = 2
-        ) -> jnp.ndarray:
+        @jit
+        def smooth(solution: jnp.ndarray, rhs: jnp.ndarray, dx: jnp.ndarray, num_iterations: int) -> jnp.ndarray:
             """スムーサー（JAX最適化版）"""
+            def iteration_step(carry, _):
+                u = carry
+                dx2 = dx * dx
+                
+                for i in range(1, u.shape[0]-1):
+                    for j in range(1, u.shape[1]-1):
+                        for k in range(1, u.shape[2]-1):
+                            u = u.at[i,j,k].set(
+                                ((u[i+1,j,k] + u[i-1,j,k])/dx2[0] +
+                                 (u[i,j+1,k] + u[i,j-1,k])/dx2[1] +
+                                 (u[i,j,k+1] + u[i,j,k-1])/dx2[2] -
+                                 rhs[i,j,k]) / (2 * (1/dx2[0] + 1/dx2[1] + 1/dx2[2]))
+                            )
+                return u, None
 
-            def single_iteration(solution, _):
-                dx2 = jnp.square(self.config.dx)
-
-                # 各方向の隣接点からの寄与
-                neighbors_sum = (
-                    (jnp.roll(solution, 1, axis=0) + jnp.roll(solution, -1, axis=0))
-                    / dx2[0]
-                    + (jnp.roll(solution, 1, axis=1) + jnp.roll(solution, -1, axis=1))
-                    / dx2[1]
-                    + (jnp.roll(solution, 1, axis=2) + jnp.roll(solution, -1, axis=2))
-                    / dx2[2]
-                )
-
-                # 係数の計算
-                coeff = 2.0 * (1 / dx2[0] + 1 / dx2[1] + 1 / dx2[2])
-
-                # 更新
-                return (neighbors_sum - rhs) / coeff, None
-
-            smoothed, _ = lax.scan(
-                single_iteration, solution, None, length=num_iterations
-            )
-            return smoothed
-
-        @partial(jit, static_argnums=(0,))
-        def compute_residual(
-            self, solution: jnp.ndarray, rhs: jnp.ndarray
-        ) -> jnp.ndarray:
-            """残差の計算（JAX最適化版）"""
-            return rhs - self.laplacian_operator(solution)
+            final_u, _ = lax.scan(iteration_step, solution, jnp.arange(num_iterations))
+            return final_u
 
         self.restrict = restrict
         self.prolongate = prolongate
         self.smooth = smooth
-        self.compute_residual = compute_residual
-
-    @partial(jit, static_argnums=(0,))
-    def _multigrid_cycle(
-        self, solution: jnp.ndarray, rhs: jnp.ndarray, level: int
-    ) -> jnp.ndarray:
-        """マルチグリッドサイクル（JAX最適化版）"""
-
-        def solve_at_level(state):
-            solution, rhs, level = state
-
-            def base_case(_):
-                return self.smooth(solution, rhs, num_iterations=50)
-
-            def recursive_case(_):
-                # 前平滑化
-                smoothed = self.smooth(solution, rhs)
-
-                # 残差の計算と制限
-                residual = self.compute_residual(smoothed, rhs)
-                coarse_residual = self.restrict(residual)
-
-                # 粗いグリッドでの補正を計算
-                coarse_shape = tuple(s // 2 for s in smoothed.shape)
-                coarse_correction = jnp.zeros(coarse_shape)
-
-                # 再帰的に解く
-                coarse_solution = solve_at_level(
-                    (coarse_correction, coarse_residual, level + 1)
-                )
-
-                # 補正を補間して加える
-                correction = self.prolongate(coarse_solution, smoothed.shape)
-                corrected = smoothed + correction
-
-                # 後平滑化
-                return self.smooth(corrected, rhs)
-
-            # レベルに応じて処理を分岐
-            return lax.cond(
-                level == self.num_levels - 1, base_case, recursive_case, None
-            )
-
-        # 初期状態から解を計算
-        return solve_at_level((solution, rhs, level))
 
     def solve(
         self,
@@ -192,43 +116,59 @@ class PoissonMultigridSolver(PoissonSolverBase):
         else:
             solution = initial_array
 
-        def iteration_step(carry):
-            solution, iteration = carry
+        dx = jnp.array(self.config.dx)
 
-            # マルチグリッドサイクルの実行
-            new_solution = self._multigrid_cycle(solution, rhs_array, 0)
+        def multigrid_cycle(solution: jnp.ndarray, rhs: jnp.ndarray, level: int) -> jnp.ndarray:
+            """単一のマルチグリッドサイクル"""
+            if level == self.num_levels - 1:
+                # 最も粗いレベルでの解法
+                return self.smooth(solution, rhs, dx, 50)
 
-            # 収束判定のための残差計算
-            residual = jnp.max(jnp.abs(new_solution - solution))
+            # 前平滑化
+            solution = self.smooth(solution, rhs, dx, 2)
+
+            # 残差の計算
+            residual = rhs - self.laplacian_operator(solution)
+            
+            # 粗いグリッドへの制限
+            coarse_residual = self.restrict(residual)
+            coarse_solution = jnp.zeros_like(coarse_residual)
+            
+            # 粗いグリッドでの解法
+            coarse_solution = multigrid_cycle(coarse_solution, coarse_residual, level + 1)
+            
+            # 補正の補間と適用
+            correction = self.prolongate(coarse_solution, solution.shape)
+            solution = solution + correction
+            
+            # 後平滑化
+            solution = self.smooth(solution, rhs, dx, 2)
+            
+            return solution
+
+        # V-サイクルの反復
+        for iteration in range(self.config.max_iterations):
+            old_solution = solution.copy()
+            solution = multigrid_cycle(solution, rhs_array, 0)
+            
+            # 収束判定
+            residual = jnp.max(jnp.abs(solution - old_solution))
             self._error_history.append(float(residual))
+            
+            if residual < self.config.tolerance:
+                self._converged = True
+                break
 
-            return (new_solution, iteration + 1), residual
-
-        def convergence_test(carry_and_residual):
-            (_, iteration), residual = carry_and_residual
-            return jnp.logical_and(
-                iteration < self.config.max_iterations, residual > self.config.tolerance
-            )
-
-        # メインループの実行
-        (solution, self._iteration_count), final_residual = lax.while_loop(
-            convergence_test, lambda x: iteration_step(x[0]), ((solution, 0), jnp.inf)
-        )
-
-        self._converged = final_residual <= self.config.tolerance
+        self._iteration_count = iteration + 1
         return solution
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""
         diag = super().get_diagnostics()
-        diag.update(
-            {
-                "solver_type": "Multigrid",
-                "cycle_type": self.cycle_type,
-                "num_levels": self.num_levels,
-                "final_residual": self._error_history[-1]
-                if self._error_history
-                else None,
-            }
-        )
+        diag.update({
+            "solver_type": "Multigrid",
+            "cycle_type": self.cycle_type,
+            "num_levels": self.num_levels,
+            "final_residual": self._error_history[-1] if self._error_history else None,
+        })
         return diag
