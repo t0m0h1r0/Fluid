@@ -1,5 +1,5 @@
 import numpy as np
-from numerics.poisson import PoissonSORSolver, PoissonMultigridSolver, PoissonCGSolver
+from numerics.poisson import PoissonMultigridSolver, PoissonCGSolver
 from numerics.poisson.config import PoissonSolverConfig
 from core.field import ScalarField, GridInfo
 
@@ -45,7 +45,7 @@ def test_poisson_solvers():
 
     # ソルバーの初期化
     solvers = [
-        #PoissonSORSolver(config),
+        # PoissonSORSolver(config),
         PoissonMultigridSolver(config),
         PoissonCGSolver(config),
     ]
