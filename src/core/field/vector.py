@@ -1,13 +1,10 @@
-"""
-3次元ベクトル場を提供するモジュール
-
-このモジュールは、流体力学計算で使用される3次元ベクトル場の実装を提供します。
-jax.numpyを使用して高精度な数値計算を実現します。
-"""
-
 from __future__ import annotations
 from typing import List, Tuple, Union, Sequence
+import jax
 import jax.numpy as jnp
+
+# JAXの64ビット浮動小数点数を有効化
+jax.config.update("jax_enable_x64", True)
 
 from .base import Field, FieldFactory, GridInfo
 from .scalar import ScalarField
@@ -65,7 +62,7 @@ class VectorField(Field):
         if axis is not None:
             # 1方向の勾配（中心差分法、高次精度）
             grad_components = [
-                jnp.gradient(comp.data, self.dx[axis], axis=axis, edge_order=2)
+                jnp.gradient(comp.data, self.dx[axis], axis=axis)
                 for comp in self._components
             ]
             return FieldFactory.create_vector_field(self.grid, tuple(grad_components))
@@ -74,7 +71,7 @@ class VectorField(Field):
             all_grads = []
             for comp in self._components:
                 comp_grads = [
-                    jnp.gradient(comp.data, self.dx[i], axis=i, edge_order=2)
+                    jnp.gradient(comp.data, self.dx[i], axis=i)
                     for i in range(len(self.dx))
                 ]
                 all_grads.extend(comp_grads)
@@ -85,21 +82,22 @@ class VectorField(Field):
         result = jnp.zeros(self.shape, dtype=jnp.float64)
         for i, comp in enumerate(self._components):
             # 各成分の偏微分を中心差分で計算（高次精度）
-            result += jnp.gradient(comp.data, self.dx[i], axis=i, edge_order=2)
+            forward = jnp.roll(comp.data, -1, axis=i)
+            backward = jnp.roll(comp.data, 1, axis=i)
+            result += (forward - backward) / (2 * self.dx[i])
         return FieldFactory.create_scalar_field(self.grid, result)
 
     def curl(self) -> VectorField:
         """回転を計算: ∇×v"""
-        # 各方向の偏微分を計算（高次精度）
+        # 3次元の場合の回転を計算
         derivs = [
             [
-                jnp.gradient(comp.data, self.dx[j], axis=j, edge_order=2)
+                jnp.gradient(comp.data, self.dx[j], axis=j)
                 for j in range(len(self.dx))
             ]
-            for i, comp in enumerate(self._components)
+            for comp in self._components
         ]
 
-        # 3次元の場合の回転を計算
         curl_x = derivs[2][1] - derivs[1][2]  # ∂w/∂y - ∂v/∂z
         curl_y = derivs[0][2] - derivs[2][0]  # ∂u/∂z - ∂w/∂x
         curl_z = derivs[1][0] - derivs[0][1]  # ∂v/∂x - ∂u/∂y
@@ -108,18 +106,18 @@ class VectorField(Field):
 
     def symmetric_gradient(self) -> VectorField:
         """対称勾配テンソルを計算: ∇ᵤₛ = 0.5(∇u + ∇uᵀ)"""
-        # 対称勾配の各成分を計算
         components = []
         for i in range(3):
             for j in range(3):
                 # 対称勾配の各成分: 0.5(∂uᵢ/∂xⱼ + ∂uⱼ/∂xᵢ)
-                grad_i = jnp.gradient(
-                    self._components[i].data, self.dx[j], axis=j, edge_order=2
+                forward_i = jnp.roll(self._components[i].data, -1, axis=j)
+                backward_i = jnp.roll(self._components[i].data, 1, axis=j)
+                forward_j = jnp.roll(self._components[j].data, -1, axis=i)
+                backward_j = jnp.roll(self._components[j].data, 1, axis=i)
+                component = 0.5 * (
+                    (forward_i - backward_i) / (2 * self.dx[j]) +
+                    (forward_j - backward_j) / (2 * self.dx[i])
                 )
-                grad_j = jnp.gradient(
-                    self._components[j].data, self.dx[i], axis=i, edge_order=2
-                )
-                component = 0.5 * (grad_i + grad_j)
                 components.append(component)
 
         return FieldFactory.create_vector_field(self.grid, tuple(components[:3]))
