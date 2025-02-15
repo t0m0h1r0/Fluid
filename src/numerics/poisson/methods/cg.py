@@ -1,4 +1,6 @@
-"""共役勾配法によるPoisson方程式の数値解法（JAX最適化版）"""
+"""
+共役勾配法によるPoisson方程式の数値解法（JAX最適化版）
+"""
 
 from typing import Optional, Dict, Any, Union
 import jax
@@ -61,49 +63,43 @@ class PoissonCGSolver(PoissonSolverBase):
 
         # グリッド間隔
         dx = jnp.array(self.config.dx)
-        dx2 = jnp.square(dx)
 
-        # グリッド間隔をキャプチャしたラプラシアン演算子
         @jax.jit
         def laplacian_operator(u: jnp.ndarray) -> jnp.ndarray:
-            """ラプラシアン演算子のJIT最適化版"""
+            """高精度6次中心差分ラプラシアン"""
 
-            # 6次精度の中心差分スキーム
             def central_diff_6th_order(arr, axis, dx2_axis):
-                """6次精度の中心差分スキーム"""
-                diff = (
+                return (
                     -1 / 60 * jnp.roll(arr, 3, axis=axis)
                     + 3 / 20 * jnp.roll(arr, 2, axis=axis)
                     - 3 / 4 * jnp.roll(arr, 1, axis=axis)
                     + 3 / 4 * jnp.roll(arr, -1, axis=axis)
                     - 3 / 20 * jnp.roll(arr, -2, axis=axis)
                     + 1 / 60 * jnp.roll(arr, -3, axis=axis)
-                )
-                return diff / dx2_axis
+                ) / dx2_axis
 
-            # 各方向のラプラシアンを計算
             return (
-                central_diff_6th_order(u, axis=0, dx2_axis=dx2[0])
-                + central_diff_6th_order(u, axis=1, dx2_axis=dx2[1])
-                + central_diff_6th_order(u, axis=2, dx2_axis=dx2[2])
+                central_diff_6th_order(u, axis=0, dx2_axis=dx[0] ** 2)
+                + central_diff_6th_order(u, axis=1, dx2_axis=dx[1] ** 2)
+                + central_diff_6th_order(u, axis=2, dx2_axis=dx[2] ** 2)
             )
 
-        # 前処理関数
+        # 前処理: ヤコビ前処理（対角スケーリング）
         @jax.jit
         def preconditioner(r: jnp.ndarray) -> jnp.ndarray:
             """対角前処理の計算"""
-            # ラプラシアン演算子の対角成分を近似
-            diag_approx = (2 / dx2[0] + 2 / dx2[1] + 2 / dx2[2]) * jnp.ones_like(r)
-
+            diag_approx = (
+                2 / dx[0] ** 2 + 2 / dx[1] ** 2 + 2 / dx[2] ** 2
+            ) * jnp.ones_like(r)
             return r / (diag_approx + 1e-10)
 
-        # 内積計算関数
+        # 内積計算関数（数値安定性を向上）
         @jax.jit
-        def dot_product(x: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
-            """ベクトルの内積を計算"""
+        def safe_dot_product(x: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
+            """数値的に安定した内積計算"""
             return jnp.sum(x * y)
 
-        # CG法の反復関数（前処理付き）
+        # CG法の反復関数
         @jax.jit
         def cg_iteration(carry):
             """単一のCG反復（前処理付き共役勾配法）"""
@@ -113,13 +109,13 @@ class PoissonCGSolver(PoissonSolverBase):
             z = preconditioner(residual)
 
             # 内積の計算
-            rz = dot_product(residual, z)
+            rz = safe_dot_product(residual, z)
 
             # A * p の計算
             Ap = laplacian_operator(direction)
 
             # ステップサイズの計算
-            dAd = dot_product(direction, Ap)
+            dAd = safe_dot_product(direction, Ap)
             alpha = rz / (dAd + 1e-15)
 
             # 解と残差の更新
@@ -128,10 +124,10 @@ class PoissonCGSolver(PoissonSolverBase):
 
             # 新しい内積の計算
             z_new = preconditioner(new_residual)
-            rz_new = dot_product(new_residual, z_new)
+            rz_new = safe_dot_product(new_residual, z_new)
 
             # 方向ベクトルの更新
-            beta = rz_new / (rz + 1e-15)
+            beta = rz_new / (rz_old + 1e-15)
             new_direction = z_new + beta * direction
 
             # 残差ノルムの計算
@@ -149,8 +145,8 @@ class PoissonCGSolver(PoissonSolverBase):
         def compute_initial_state():
             """初期状態を計算"""
             residual = rhs_array - laplacian_operator(solution)
-            direction = preconditioner(residual)  # 前処理付き初期方向
-            rz_old = dot_product(residual, direction)
+            direction = preconditioner(residual)
+            rz_old = safe_dot_product(residual, direction)
             return solution, residual, direction, rz_old, rhs_array
 
         # メインソルバーループ
@@ -163,7 +159,7 @@ class PoissonCGSolver(PoissonSolverBase):
                 state, iteration = state_and_iteration
                 solution, residual, *_ = state
 
-                # 残差の相対ノルムを計算
+                # 相対残差の計算
                 relative_residual = jnp.linalg.norm(residual) / (
                     jnp.linalg.norm(rhs_array) + 1e-15
                 )

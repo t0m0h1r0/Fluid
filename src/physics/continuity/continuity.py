@@ -1,30 +1,21 @@
 """
 連続の方程式の数値実装
 
-支配方程式:
-保存形: ∂f/∂t + ∇⋅(uf) = 0
-非保存形: ∂f/∂t + u⋅∇f = 0
-
-このモジュールは以下の数値的課題に対応:
-1. スカラー場の移流
-2. 保存形と非保存形の計算
-3. 移流の安定性評価
+Level Set法と多相流体シミュレーションのための連続の方程式モジュール
 """
 
 from typing import Dict, Any
-from jax import jit
+import jax
+import jax.numpy as jnp
 
-from core.field import ScalarField, VectorField, GridInfo
+from core.field import ScalarField, VectorField, GridInfo, FieldFactory
 
 
 class ContinuityEquation:
     """
-    連続の方程式の数値解法
+    連続の方程式のための数値的解法クラス
 
-    主な機能:
-    - スカラー場の移流計算
-    - 保存形・非保存形の選択
-    - 数値安定性の評価
+    Level Set法における連続の方程式（保存形・非保存形）の数値計算を担当
     """
 
     def __init__(self, conservative: bool = False, epsilon: float = 1e-10):
@@ -36,107 +27,126 @@ class ContinuityEquation:
             epsilon: 数値安定化のための小さな値
         """
         self.conservative = conservative
-        self._epsilon = epsilon
+        self.epsilon = epsilon
 
-    @jit
+    @staticmethod
+    # @jax.jit
+    def _compute_conservative(
+        scalar_data: jnp.ndarray, velocity_data: jnp.ndarray, dx: jnp.ndarray
+    ) -> jnp.ndarray:
+        """
+        保存形の移流項を計算（低レベルの純粋関数）
+
+        Args:
+            scalar_data: スカラー場データ
+            velocity_data: 速度ベクトル場データ
+            dx: グリッド間隔
+
+        Returns:
+            保存形の時間微分
+        """
+        # 各方向の移流フラックスを計算
+        flux = velocity_data * scalar_data
+
+        # 発散の計算
+        divergence = jnp.zeros_like(scalar_data)
+        for i in range(scalar_data.ndim):
+            # 中心差分による勾配計算
+            divergence += jnp.gradient(flux[i], dx[i], axis=i)
+
+        return -divergence
+
+    @staticmethod
+    # @jax.jit
+    def _compute_nonconservative(
+        scalar_data: jnp.ndarray, velocity_data: jnp.ndarray, dx: jnp.ndarray
+    ) -> jnp.ndarray:
+        """
+        非保存形の移流項を計算（低レベルの純粋関数）
+
+        Args:
+            scalar_data: スカラー場データ
+            velocity_data: 速度ベクトル場データ
+            dx: グリッド間隔
+
+        Returns:
+            非保存形の時間微分
+        """
+        # スカラー場の勾配を計算
+        grad = jnp.stack(
+            [jnp.gradient(scalar_data, dx[i], axis=i) for i in range(scalar_data.ndim)]
+        )
+
+        # u⋅∇f の計算
+        advection = jnp.sum(velocity_data * grad, axis=0)
+
+        return -advection
+
+    # @jax.jit
     def compute_derivative(
-        self,
-        field: ScalarField,
-        velocity: VectorField,
+        self, field: ScalarField, velocity: VectorField
     ) -> ScalarField:
         """
         スカラー場の時間微分を計算
 
         Args:
-            field: 移流される任意のスカラー場
+            field: 移流されるスカラー場
             velocity: 速度場
 
         Returns:
             スカラー場の時間微分
-
-        数式:
-        - 保存形: ∂f/∂t = -∇⋅(uf)
-        - 非保存形: ∂f/∂t = -u⋅∇f
         """
-        return (
-            self._compute_conservative(field, velocity)
-            if self.conservative
-            else self._compute_nonconservative(field, velocity)
+        # 入力データのJAX配列への変換
+        scalar_data = jnp.asarray(field.data)
+        velocity_data = jnp.stack(
+            [jnp.asarray(comp.data) for comp in velocity.components]
         )
 
-    @jit
-    def _compute_conservative(
-        self,
-        field: ScalarField,
-        velocity: VectorField,
-    ) -> ScalarField:
-        """
-        保存形の移流項を計算: -∇⋅(uf)
+        # グリッド間隔の準備
+        dx = jnp.array(field.dx)
 
-        Args:
-            field: スカラー場
-            velocity: 速度場
+        # 計算モードに応じた関数呼び出し
+        result_data = jax.lax.cond(
+            self.conservative,
+            lambda _: self._compute_conservative(scalar_data, velocity_data, dx),
+            lambda _: self._compute_nonconservative(scalar_data, velocity_data, dx),
+            None,
+        )
 
-        Returns:
-            保存形の時間微分
-        """
-        # フラックスの計算: uf
-        flux = velocity * field
+        # グリッド情報を使用して新しいScalarFieldを作成
+        result_grid = GridInfo(
+            shape=field.shape,
+            dx=field.dx,
+            time=field.grid.time + 1,  # タイムステップを進める
+        )
+        return FieldFactory.create_scalar_field(result_grid, result_data)
 
-        # 発散の計算: ∇⋅(uf)
-        divergence = flux.divergence()
-
-        # 時間微分: ∂f/∂t = -∇⋅(uf)
-        return -divergence
-
-    @jit
-    def _compute_nonconservative(
-        self,
-        field: ScalarField,
-        velocity: VectorField,
-    ) -> ScalarField:
-        """
-        非保存形の移流項を計算: -u⋅∇f
-
-        Args:
-            field: スカラー場
-            velocity: 速度場
-
-        Returns:
-            非保存形の時間微分
-        """
-        # 移流項の計算: u⋅∇f
-        advection = velocity * field.gradient()
-
-        # 時間微分: ∂f/∂t = -u⋅∇f
-        return -advection
-
-    def compute_cfl_timestep(
-        self, velocity: VectorField, grid_info: GridInfo, cfl: float = 0.5
-    ) -> float:
+    def compute_cfl_timestep(self, velocity: VectorField, cfl: float = 0.5) -> float:
         """
         CFL条件に基づく時間刻み幅を計算
 
-        数値的安定性条件の評価:
-        Δt ≤ CFL * (Δx / |u|_max)
-
         Args:
             velocity: 速度場
-            grid_info: グリッド情報
-            cfl: CFL数（デフォルト: 0.5）
+            cfl: CFL数
 
         Returns:
             安定な時間刻み幅
         """
-        # 最大速度の計算
-        max_velocity = velocity.magnitude().max()
+        # 速度の大きさを計算
+        magnitude = jnp.sqrt(
+            sum(jnp.asarray(comp.data) ** 2 for comp in velocity.components)
+        )
+        max_velocity = float(jnp.max(magnitude))
 
-        if max_velocity > 0:
-            # CFL条件に基づく時間刻み幅
-            min_dx = min(grid_info.dx)
-            return cfl * min_dx / (max_velocity + self._epsilon)
-        else:
-            return float("inf")
+        # 最小グリッド間隔の計算
+        min_dx = float(min(velocity.dx))
+
+        # 安定な時間刻み幅を返却
+        return (
+            min_dx / (max_velocity + self.epsilon) * cfl
+            if max_velocity > 0
+            else float("inf")
+        )
 
     def get_diagnostics(
         self,
@@ -170,9 +180,5 @@ class ContinuityEquation:
                 "max": derivative.max(),
                 "min": derivative.min(),
                 "mean": derivative.mean(),
-            },
-            "numerical_properties": {
-                "epsilon": self._epsilon,
-                "cfl_method": "CFL条件による時間刻み幅制限",
             },
         }
