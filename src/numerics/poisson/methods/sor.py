@@ -48,6 +48,7 @@ class PoissonSORSolver(PoissonSolverBase):
 
         def sor_step(sol):
             """SOR更新ステップをJAX最適化"""
+
             def update_fn(index, sol):
                 i, j, k = index
                 neighbors_sum = (
@@ -61,18 +62,27 @@ class PoissonSORSolver(PoissonSolverBase):
                 return sol.at[i, j, k].set(new_value)
 
             indices = jnp.array(
-                [(i, j, k) for i in range(1, sol.shape[0] - 1)
-                          for j in range(1, sol.shape[1] - 1)
-                          for k in range(1, sol.shape[2] - 1)],
+                [
+                    (i, j, k)
+                    for i in range(1, sol.shape[0] - 1)
+                    for j in range(1, sol.shape[1] - 1)
+                    for k in range(1, sol.shape[2] - 1)
+                ],
                 dtype=jnp.int32,
             )
-            return lax.fori_loop(0, indices.shape[0], lambda idx, sol: update_fn(indices[idx], sol), sol)
+            return lax.fori_loop(
+                0, indices.shape[0], lambda idx, sol: update_fn(indices[idx], sol), sol
+            )
 
         @jit
         def iterate(state):
             new_solution = sor_step(state["solution"])
             residual = jnp.max(jnp.abs(new_solution - state["solution"]))
-            return {"solution": new_solution, "residual": residual, "step_count": state["step_count"] + 1}
+            return {
+                "solution": new_solution,
+                "residual": residual,
+                "step_count": state["step_count"] + 1,
+            }
 
         result_state = {"solution": solution, "residual": jnp.inf, "step_count": 0}
 
@@ -90,7 +100,9 @@ class PoissonSORSolver(PoissonSolverBase):
         self._converged = result_state["residual"] <= self.config.tolerance
         self._error_history.append(float(result_state["residual"]))
 
-        print(f"Final Step {self._iteration_count}: Residual = {result_state['residual']}")
+        print(
+            f"Final Step {self._iteration_count}: Residual = {result_state['residual']}"
+        )
 
         return result_state["solution"]
 
@@ -101,7 +113,9 @@ class PoissonSORSolver(PoissonSolverBase):
             {
                 "solver_type": "SOR",
                 "relaxation_parameter": self.config.relaxation_parameter,
-                "final_residual": self._error_history[-1] if self._error_history else None,
+                "final_residual": self._error_history[-1]
+                if self._error_history
+                else None,
             }
         )
         return diag

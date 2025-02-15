@@ -5,11 +5,15 @@
 from typing import Optional, Dict, Any, Union, Tuple
 import jax
 import jax.numpy as jnp
+from jax import lax
 from functools import partial
+import logging
 
 from ..config import PoissonSolverConfig
 from .base import PoissonSolverBase
 from core.field import ScalarField
+
+logger = logging.getLogger(__name__)
 
 
 class PoissonMultigridSolver(PoissonSolverBase):
@@ -30,111 +34,132 @@ class PoissonMultigridSolver(PoissonSolverBase):
         super().__init__(config)
         self.cycle_type = cycle_type
         self.num_levels = num_levels
-        
-        # JAXの最適化設定
-        self._jax_config()
-        self._init_multigrid_operators()
+        jax.config.update("jax_enable_x64", True)
+        self._setup_logging()
 
-    def _jax_config(self):
-        """JAXの最適化設定"""
-        # 64ビット浮動小数点数を使用（高精度計算）
-        jax.config.update('jax_enable_x64', True)
+    def _setup_logging(self):
+        """ロギングの設定"""
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
 
-    def _init_multigrid_operators(self):
-        """マルチグリッド法に特化したJAX最適化演算子を初期化"""
+    @staticmethod
+    @jax.jit
+    def laplacian(u: jnp.ndarray, dx: jnp.ndarray) -> jnp.ndarray:
+        """3Dラプラシアン演算子（ベクトル化版）"""
+        dx2 = dx**2
+        return (
+            (jnp.roll(u, -1, axis=0) + jnp.roll(u, 1, axis=0) - 2 * u) / dx2[0]
+            + (jnp.roll(u, -1, axis=1) + jnp.roll(u, 1, axis=1) - 2 * u) / dx2[1]
+            + (jnp.roll(u, -1, axis=2) + jnp.roll(u, 1, axis=2) - 2 * u) / dx2[2]
+        )
 
-        @partial(jax.jit, static_argnums=(1,))
-        def restrict(fine_grid: jnp.ndarray, shape: Tuple[int, int, int]) -> jnp.ndarray:
-            """制限演算子（JAX最適化版）"""
-            coarse_shape = tuple(s // 2 for s in shape)
-            
-            # 3D配列のブロック平均を計算
-            result = jnp.zeros(coarse_shape)
-            for i in range(coarse_shape[0]):
-                for j in range(coarse_shape[1]):
-                    for k in range(coarse_shape[2]):
-                        block = fine_grid[
-                            2*i:2*i+2, 
-                            2*j:2*j+2, 
-                            2*k:2*k+2
-                        ]
-                        result = result.at[i, j, k].set(jnp.mean(block))
-            return result
+    @staticmethod
+    @jax.jit
+    def _gauss_seidel_step(
+        u: jnp.ndarray, f: jnp.ndarray, dx: jnp.ndarray
+    ) -> jnp.ndarray:
+        """単一のGauss-Seidelステップ（ベクトル化版）"""
+        dx2 = dx**2
+        temp = (
+            (jnp.roll(u, -1, axis=0) + jnp.roll(u, 1, axis=0)) / dx2[0]
+            + (jnp.roll(u, -1, axis=1) + jnp.roll(u, 1, axis=1)) / dx2[1]
+            + (jnp.roll(u, -1, axis=2) + jnp.roll(u, 1, axis=2)) / dx2[2]
+        )
+        denom = 2.0 * (1 / dx2[0] + 1 / dx2[1] + 1 / dx2[2])
+        return u + 1.5 * (f - PoissonMultigridSolver.laplacian(u, dx)) / denom
 
-        @partial(jax.jit, static_argnums=(1,))
-        def prolongate(
-            coarse_grid: jnp.ndarray, 
-            fine_shape: Tuple[int, int, int]
-        ) -> jnp.ndarray:
-            """補間演算子（JAX最適化版）"""
-            fine_grid = jnp.zeros(fine_shape)
+    @staticmethod
+    @partial(jax.jit, static_argnums=(3,))
+    def relax(
+        u: jnp.ndarray, f: jnp.ndarray, dx: jnp.ndarray, num_iter: int
+    ) -> jnp.ndarray:
+        """Gauss-Seidel緩和法（ベクトル化版）"""
 
-            # 直接点の補間
-            fine_grid = fine_grid.at[::2, ::2, ::2].set(coarse_grid)
+        def body_fun(i, u):
+            return PoissonMultigridSolver._gauss_seidel_step(u, f, dx)
 
-            # エッジの線形補間
-            fine_grid = fine_grid.at[1::2, ::2, ::2].set(
-                (fine_grid[:-1:2, ::2, ::2] + fine_grid[2::2, ::2, ::2]) / 2
-            )
-            fine_grid = fine_grid.at[::2, 1::2, ::2].set(
-                (fine_grid[::2, :-1:2, ::2] + fine_grid[::2, 2::2, ::2]) / 2
-            )
-            fine_grid = fine_grid.at[::2, ::2, 1::2].set(
-                (fine_grid[::2, ::2, :-1:2] + fine_grid[::2, ::2, 2::2]) / 2
-            )
+        return lax.fori_loop(0, num_iter, body_fun, u)
 
-            return fine_grid
+    @staticmethod
+    @jax.jit
+    def restrict(fine: jnp.ndarray) -> jnp.ndarray:
+        """制限演算子（ベクトル化版）"""
+        return jnp.mean(
+            fine.reshape(
+                fine.shape[0] // 2, 2, fine.shape[1] // 2, 2, fine.shape[2] // 2, 2
+            ),
+            axis=(1, 3, 5),
+        )
 
+    @staticmethod
+    @partial(jax.jit, static_argnums=(1,))
+    def prolong(coarse: jnp.ndarray, fine_shape: Tuple[int, ...]) -> jnp.ndarray:
+        """補間演算子（ベクトル化版）"""
+        # まず粗グリッドの点を配置
+        fine = jnp.zeros(fine_shape, dtype=coarse.dtype)
+        fine = fine.at[::2, ::2, ::2].set(coarse)
+
+        # x方向の補間（内部点のみ）
+        x_interp = jnp.arange(1, fine_shape[0] - 1, 2)
+        fine = fine.at[x_interp, ::2, ::2].set(
+            0.5 * (fine[x_interp - 1, ::2, ::2] + fine[x_interp + 1, ::2, ::2])
+        )
+
+        # y方向の補間（内部点のみ）
+        y_interp = jnp.arange(1, fine_shape[1] - 1, 2)
+        fine = fine.at[:, y_interp, ::2].set(
+            0.5 * (fine[:, y_interp - 1, ::2] + fine[:, y_interp + 1, ::2])
+        )
+
+        # z方向の補間（内部点のみ）
+        z_interp = jnp.arange(1, fine_shape[2] - 1, 2)
+        fine = fine.at[:, :, z_interp].set(
+            0.5 * (fine[:, :, z_interp - 1] + fine[:, :, z_interp + 1])
+        )
+
+        return fine
+
+    def v_cycle(
+        self, u: jnp.ndarray, f: jnp.ndarray, dx: jnp.ndarray, level: int
+    ) -> jnp.ndarray:
+        """Vサイクル（最適化版）"""
+
+        # JITコンパイルされた内部関数を定義
         @partial(jax.jit, static_argnums=(3,))
-        def smooth(
-            solution: jnp.ndarray, 
-            rhs: jnp.ndarray, 
-            dx: jnp.ndarray, 
-            is_coarse_grid: bool
-        ) -> jnp.ndarray:
-            """スムーサー（JAX最適化版）"""
-            num_iterations = 50 if is_coarse_grid else 2
-            dx2 = dx * dx
+        def _v_cycle_impl(u, f, dx, level):
+            # 最粗レベルでの処理
+            if level == self.num_levels - 1:
+                return self.relax(u, f, dx * (2**level), 50)
 
-            def update_solution(u):
-                """単一の反復更新"""
-                new_u = u.copy()
-                
-                # 内部点の更新
-                for i in range(1, u.shape[0] - 1):
-                    for j in range(1, u.shape[1] - 1):
-                        for k in range(1, u.shape[2] - 1):
-                            # 隣接点からの寄与
-                            neighbors_sum = (
-                                (u[i + 1, j, k] + u[i - 1, j, k]) / dx2[0]
-                                + (u[i, j + 1, k] + u[i, j - 1, k]) / dx2[1]
-                                + (u[i, j, k + 1] + u[i, j, k - 1]) / dx2[2]
-                            )
-                            
-                            # 係数の計算
-                            coeff = 2.0 * (1 / dx2[0] + 1 / dx2[1] + 1 / dx2[2])
-                            
-                            # SOR更新
-                            new_u = new_u.at[i, j, k].set(
-                                (1 - 1.5) * u[i, j, k] 
-                                + (1.5 / coeff) * (neighbors_sum - rhs[i, j, k])
-                            )
-                
-                return new_u
+            # 前緩和
+            u = self.relax(u, f, dx * (2**level), 2)
 
-            # 固定回数の反復
-            def body_fun(_, x):
-                return update_solution(x)
-            
-            return jax.lax.fori_loop(0, num_iterations, body_fun, solution)
+            # 残差の計算
+            residual = f - self.laplacian(u, dx * (2**level))
 
-        # オペレータの設定
-        self.restrict = restrict
-        self.prolongate = prolongate
-        self.smooth = smooth
+            # 粗いグリッドへの制限
+            coarse_residual = self.restrict(residual)
+            coarse_correction = jnp.zeros_like(coarse_residual)
 
-        # ラプラシアンのJIT最適化
-        self.laplacian_operator = jax.jit(self.laplacian_operator)
+            # 粗いグリッドでの解法
+            coarse_correction = _v_cycle_impl(
+                coarse_correction, coarse_residual, dx, level + 1
+            )
+
+            # 補正の補間
+            correction = self.prolong(coarse_correction, u.shape)
+            u = u + correction
+
+            # 後緩和
+            return self.relax(u, f, dx * (2**level), 2)
+
+        # 内部関数を呼び出し
+        return _v_cycle_impl(u, f, dx, level)
 
     def solve(
         self,
@@ -142,83 +167,42 @@ class PoissonMultigridSolver(PoissonSolverBase):
         initial_guess: Optional[Union[jnp.ndarray, ScalarField]] = None,
     ) -> jnp.ndarray:
         """Poisson方程式を解く"""
-        # 入力の検証と配列への変換
+        logger.info("マルチグリッドソルバーを初期化中...")
         rhs_array, initial_array = self.validate_input(rhs, initial_guess)
-
-        # 初期解の準備
-        solution = initial_array if initial_array is not None else jnp.zeros_like(rhs_array)
-
-        # グリッド間隔
+        solution = (
+            initial_array if initial_array is not None else jnp.zeros_like(rhs_array)
+        )
         dx = jnp.array(self.config.dx)
 
-        def multigrid_cycle(solution, rhs, level):
-            """単一のマルチグリッドサイクル（JIT最適化）"""
-            # 最も粗いレベルの処理
-            if level == self.num_levels - 1:
-                return self.smooth(solution, rhs, dx, is_coarse_grid=True)
-            
-            # 通常のマルチグリッドサイクル
-            # 前平滑化
-            solution = self.smooth(solution, rhs, dx, is_coarse_grid=False)
+        # JITコンパイルされた内部関数として定義
+        @jax.jit
+        def iteration_step(state):
+            """単一の反復ステップ"""
+            u, best_u, min_residual = state
+            u = self.v_cycle(u, rhs_array, dx, 0)
+            residual = jnp.linalg.norm(rhs_array - self.laplacian(u, dx))
+            best_u = jnp.where(residual < min_residual, u, best_u)
+            min_residual = jnp.minimum(residual, min_residual)
+            return (u, best_u, min_residual), residual
 
-            # 残差の計算
-            residual = rhs - self.laplacian_operator(solution)
+        # メインループ
+        logger.info("反復計算を開始...")
+        state = (solution, solution, jnp.inf)
 
-            # 粗いグリッドへの制限
-            coarse_residual = self.restrict(residual, residual.shape)
-            coarse_solution = jnp.zeros_like(coarse_residual)
+        for i in range(self.config.max_iterations):
+            if i % 10 == 0:
+                logger.info(f"反復 {i}/{self.config.max_iterations}")
+            state, residual = iteration_step(state)
+            if residual < self.config.tolerance:
+                logger.info(f"収束達成: 残差 = {residual:.2e}")
+                break
 
-            # 粗いグリッドでの解法
-            coarse_solution = multigrid_cycle(coarse_solution, coarse_residual, level + 1)
-
-            # 補正の補間と適用
-            correction = self.prolongate(coarse_solution, solution.shape)
-            solution = solution + correction
-
-            # 後平滑化
-            solution = self.smooth(solution, rhs, dx, is_coarse_grid=False)
-
-            return solution
-
-        # ソルバーループ関数
-        def solver_iteration(state):
-            """単一のソルバー反復"""
-            solution, best_solution, best_residual = state
-            
-            # マルチグリッドサイクルの適用
-            solution = multigrid_cycle(solution, rhs_array, 0)
-            
-            # 残差の計算
-            residual = jnp.max(jnp.abs(rhs_array - self.laplacian_operator(solution)))
-            
-            # より良い解の選択
-            new_best_solution = jax.lax.cond(
-                residual < best_residual,
-                lambda _: solution,
-                lambda _: best_solution
-            )
-            new_best_residual = jnp.minimum(residual, best_residual)
-            
-            return solution, new_best_solution, new_best_residual
-
-        # 初期状態の設定
-        initial_state = (solution, solution, jnp.inf)
-        
-        # メインソルバーループ
-        final_state = jax.lax.fori_loop(
-            0, self.config.max_iterations, 
-            lambda _, state: solver_iteration(state), 
-            initial_state
-        )
-        
-        # 最終的な解と残差の取得
-        solution, best_solution, final_residual = final_state
-
-        # 状態の更新
-        self._iteration_count = self.config.max_iterations
-        self._converged = final_residual < self.config.tolerance
+        solution, best_solution, final_residual = state
+        self._iteration_count = i + 1
+        self._converged = residual < self.config.tolerance
         self._error_history = [float(final_residual)]
 
+        logger.info(f"ソルバー終了: 最終残差 = {final_residual:.2e}")
         return best_solution
 
     def get_diagnostics(self) -> Dict[str, Any]:
