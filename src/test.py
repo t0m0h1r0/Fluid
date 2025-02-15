@@ -45,9 +45,9 @@ def test_poisson_solvers():
 
     # ソルバーの初期化
     solvers = [
+        PoissonCGSolver(config),
         PoissonMultigridSolver(config),
         PoissonSORSolver(config),
-        PoissonCGSolver(config),
     ]
 
     # 各ソルバーをテスト
@@ -58,7 +58,7 @@ def test_poisson_solvers():
         # 結果の比較
         error = np.max(np.abs(numerical_sol - analytical_sol))
         print(f"Max error: {error:.6e}")
-        assert error < 1e-2, f"Error is too large for {solver.__class__.__name__}"
+        assert error < 1e-5, f"Error is too large for {solver.__class__.__name__}"
 
 
 if __name__ == "__main__":
