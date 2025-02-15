@@ -2,7 +2,7 @@
 共役勾配法によるPoisson方程式の数値解法（JAX最適化版）
 """
 
-from typing import Optional, Dict, Any, Union, Tuple
+from typing import Optional, Dict, Any, Union
 import jax
 import jax.numpy as jnp
 import jax.lax as lax
