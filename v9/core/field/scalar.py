@@ -7,6 +7,7 @@ from .base import Field, FieldFactory, GridInfo
 if TYPE_CHECKING:
     from .vector import VectorField
 
+
 class ScalarField(Field):
     """3次元スカラー場"""
 
@@ -21,7 +22,7 @@ class ScalarField(Field):
 
         if np.isscalar(initial_value):
             self._data = np.full(grid.shape, float(initial_value))
-        elif hasattr(initial_value, 'shape'):  # np.ndarray, jax.numpy.ndarray, etc.
+        elif hasattr(initial_value, "shape"):  # np.ndarray, jax.numpy.ndarray, etc.
             if initial_value.shape != grid.shape:
                 raise ValueError("初期値の形状がグリッドと一致しません")
             self._data = np.asarray(initial_value)
@@ -48,10 +49,7 @@ class ScalarField(Field):
             return FieldFactory.create_scalar_field(self.grid, grad_data)
         else:
             # 全方向の勾配
-            grads = [
-                np.gradient(self._data, d, axis=i)
-                for i, d in enumerate(self.dx)
-            ]
+            grads = [np.gradient(self._data, d, axis=i) for i, d in enumerate(self.dx)]
             return FieldFactory.create_vector_field(self.grid, tuple(grads))
 
     def divergence(self) -> ScalarField:
@@ -89,7 +87,9 @@ class ScalarField(Field):
             return FieldFactory.create_scalar_field(self.grid, self._data - other._data)
         return NotImplemented
 
-    def __mul__(self, other: Union[ScalarField, float, VectorField]) -> Union[ScalarField, VectorField]:
+    def __mul__(
+        self, other: Union[ScalarField, float, VectorField]
+    ) -> Union[ScalarField, VectorField]:
         """乗算演算子"""
         if np.isscalar(other):
             return FieldFactory.create_scalar_field(self.grid, self._data * other)
@@ -116,7 +116,7 @@ class ScalarField(Field):
 
     def __pow__(self, power: Union[int, float]) -> ScalarField:
         """累乗演算子"""
-        return FieldFactory.create_scalar_field(self.grid, self._data ** power)
+        return FieldFactory.create_scalar_field(self.grid, self._data**power)
 
     def __neg__(self) -> ScalarField:
         """単項マイナス演算子"""

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Protocol, TypeVar, TYPE_CHECKING, Tuple
+from typing import TypeVar, TYPE_CHECKING, Tuple
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
@@ -9,12 +9,14 @@ if TYPE_CHECKING:
     from .vector import VectorField
 
 # 型変数の定義
-FieldType = TypeVar('FieldType', bound='Field')
-ComponentType = TypeVar('ComponentType', np.ndarray, list[np.ndarray])
+FieldType = TypeVar("FieldType", bound="Field")
+ComponentType = TypeVar("ComponentType", np.ndarray, list[np.ndarray])
+
 
 @dataclass(frozen=True)
 class GridInfo:
     """3D計算グリッドの不変情報を表現"""
+
     shape: Tuple[int, int, int]
     dx: Tuple[float, float, float]
     time: float = 0.0
@@ -30,9 +32,10 @@ class GridInfo:
         if self.time < 0:
             raise ValueError("時刻は非負である必要があります")
 
+
 class Field(ABC):
     """Field の基底抽象クラス"""
-    
+
     def __init__(self, grid: GridInfo):
         """
         Args:
@@ -70,7 +73,7 @@ class Field(ABC):
     def divergence(self) -> ScalarField:
         """発散を計算"""
         pass
-    
+
     @abstractmethod
     def copy(self) -> Field:
         """深いコピーを作成"""
@@ -92,20 +95,24 @@ class Field(ABC):
         """文字列表現"""
         return f"{self.__class__.__name__}(shape={self.shape}, time={self.grid.time})"
 
+
 class FieldFactory:
     """フィールドの生成を担当するファクトリークラス"""
-    
+
     @staticmethod
-    def create_scalar_field(grid: GridInfo, initial_value: float | np.ndarray = 0.0) -> ScalarField:
+    def create_scalar_field(
+        grid: GridInfo, initial_value: float | np.ndarray = 0.0
+    ) -> ScalarField:
         """ScalarField インスタンスを生成"""
         from .scalar import ScalarField
+
         return ScalarField(grid, initial_value)
 
     @staticmethod
     def create_vector_field(
-        grid: GridInfo, 
-        initial_values: Tuple[float | np.ndarray, ...] = (0.0, 0.0, 0.0)
+        grid: GridInfo, initial_values: Tuple[float | np.ndarray, ...] = (0.0, 0.0, 0.0)
     ) -> VectorField:
         """VectorField インスタンスを生成"""
         from .vector import VectorField
+
         return VectorField(grid, initial_values)
