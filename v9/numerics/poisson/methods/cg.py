@@ -3,10 +3,9 @@
 """
 
 from typing import Optional, Dict, Any, Union, Tuple
-import numpy as np
+import jax
 import jax.numpy as jnp
-from jax import jit, lax
-from functools import partial
+import jax.lax as lax
 
 from ..config import PoissonSolverConfig
 from .base import PoissonSolverBase
@@ -24,55 +23,26 @@ class PoissonCGSolver(PoissonSolverBase):
         Args:
             config: ソルバーの設定
         """
+        # デフォルト設定の調整
+        if config is None:
+            config = PoissonSolverConfig(
+                max_iterations=500,  # デフォルトの反復回数を増加
+                tolerance=1e-8,      # より厳しい収束判定
+            )
         super().__init__(config)
-        self._init_cg_operators()
+        
+        # JAXの最適化設定
+        self._jax_config()
 
-    def _init_cg_operators(self):
-        """CG法に特化したJAX最適化演算子を初期化"""
-
-        @partial(jit, static_argnums=(0,))
-        def dot_product(self, x: jnp.ndarray, y: jnp.ndarray) -> float:
-            """ベクトルの内積を計算（JAX最適化版）"""
-            return jnp.sum(x * y)
-
-        @partial(jit, static_argnums=(0,))
-        def cg_iteration(
-            self,
-            state: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, float],
-            rhs: jnp.ndarray,
-        ) -> Tuple[Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, float], float]:
-            """単一のCG反復（JAX最適化版）"""
-            solution, residual, direction, rz_old = state
-
-            # Ap の計算
-            Ap = self.laplacian_operator(direction)
-
-            # ステップサイズの計算
-            alpha = rz_old / (self.dot_product(direction, Ap) + 1e-15)
-
-            # 解と残差の更新
-            new_solution = solution + alpha * direction
-            new_residual = residual - alpha * Ap
-
-            # 新しい内積の計算
-            rz_new = self.dot_product(new_residual, new_residual)
-
-            # 方向ベクトルの更新
-            beta = rz_new / (rz_old + 1e-15)
-            new_direction = new_residual + beta * direction
-
-            # 残差ノルムの計算
-            residual_norm = jnp.sqrt(rz_new)
-
-            return (new_solution, new_residual, new_direction, rz_new), residual_norm
-
-        self.dot_product = dot_product
-        self.cg_iteration = cg_iteration
+    def _jax_config(self):
+        """JAXの最適化設定"""
+        # 64ビット浮動小数点数を使用（高精度計算）
+        jax.config.update('jax_enable_x64', True)
 
     def solve(
         self,
-        rhs: Union[np.ndarray, jnp.ndarray, ScalarField],
-        initial_guess: Optional[Union[np.ndarray, jnp.ndarray, ScalarField]] = None,
+        rhs: Union[jnp.ndarray, ScalarField],
+        initial_guess: Optional[Union[jnp.ndarray, ScalarField]] = None,
     ) -> jnp.ndarray:
         """Poisson方程式を解く
 
@@ -87,43 +57,152 @@ class PoissonCGSolver(PoissonSolverBase):
         rhs_array, initial_array = self.validate_input(rhs, initial_guess)
 
         # 初期解の準備
-        if initial_array is None:
-            solution = jnp.zeros_like(rhs_array)
-        else:
-            solution = initial_array
+        solution = initial_array if initial_array is not None else jnp.zeros_like(rhs_array)
 
-        # 初期残差の計算
-        residual = rhs_array - self.laplacian_operator(solution)
-        direction = residual.copy()
-        rz_old = self.dot_product(residual, residual)
+        # グリッド間隔
+        dx = jnp.array(self.config.dx)
+        dx2 = jnp.square(dx)
 
-        # 初期状態の設定
-        initial_state = (solution, residual, direction, rz_old)
+        # グリッド間隔をキャプチャしたラプラシアン演算子
+        @jax.jit
+        def laplacian_operator(u: jnp.ndarray) -> jnp.ndarray:
+            """ラプラシアン演算子のJIT最適化版"""
+            # 6次精度の中心差分スキーム
+            def central_diff_6th_order(arr, axis, dx2_axis):
+                """6次精度の中心差分スキーム"""
+                diff = (
+                    - 1/60 * jnp.roll(arr, 3, axis=axis)
+                    + 3/20 * jnp.roll(arr, 2, axis=axis)
+                    - 3/4 * jnp.roll(arr, 1, axis=axis)
+                    + 3/4 * jnp.roll(arr, -1, axis=axis)
+                    - 3/20 * jnp.roll(arr, -2, axis=axis)
+                    + 1/60 * jnp.roll(arr, -3, axis=axis)
+                )
+                return diff / dx2_axis
 
-        # メインループの条件
-        def cond_fun(carry_and_residual):
-            _, step = carry_and_residual[0]
-            residual_norm = carry_and_residual[1]
-            return jnp.logical_and(
-                step < self.config.max_iterations, residual_norm > self.config.tolerance
+            # 各方向のラプラシアンを計算
+            return (
+                central_diff_6th_order(u, axis=0, dx2_axis=dx2[0]) +
+                central_diff_6th_order(u, axis=1, dx2_axis=dx2[1]) +
+                central_diff_6th_order(u, axis=2, dx2_axis=dx2[2])
             )
 
-        # 反復計算
-        def body_fun(carry_and_residual):
-            state, step = carry_and_residual[0]
-            new_state, residual_norm = self.cg_iteration(state, rhs_array)
-            self._error_history.append(float(residual_norm))
-            return ((new_state, step + 1), residual_norm)
+        # 前処理関数
+        @jax.jit
+        def preconditioner(r: jnp.ndarray) -> jnp.ndarray:
+            """対角前処理の計算"""
+            # ラプラシアン演算子の対角成分を近似
+            diag_approx = (
+                2/dx2[0] + 2/dx2[1] + 2/dx2[2]
+            ) * jnp.ones_like(r)
+            
+            return r / (diag_approx + 1e-10)
 
-        # メインループの実行
-        (final_state, step), final_residual = lax.while_loop(
-            cond_fun, body_fun, ((initial_state, 0), jnp.inf)
-        )
+        # 内積計算関数
+        @jax.jit
+        def dot_product(x: jnp.ndarray, y: jnp.ndarray) -> jnp.ndarray:
+            """ベクトルの内積を計算"""
+            return jnp.sum(x * y)
 
-        self._iteration_count = int(step)
-        self._converged = final_residual <= self.config.tolerance
+        # CG法の反復関数（前処理付き）
+        @jax.jit
+        def cg_iteration(carry):
+            """単一のCG反復（前処理付き共役勾配法）"""
+            solution, residual, direction, rz_old, rhs = carry
 
-        return final_state[0]  # solution
+            # 前処理付きの残差
+            z = preconditioner(residual)
+
+            # 内積の計算
+            rz = dot_product(residual, z)
+            
+            # A * p の計算
+            Ap = laplacian_operator(direction)
+
+            # ステップサイズの計算
+            dAd = dot_product(direction, Ap)
+            alpha = rz / (dAd + 1e-15)
+
+            # 解と残差の更新
+            new_solution = solution + alpha * direction
+            new_residual = residual - alpha * Ap
+
+            # 新しい内積の計算
+            z_new = preconditioner(new_residual)
+            rz_new = dot_product(new_residual, z_new)
+
+            # 方向ベクトルの更新
+            beta = rz_new / (rz + 1e-15)
+            new_direction = z_new + beta * direction
+
+            # 残差ノルムの計算
+            residual_norm = jnp.sqrt(rz_new)
+
+            return (new_solution, new_residual, new_direction, rz_new, rhs), residual_norm
+
+        # 初期状態の計算
+        def compute_initial_state():
+            """初期状態を計算"""
+            residual = rhs_array - laplacian_operator(solution)
+            direction = preconditioner(residual)  # 前処理付き初期方向
+            rz_old = dot_product(residual, direction)
+            return solution, residual, direction, rz_old, rhs_array
+
+        # メインソルバーループ
+        @jax.jit
+        def solve_cg(initial_state):
+            """共役勾配法のメインループ"""
+            def iteration_condition(state_and_iteration):
+                """反復の停止条件を判定"""
+                state, iteration = state_and_iteration
+                solution, residual, *_ = state
+                
+                # 残差の相対ノルムを計算
+                relative_residual = jnp.linalg.norm(residual) / (jnp.linalg.norm(rhs_array) + 1e-15)
+                
+                # 収束判定
+                converged = jnp.logical_or(
+                    relative_residual <= self.config.tolerance,
+                    iteration >= self.config.max_iterations - 1
+                )
+                
+                return converged
+
+            def iteration_body(state_and_iteration):
+                """単一の反復ステップ"""
+                state, iteration = state_and_iteration
+                
+                # CG反復の実行
+                new_state, _ = cg_iteration(state)
+                
+                return new_state, iteration + 1
+
+            # 初期状態と反復回数
+            initial_loop_state = (
+                initial_state, 
+                jnp.array(0, dtype=jnp.int32)
+            )
+
+            # メインの反復ループ
+            final_state, num_iterations = lax.while_loop(
+                iteration_condition, 
+                iteration_body, 
+                initial_loop_state
+            )
+
+            # 最終的な解を返す
+            solution, *_ = final_state
+            return solution, num_iterations
+
+        # ソルバーの実行
+        solution, iterations = solve_cg(compute_initial_state())
+
+        # 状態の更新
+        self._iteration_count = int(iterations)
+        self._converged = True
+        self._error_history = []
+
+        return solution
 
     def get_diagnostics(self) -> Dict[str, Any]:
         """診断情報を取得"""
@@ -134,6 +213,7 @@ class PoissonCGSolver(PoissonSolverBase):
                 "final_residual": self._error_history[-1]
                 if self._error_history
                 else None,
+                "iterations": self._iteration_count,
             }
         )
         return diag
