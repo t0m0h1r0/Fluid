@@ -1,16 +1,17 @@
-from typing import Union, Optional
-import jax.numpy as jnp
-from jax import jit
-from .base import Field, GridInfo
-from .vector import VectorField
+from __future__ import annotations
+from typing import TYPE_CHECKING, Optional, Union
+import numpy as np
 
+from .base import Field, FieldFactory, GridInfo
+
+if TYPE_CHECKING:
+    from .vector import VectorField
 
 class ScalarField(Field):
     """3次元スカラー場"""
 
-    def __init__(self, grid: GridInfo, initial_value: Union[float, jnp.ndarray] = 0.0):
-        """
-        スカラー場を初期化
+    def __init__(self, grid: GridInfo, initial_value: Union[float, np.ndarray] = 0.0):
+        """スカラー場を初期化
 
         Args:
             grid: 計算グリッドの情報
@@ -18,22 +19,21 @@ class ScalarField(Field):
         """
         super().__init__(grid)
 
-        if jnp.isscalar(initial_value):
-            self._data = jnp.full(grid.shape, float(initial_value))
-        elif isinstance(initial_value, jnp.ndarray):
+        if np.isscalar(initial_value):
+            self._data = np.full(grid.shape, float(initial_value))
+        elif hasattr(initial_value, 'shape'):  # np.ndarray, jax.numpy.ndarray, etc.
             if initial_value.shape != grid.shape:
                 raise ValueError("初期値の形状がグリッドと一致しません")
-            self._data = initial_value
+            self._data = np.asarray(initial_value)
         else:
             raise TypeError(f"未対応の初期値型: {type(initial_value)}")
 
     @property
-    def data(self) -> jnp.ndarray:
+    def data(self) -> np.ndarray:
         """フィールドデータを取得"""
         return self._data
 
-    @jit
-    def gradient(self, axis: Optional[int] = None) -> Union["ScalarField", VectorField]:
+    def gradient(self, axis: Optional[int] = None) -> Union[ScalarField, VectorField]:
         """勾配を計算
 
         Args:
@@ -44,120 +44,104 @@ class ScalarField(Field):
         """
         if axis is not None:
             # 1方向の勾配
-            grad_data = jnp.gradient(self._data, self.grid.dx[axis], axis=axis)
-            return ScalarField(self.grid, grad_data)
+            grad_data = np.gradient(self._data, self.dx[axis], axis=axis)
+            return FieldFactory.create_scalar_field(self.grid, grad_data)
         else:
             # 全方向の勾配
             grads = [
-                jnp.gradient(self._data, d, axis=i) for i, d in enumerate(self.grid.dx)
+                np.gradient(self._data, d, axis=i)
+                for i, d in enumerate(self.dx)
             ]
-            return VectorField(self.grid, grads)
+            return FieldFactory.create_vector_field(self.grid, tuple(grads))
 
-    @jit
-    def laplacian(self) -> "ScalarField":
-        """ラプラシアンを計算"""
-        result = jnp.zeros_like(self._data)
-        for i, d in enumerate(self.grid.dx):
-            result += jnp.gradient(jnp.gradient(self._data, d, axis=i), d, axis=i)
-        return ScalarField(self.grid, result)
+    def divergence(self) -> ScalarField:
+        """スカラー場に対する発散（ラプラシアン）を計算"""
+        result = np.zeros_like(self._data)
+        for i, d in enumerate(self.dx):
+            result += np.gradient(np.gradient(self._data, d, axis=i), d, axis=i)
+        return FieldFactory.create_scalar_field(self.grid, result)
 
     def integrate(self) -> float:
         """領域全体の積分値を計算"""
-        return float(jnp.sum(self._data * jnp.prod(self.grid.dx)))
+        return float(np.sum(self._data * np.prod(self.dx)))
 
-    def copy(self) -> "ScalarField":
+    def copy(self) -> ScalarField:
         """深いコピーを作成"""
-        return ScalarField(self.grid, jnp.array(self._data))
+        return FieldFactory.create_scalar_field(self.grid, np.array(self._data))
 
-    def __add__(self, other: Union["ScalarField", float]) -> "ScalarField":
+    def __add__(self, other: Union[ScalarField, float]) -> ScalarField:
         """加算演算子"""
-        if jnp.isscalar(other):
-            return ScalarField(self.grid, self._data + other)
+        if np.isscalar(other):
+            return FieldFactory.create_scalar_field(self.grid, self._data + other)
         elif isinstance(other, ScalarField):
             if self.grid != other.grid:
                 raise ValueError("グリッド情報が一致しません")
-            return ScalarField(self.grid, self._data + other._data)
+            return FieldFactory.create_scalar_field(self.grid, self._data + other._data)
         return NotImplemented
 
-    def __sub__(self, other: Union["ScalarField", float]) -> "ScalarField":
+    def __sub__(self, other: Union[ScalarField, float]) -> ScalarField:
         """減算演算子"""
-        if jnp.isscalar(other):
-            return ScalarField(self.grid, self._data - other)
+        if np.isscalar(other):
+            return FieldFactory.create_scalar_field(self.grid, self._data - other)
         elif isinstance(other, ScalarField):
             if self.grid != other.grid:
                 raise ValueError("グリッド情報が一致しません")
-            return ScalarField(self.grid, self._data - other._data)
+            return FieldFactory.create_scalar_field(self.grid, self._data - other._data)
         return NotImplemented
 
-    def __mul__(
-        self, other: Union["ScalarField", float, VectorField]
-    ) -> Union["ScalarField", VectorField]:
-        """乗算演算子
-
-        スカラー場 * スカラー値
-        スカラー場 * スカラー場
-        スカラー場 * ベクトル場
-        """
-        if jnp.isscalar(other):
-            # スカラー倍
-            return ScalarField(self.grid, self._data * other)
+    def __mul__(self, other: Union[ScalarField, float, VectorField]) -> Union[ScalarField, VectorField]:
+        """乗算演算子"""
+        if np.isscalar(other):
+            return FieldFactory.create_scalar_field(self.grid, self._data * other)
         elif isinstance(other, ScalarField):
-            # スカラー場同士の積
             if self.grid != other.grid:
                 raise ValueError("グリッド情報が一致しません")
-            return ScalarField(self.grid, self._data * other._data)
+            return FieldFactory.create_scalar_field(self.grid, self._data * other._data)
         elif isinstance(other, VectorField):
-            # スカラー場とベクトル場の積
-            return other * self
+            if self.grid != other.grid:
+                raise ValueError("グリッド情報が一致しません")
+            components = [comp.data * self._data for comp in other.components]
+            return FieldFactory.create_vector_field(self.grid, tuple(components))
         return NotImplemented
 
-    def __truediv__(self, other: Union["ScalarField", float]) -> "ScalarField":
+    def __truediv__(self, other: Union[ScalarField, float]) -> ScalarField:
         """除算演算子"""
-        if jnp.isscalar(other):
-            return ScalarField(self.grid, self._data / other)
+        if np.isscalar(other):
+            return FieldFactory.create_scalar_field(self.grid, self._data / other)
         elif isinstance(other, ScalarField):
             if self.grid != other.grid:
                 raise ValueError("グリッド情報が一致しません")
-            return ScalarField(self.grid, self._data / other._data)
+            return FieldFactory.create_scalar_field(self.grid, self._data / other._data)
         return NotImplemented
 
-    def __pow__(self, power: Union[int, float]) -> "ScalarField":
+    def __pow__(self, power: Union[int, float]) -> ScalarField:
         """累乗演算子"""
-        return ScalarField(self.grid, self._data**power)
+        return FieldFactory.create_scalar_field(self.grid, self._data ** power)
 
-    def __neg__(self) -> "ScalarField":
+    def __neg__(self) -> ScalarField:
         """単項マイナス演算子"""
-        return ScalarField(self.grid, -self._data)
+        return FieldFactory.create_scalar_field(self.grid, -self._data)
 
-    def __eq__(self, other: "ScalarField") -> bool:
+    def __eq__(self, other: ScalarField) -> bool:
         """等価性比較"""
         if not isinstance(other, ScalarField):
             return NotImplemented
         if self.grid != other.grid:
             return False
-        return jnp.array_equal(self._data, other._data)
+        return np.array_equal(self._data, other._data)
 
-    def __ne__(self, other: "ScalarField") -> bool:
-        """非等価性比較"""
-        result = self.__eq__(other)
-        return not result if result is not NotImplemented else NotImplemented
-
-    @jit
     def min(self) -> float:
         """最小値を取得"""
-        return float(jnp.min(self._data))
+        return float(np.min(self._data))
 
-    @jit
     def max(self) -> float:
         """最大値を取得"""
-        return float(jnp.max(self._data))
+        return float(np.max(self._data))
 
-    @jit
     def mean(self) -> float:
         """平均値を取得"""
-        return float(jnp.mean(self._data))
+        return float(np.mean(self._data))
 
-    @jit
     def sum(self) -> float:
         """合計値を取得"""
-        return float(jnp.sum(self._data))
+        return float(np.sum(self._data))
