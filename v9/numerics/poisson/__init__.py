@@ -14,6 +14,7 @@ from .methods.base import PoissonSolverBase, PoissonSolverConfig
 from .config import PoissonSolverConfig as PoissonConfig
 from .methods.sor import PoissonSORSolver
 from .methods.multigrid import PoissonMultigridSolver
+from .methods.cg import PoissonCGSolver
 
 __all__ = [
     # 基底クラスとインターフェース
