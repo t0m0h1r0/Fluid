@@ -2,12 +2,12 @@
 3次元ベクトル場を提供するモジュール
 
 このモジュールは、流体力学計算で使用される3次元ベクトル場の実装を提供します。
-内部で.baseモジュールのField基底クラスを継承しています。
+jax.numpyを使用して高精度な数値計算を実現します。
 """
 
 from __future__ import annotations
 from typing import List, Tuple, Union, Sequence
-import jax.numpy as np
+import jax.numpy as jnp
 
 from .base import Field, FieldFactory, GridInfo
 from .scalar import ScalarField
@@ -19,25 +19,25 @@ class VectorField(Field):
     def __init__(
         self,
         grid: GridInfo,
-        initial_values: Sequence[Union[float, np.ndarray, list]] = (0.0, 0.0, 0.0),
+        initial_values: Sequence[Union[float, jnp.ndarray, list]] = (0.0, 0.0, 0.0),
     ):
         """ベクトル場を初期化
 
         Args:
             grid: 計算グリッドの情報
-            initial_values: 各成分の初期値。数値、numpy配列、またはリストのシーケンス。
+            initial_values: 各成分の初期値。数値、配列、またはリストのシーケンス。
         """
         super().__init__(grid)
 
-        # 入力値の正規化とバリデーション
+        # 各成分の初期化（修正版）
         components = []
         for value in initial_values:
-            if np.isscalar(value):
+            if jnp.isscalar(value):
                 # スカラー値の場合
                 components.append(FieldFactory.create_scalar_field(grid, float(value)))
-            elif isinstance(value, (np.ndarray, list)):
-                # 配列またはリストの場合
-                data = np.array(value, dtype=np.float64)
+            elif hasattr(value, "__array__"):  # ndarray, DeviceArray など
+                # 配列の場合
+                data = jnp.asarray(value, dtype=jnp.float64)
                 if data.shape != grid.shape:
                     raise ValueError("初期値の形状がグリッドと一致しません")
                 components.append(FieldFactory.create_scalar_field(grid, data))
@@ -51,7 +51,7 @@ class VectorField(Field):
         self._components = tuple(components)
 
     @property
-    def data(self) -> Tuple[np.ndarray, ...]:
+    def data(self) -> Tuple[jnp.ndarray, ...]:
         """フィールドデータを取得"""
         return tuple(comp.data for comp in self._components)
 
@@ -63,32 +63,39 @@ class VectorField(Field):
     def gradient(self, axis: int | None = None) -> Union[VectorField, VectorField]:
         """勾配を計算（各成分のベクトル場）"""
         if axis is not None:
-            # 1方向の勾配
-            grads = [comp.gradient(axis) for comp in self._components]
-            return FieldFactory.create_vector_field(
-                self.grid, tuple(g.data for g in grads)
-            )
+            # 1方向の勾配（中心差分法、高次精度）
+            grad_components = [
+                jnp.gradient(comp.data, self.dx[axis], axis=axis, edge_order=2)
+                for comp in self._components
+            ]
+            return FieldFactory.create_vector_field(self.grid, tuple(grad_components))
         else:
             # 全方向の勾配（ヤコビアン）
             all_grads = []
             for comp in self._components:
-                comp_grads = [comp.gradient(i).data for i in range(len(self.dx))]
+                comp_grads = [
+                    jnp.gradient(comp.data, self.dx[i], axis=i, edge_order=2)
+                    for i in range(len(self.dx))
+                ]
                 all_grads.extend(comp_grads)
             return FieldFactory.create_vector_field(self.grid, tuple(all_grads))
 
     def divergence(self) -> ScalarField:
         """発散を計算: ∇⋅v"""
-        result = np.zeros(self.shape, dtype=np.float64)
+        result = jnp.zeros(self.shape, dtype=jnp.float64)
         for i, comp in enumerate(self._components):
             # 各成分の偏微分を中心差分で計算（高次精度）
-            result += np.gradient(comp.data, self.dx[i], axis=i, edge_order=2)
+            result += jnp.gradient(comp.data, self.dx[i], axis=i, edge_order=2)
         return FieldFactory.create_scalar_field(self.grid, result)
 
     def curl(self) -> VectorField:
         """回転を計算: ∇×v"""
         # 各方向の偏微分を計算（高次精度）
         derivs = [
-            [comp.gradient(j).data for j in range(len(self.dx))]
+            [
+                jnp.gradient(comp.data, self.dx[j], axis=j, edge_order=2)
+                for j in range(len(self.dx))
+            ]
             for i, comp in enumerate(self._components)
         ]
 
@@ -100,27 +107,26 @@ class VectorField(Field):
         return FieldFactory.create_vector_field(self.grid, (curl_x, curl_y, curl_z))
 
     def symmetric_gradient(self) -> VectorField:
-        """対称勾配テンソルを計算
-
-        ∇ᵤₛ = 0.5(∇u + ∇uᵀ)
-        """
+        """対称勾配テンソルを計算: ∇ᵤₛ = 0.5(∇u + ∇uᵀ)"""
         # 対称勾配の各成分を計算
         components = []
         for i in range(3):
             for j in range(3):
                 # 対称勾配の各成分: 0.5(∂uᵢ/∂xⱼ + ∂uⱼ/∂xᵢ)
-                grad_i = self._components[i].gradient(j)
-                grad_j = self._components[j].gradient(i)
+                grad_i = jnp.gradient(
+                    self._components[i].data, self.dx[j], axis=j, edge_order=2
+                )
+                grad_j = jnp.gradient(
+                    self._components[j].data, self.dx[i], axis=i, edge_order=2
+                )
                 component = 0.5 * (grad_i + grad_j)
                 components.append(component)
 
-        return FieldFactory.create_vector_field(
-            self.grid, tuple(comp.data for comp in components[:3])
-        )
+        return FieldFactory.create_vector_field(self.grid, tuple(components[:3]))
 
     def magnitude(self) -> ScalarField:
         """ベクトルの大きさを計算"""
-        magnitude_array = np.sqrt(
+        magnitude_array = jnp.sqrt(
             sum(comp.data * comp.data for comp in self._components)
         )
         return FieldFactory.create_scalar_field(self.grid, magnitude_array)
@@ -139,14 +145,7 @@ class VectorField(Field):
         return self / (magnitude + epsilon)
 
     def dot(self, other: VectorField) -> ScalarField:
-        """内積を計算: v⋅w
-
-        Args:
-            other: 内積を取る相手のベクトル場
-
-        Returns:
-            内積を表すスカラー場
-        """
+        """内積を計算: v⋅w"""
         if self.grid != other.grid:
             raise ValueError("グリッド情報が一致しません")
 
@@ -156,14 +155,7 @@ class VectorField(Field):
         return FieldFactory.create_scalar_field(self.grid, dot_product)
 
     def cross(self, other: VectorField) -> VectorField:
-        """外積を計算: v×w
-
-        Args:
-            other: 外積を取る相手のベクトル場
-
-        Returns:
-            外積を表すベクトル場
-        """
+        """外積を計算: v×w"""
         if self.grid != other.grid:
             raise ValueError("グリッド情報が一致しません")
 
@@ -186,7 +178,7 @@ class VectorField(Field):
     def copy(self) -> VectorField:
         """深いコピーを作成"""
         return FieldFactory.create_vector_field(
-            self.grid, tuple(np.array(comp.data) for comp in self._components)
+            self.grid, tuple(jnp.array(comp.data) for comp in self._components)
         )
 
     def __add__(self, other: VectorField) -> VectorField:
@@ -215,9 +207,9 @@ class VectorField(Field):
 
     def __mul__(self, other: Union[float, ScalarField]) -> VectorField:
         """乗算演算子"""
-        if np.isscalar(other):
+        if jnp.isscalar(other):
             new_components = tuple(
-                comp.data * float(other) for comp in self._components
+                comp.data * jnp.float64(other) for comp in self._components
             )
             return FieldFactory.create_vector_field(self.grid, new_components)
         elif isinstance(other, ScalarField):
@@ -229,9 +221,9 @@ class VectorField(Field):
 
     def __truediv__(self, other: Union[float, ScalarField]) -> VectorField:
         """除算演算子"""
-        if np.isscalar(other):
-            other_float = float(other)
-            if abs(other_float) < np.finfo(np.float64).eps:
+        if jnp.isscalar(other):
+            other_float = jnp.float64(other)
+            if jnp.abs(other_float) < jnp.finfo(jnp.float64).eps:
                 raise ValueError("ゼロ除算は許可されていません")
             new_components = tuple(comp.data / other_float for comp in self._components)
             return FieldFactory.create_vector_field(self.grid, new_components)
@@ -239,7 +231,7 @@ class VectorField(Field):
             if self.grid != other.grid:
                 raise ValueError("グリッド情報が一致しません")
             # ゼロ除算を防ぐための微小値を追加
-            epsilon = np.finfo(np.float64).eps
+            epsilon = jnp.finfo(jnp.float64).eps
             new_components = tuple(
                 comp.data / (other.data + epsilon) for comp in self._components
             )
@@ -258,6 +250,14 @@ class VectorField(Field):
         if self.grid != other.grid:
             return False
         return all(
-            np.array_equal(c1.data, c2.data)
+            jnp.array_equal(c1.data, c2.data)
             for c1, c2 in zip(self._components, other._components)
+        )
+
+    def norm(self, p: int = 2) -> float:
+        """p-ノルムを計算"""
+        return float(
+            jnp.linalg.norm(
+                jnp.stack([comp.data.ravel() for comp in self._components]), ord=p
+            )
         )

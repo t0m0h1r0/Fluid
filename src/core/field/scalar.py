@@ -22,12 +22,15 @@ class ScalarField(Field):
 
         if np.isscalar(initial_value):
             self._data = np.full(grid.shape, float(initial_value))
-        elif isinstance(initial_value, (np.ndarray, list)):
-            # リストの場合はnumpy配列に変換
-            data = np.array(initial_value, dtype=np.float64)
-            if data.shape != grid.shape:
-                raise ValueError("初期値の形状がグリッドと一致しません")
-            self._data = data
+        elif hasattr(initial_value, "__array__"):  # numpy.ndarray などの配列型
+            # JAX numpy 配列に変換
+            try:
+                data = np.asarray(initial_value, dtype=np.float64)
+                if data.shape != grid.shape:
+                    raise ValueError("初期値の形状がグリッドと一致しません")
+                self._data = data
+            except Exception as e:
+                raise ValueError(f"配列の変換に失敗: {e}")
         else:
             raise TypeError(f"未対応の初期値型: {type(initial_value)}")
 

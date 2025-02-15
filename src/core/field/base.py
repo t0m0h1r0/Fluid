@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TypeVar, TYPE_CHECKING, Tuple
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-import numpy as np
+import jax.numpy as np
 
 if TYPE_CHECKING:
     from .scalar import ScalarField
