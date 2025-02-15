@@ -188,21 +188,27 @@ class PoissonMultigridSolver(PoissonSolverBase):
         # メインループ
         logger.info("反復計算を開始...")
         state = (solution, solution, jnp.inf)
-
+        
         for i in range(self.config.max_iterations):
-            if i % 10 == 0:
-                logger.info(f"反復 {i}/{self.config.max_iterations}")
             state, residual = iteration_step(state)
+            
+            # 10回ごとまたはより頻繁な進捗表示
+            if i % 10 == 0 or residual < 1e-4:  # 収束に近づいたら頻繁に表示
+                logger.info(f"反復 {i}/{self.config.max_iterations}, 残差 = {residual:.2e}")
+            
             if residual < self.config.tolerance:
-                logger.info(f"収束達成: 残差 = {residual:.2e}")
+                logger.info(f"収束達成: 反復 {i+1}回, 最終残差 = {residual:.2e}")
                 break
-
+            
         solution, best_solution, final_residual = state
         self._iteration_count = i + 1
         self._converged = residual < self.config.tolerance
         self._error_history = [float(final_residual)]
-
-        logger.info(f"ソルバー終了: 最終残差 = {final_residual:.2e}")
+        
+        if not self._converged:
+            logger.warning(f"最大反復回数到達: 残差 = {final_residual:.2e}")
+        
+        logger.info(f"ソルバー終了: 反復回数 = {self._iteration_count}, 最終残差 = {final_residual:.2e}")
         return best_solution
 
     def get_diagnostics(self) -> Dict[str, Any]:
