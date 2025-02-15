@@ -1,115 +1,193 @@
 """
-SOR法によるPoissonソルバーの実装
+逐次過緩和法 (SOR: Successive Over-Relaxation) による
+Poisson方程式の数値解法
 
-SOR（Successive Over-Relaxation）法は、
-Gauss-Seidel法を緩和パラメータ（omega）で加速する反復法です。
+理論的背景:
+- ガウス・ザイデル法の収束を加速する反復法
+- 緩和パラメータ(ω)により収束特性を制御
+- 対称正定値行列に対して効果的
+
+数学的定式化:
+1. ガウス・ザイデル法の更新則を拡張
+2. 緩和パラメータによる加速
+3. 収束条件の厳密な評価
+
+主な特徴:
+- パラメータチューニングによる高速収束
+- メモリ効率が良い
+- 並列化が比較的容易
 """
 
-import numpy as np
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, Dict, Any
 
-from numerics.poisson import PoissonSolver
-from core.boundary import BoundaryCondition
-from ..base import PoissonSolverTerm
-from ..config import PoissonSolverConfig
+import jax.numpy as jnp
+from jax import jit
+from functools import partial
+
+from core.field import ScalarField
+from .base import PoissonSolverBase, PoissonSolverConfig
 
 
-class SORSolver(PoissonSolver):
-    """SOR法によるPoissonソルバー"""
+class PoissonSORSolver(PoissonSolverBase):
+    """
+    SOR法によるPoissonソルバー
+
+    逐次過緩和法を用いたPoisson方程式の数値解法
+    """
 
     def __init__(
         self,
         config: Optional[PoissonSolverConfig] = None,
-        boundary_conditions: Optional[List[BoundaryCondition]] = None,
-        terms: Optional[List[PoissonSolverTerm]] = None,
-        **kwargs,
+        relaxation_parameter: float = 1.5,
     ):
         """
         SORソルバーを初期化
 
         Args:
             config: ソルバー設定
-            boundary_conditions: 境界条件のリスト
-            terms: 追加の項
-            **kwargs: 追加のパラメータ
+            relaxation_parameter: 緩和パラメータ (0 < ω < 2)
+                - ω = 1: ガウス・ザイデル法
+                - 1 < ω < 2: 加速された反復法
+                - 最適値は問題依存
         """
-        # デフォルト設定の取得
-        solver_config = config or PoissonSolverConfig()
+        super().__init__(config or PoissonSolverConfig())
 
-        # デフォルトのSOR関連パラメータ
-        solver_specific = solver_config.get_config_for_component("solver_specific")
+        # 緩和パラメータの検証
+        if not 0 < relaxation_parameter <= 2:
+            raise ValueError("緩和パラメータは0から2の間である必要があります")
 
-        # 緩和係数の取得（デフォルト1.5）
-        self.omega = kwargs.get(
-            "omega", solver_specific.get("relaxation_parameter", 1.5)
-        )
+        self.relaxation_parameter = relaxation_parameter
 
-        # 親クラスの初期化
-        super().__init__(
-            config=solver_config,
-            boundary_conditions=boundary_conditions,
-            terms=terms,
-            **kwargs,
-        )
-
-    def iterate(
-        self, solution: np.ndarray, rhs: np.ndarray, dx: Union[float, np.ndarray]
-    ) -> np.ndarray:
+    @partial(jit, static_argnums=(0,))
+    def _compute_laplacian(self, field: ScalarField) -> ScalarField:
         """
-        SOR法による1回の反復計算
+        ラプラシアン演算子を計算
 
         Args:
-            solution: 現在の解
-            rhs: 右辺
-            dx: グリッド間隔
+            field: 入力スカラー場
 
         Returns:
-            更新された解
+            ラプラシアンを適用した結果
         """
-        # dx の正規化
-        if np.isscalar(dx):
-            dx = np.full(solution.ndim, dx)
-        elif len(dx) != solution.ndim:
-            raise ValueError(f"dxは{solution.ndim}次元である必要があります")
+        result = ScalarField(field.shape, field.dx)
 
-        # 計算結果のコピー
-        result = solution.copy()
-
-        # 各次元についてSOR更新
-        for axis in range(solution.ndim):
-            # 各軸方向の近傍点からの寄与を計算
-            neighbors_sum = np.roll(result, 1, axis=axis) + np.roll(
-                result, -1, axis=axis
-            )
-
-            # SOR更新の計算
-            correction = (rhs + (neighbors_sum) / (2 * solution.ndim)) / (
-                2 / dx[axis] ** 2 + 1e-10
-            )
-
-            # 緩和パラメータの適用
-            result = (1 - self.omega) * result + self.omega * correction
-
-        # 境界条件の適用
-        if self.boundary_conditions:
-            for i, bc in enumerate(self.boundary_conditions):
-                if bc is not None:
-                    result = bc.apply_all(result, i)
+        for axis in range(field.ndim):
+            # 中心差分による2階微分
+            grad1 = jnp.gradient(field.data, field.dx[axis], axis=axis)
+            grad2 = jnp.gradient(grad1, field.dx[axis], axis=axis)
+            result.data += grad2
 
         return result
 
+    @partial(jit, static_argnums=(0,))
+    def solve(
+        self, rhs: ScalarField, initial_guess: Optional[ScalarField] = None
+    ) -> ScalarField:
+        """
+        SOR法によりPoisson方程式を解く
+
+        Args:
+            rhs: 右辺項 f
+            initial_guess: 初期推定解（省略時はゼロベクトル）
+
+        Returns:
+            解 u
+        """
+        # 入力の妥当性検証
+        self.validate_input(rhs, initial_guess)
+
+        # 初期解の準備
+        solution = (
+            initial_guess.copy()
+            if initial_guess is not None
+            else ScalarField(rhs.shape, rhs.dx, initial_value=0.0)
+        )
+
+        # SOR法の反復関数
+        def sor_step(solution_data):
+            """
+            単一のSORステップを実行
+
+            Args:
+                solution_data: 現在の解のデータ
+
+            Returns:
+                更新された解のデータ
+            """
+            # 各次元に対して更新
+            for axis in range(solution.ndim):
+                # シフトによる近傍点の取得
+                forward_shift = jnp.roll(solution_data, -1, axis=axis)
+                backward_shift = jnp.roll(solution_data, 1, axis=axis)
+
+                # 対角項以外の項の和
+                neighbors_sum = forward_shift + backward_shift
+
+                # SOR更新則
+                # u_new = (1-ω)u_old + ω * (f - Σ(u_j)) / (2*ndim)
+                solution_data = (
+                    1 - self.relaxation_parameter
+                ) * solution_data + self.relaxation_parameter * (
+                    rhs.data
+                    - (
+                        self._compute_laplacian(
+                            ScalarField(solution.shape, solution.dx, solution_data)
+                        ).data
+                    )
+                ) / (2 * solution.ndim)
+
+            return solution_data
+
+        # メイン反復ループ
+        for _ in range(self.config.max_iterations):
+            # SORステップの実行
+            old_solution = solution.data.copy()
+            solution.data = sor_step(solution.data)
+
+            # 収束判定
+            residual = self._compute_laplacian(solution)
+            residual.data -= rhs.data
+
+            # 残差のノルムを計算
+            residual_norm = jnp.linalg.norm(residual.data)
+            rhs_norm = jnp.linalg.norm(rhs.data)
+
+            # 収束判定
+            if residual_norm <= self.config.tolerance * rhs_norm:
+                break
+
+        return solution
+
+    def compute_residual(self, solution: ScalarField, rhs: ScalarField) -> float:
+        """
+        残差のノルムを計算
+
+        Args:
+            solution: 解
+            rhs: 右辺項
+
+        Returns:
+            残差のノルム
+        """
+        # ラプラシアンと残差の計算
+        residual = self._compute_laplacian(solution)
+        residual.data -= rhs.data
+
+        return float(jnp.linalg.norm(residual.data))
+
     def get_diagnostics(self) -> Dict[str, Any]:
         """
-        診断情報を取得
+        ソルバーの診断情報を取得
 
         Returns:
             診断情報の辞書
         """
+        # 親クラスの診断情報を取得し拡張
         diag = super().get_diagnostics()
         diag.update(
             {
-                "method": "SOR",
-                "omega": self.omega,
+                "relaxation_parameter": self.relaxation_parameter,
+                "method": "Successive Over-Relaxation (SOR)",
             }
         )
         return diag

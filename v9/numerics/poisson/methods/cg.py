@@ -1,203 +1,246 @@
 """
-共役勾配法（CG）によるPoissonソルバーの実装
+JAX共役勾配法によるPoisson方程式の数値解法
 
-このモジュールは、圧力ポアソン方程式を解くための共役勾配法を実装します。
-共役勾配法は対称正定値な問題に対して効率的な反復解法です。
+理論的背景:
+- 対称正定値行列に対する高効率な反復解法
+- 自動微分と追跡可能な計算グラフを活用
+- JAXの最適化機能による高速な数値計算
+
+数学的定式化:
+∇²u = f の離散化された形式を解く
 """
 
-import numpy as np
-from typing import Optional, Dict, Any, Union
-from ..base import PoissonSolverConfig
-from ..solver import PoissonSolver
+from typing import Optional, Dict, Any
+
+import jax
+import jax.numpy as jnp
+from jax import jit
+from functools import partial
+
+from core.field import ScalarField
+from .base import PoissonSolverBase, PoissonSolverConfig
 
 
-class ConjugateGradientSolver(PoissonSolver):
-    """共役勾配法によるPoissonソルバー"""
+class PoissonCGSolver(PoissonSolverBase):
+    """
+    JAX共役勾配法によるPoissonソルバー
+
+    対称正定値な線形システムに対する高速な反復解法
+    """
 
     def __init__(
         self,
         config: Optional[PoissonSolverConfig] = None,
-        preconditioner: str = "none",
-        **kwargs,
+        preconditioner: Optional[str] = None,
     ):
-        """共役勾配法ソルバーを初期化
+        """
+        JAX共役勾配法ソルバーを初期化
 
         Args:
             config: ソルバー設定
-            preconditioner: 前処理の種類 ('none', 'jacobi', 'ilu')
-            **kwargs: 基底クラスに渡すパラメータ
+            preconditioner: 前処理の種類 ('jacobi', None)
         """
-        super().__init__(config=config, **kwargs)
+        super().__init__(config or PoissonSolverConfig())
         self.preconditioner = preconditioner
-        self._iteration_count = 0
-        self._residual_history = []
-        self._initial_residual_norm = None
 
-    def solve(
-        self,
-        rhs: np.ndarray,
-        initial_solution: Optional[np.ndarray] = None,
-        dx: Union[float, np.ndarray] = 1.0,
-    ) -> np.ndarray:
-        """Poisson方程式を解く
+    @partial(jit, static_argnums=(0,))
+    def _apply_laplacian(self, solution: ScalarField) -> ScalarField:
+        """
+        ラプラシアン演算子を適用
 
         Args:
-            rhs: 右辺ベクトル
-            initial_solution: 初期推定解（オプション）
-            dx: グリッド間隔
+            solution: 解候補のスカラー場
 
         Returns:
-            計算された解
+            ラプラシアンを適用した結果
         """
-        # 初期化
-        if initial_solution is None:
-            solution = np.zeros_like(rhs)
-        else:
-            solution = initial_solution.copy()
+        # 各軸方向の2階微分の和を計算
+        result = ScalarField(solution.shape, solution.dx)
 
-        # 初期残差の計算
-        self.residual = rhs - self._apply_operator(solution, dx)
-        residual_norm = np.linalg.norm(self.residual)
-
-        # ゼロ右辺のチェック
-        rhs_norm = np.linalg.norm(rhs)
-        if rhs_norm < 1e-15:
-            return np.zeros_like(rhs)
-
-        self._initial_residual_norm = residual_norm
-        self._residual_history = [residual_norm]
-
-        # 前処理の適用
-        if self.preconditioner == "jacobi":
-            self.z = self._apply_jacobi_preconditioner(self.residual, dx)
-        else:
-            self.z = self.residual.copy()
-
-        # 初期サーチ方向
-        self.p = self.z.copy()
-        self.rz_old = np.sum(self.residual * self.z)
-
-        # メインの反復ループ
-        for i in range(self.max_iterations):
-            # Ap の計算
-            Ap = self._apply_operator(self.p, dx)
-            pAp = np.sum(self.p * Ap)
-
-            # ステップサイズの計算
-            if abs(pAp) < 1e-14:
-                # サーチ方向が非常に小さい場合
-                if residual_norm < self.tolerance * rhs_norm:
-                    # 既に十分収束している
-                    break
-                else:
-                    # 新しいサーチ方向で再開
-                    self.p = self.residual.copy()
-                    Ap = self._apply_operator(self.p, dx)
-                    pAp = np.sum(self.p * Ap)
-                    if abs(pAp) < 1e-14:
-                        raise ValueError("共役勾配法: 適切なサーチ方向が見つかりません")
-
-            alpha = self.rz_old / pAp
-
-            # 解と残差の更新
-            solution += alpha * self.p
-            self.residual -= alpha * Ap
-
-            # 収束判定
-            residual_norm = np.linalg.norm(self.residual)
-            self._residual_history.append(residual_norm)
-
-            if residual_norm < self.tolerance * rhs_norm:
-                break
-
-            # 前処理の適用
-            if self.preconditioner == "jacobi":
-                self.z = self._apply_jacobi_preconditioner(self.residual, dx)
-            else:
-                self.z = self.residual.copy()
-
-            # βの計算
-            rz_new = np.sum(self.residual * self.z)
-            beta = rz_new / self.rz_old
-            self.rz_old = rz_new
-
-            # サーチ方向の更新
-            self.p = self.z + beta * self.p
-
-        self._iteration_count = i + 1
-        return solution
-
-    def _apply_operator(
-        self, v: np.ndarray, dx: Union[float, np.ndarray]
-    ) -> np.ndarray:
-        """ラプラシアン演算子を適用
-
-        Args:
-            v: 入力ベクトル
-            dx: グリッド間隔（スカラーまたはベクトル）
-
-        Returns:
-            ラプラシアン演算子を適用した結果
-        """
-        result = np.zeros_like(v)
-
-        # dxをベクトルとして扱う
-        if np.isscalar(dx):
-            dx_vec = np.full(v.ndim, dx)
-        else:
-            dx_vec = np.asarray(dx)
-
-        # 各方向のラプラシアンを計算
-        for axis in range(v.ndim):
+        for axis in range(solution.ndim):
             # 中心差分による2階微分
-            forward = np.roll(v, -1, axis=axis)
-            backward = np.roll(v, 1, axis=axis)
-            result += (forward - 2 * v + backward) / (dx_vec[axis] * dx_vec[axis])
+            grad1 = jnp.gradient(solution.data, solution.dx[axis], axis=axis)
+            grad2 = jnp.gradient(grad1, solution.dx[axis], axis=axis)
+            result.data += grad2
 
         return result
 
-    def _apply_jacobi_preconditioner(
-        self, v: np.ndarray, dx: Union[float, np.ndarray]
-    ) -> np.ndarray:
-        """Jacobi前処理を適用
+    @partial(jit, static_argnums=(0,))
+    def _inner_product(self, field1: ScalarField, field2: ScalarField) -> jnp.ndarray:
+        """
+        スカラー場の内積を計算
 
         Args:
-            v: 入力ベクトル
-            dx: グリッド間隔（スカラーまたはベクトル）
+            field1: 第1のスカラー場
+            field2: 第2のスカラー場
 
         Returns:
-            前処理を適用した結果
+            内積値
         """
-        # dxをベクトルとして扱う
-        if np.isscalar(dx):
-            dx_vec = np.full(v.ndim, dx)
+        return jnp.sum(field1.data * field2.data)
+
+    @partial(jit, static_argnums=(0,))
+    def _jacobi_precondition(self, residual: ScalarField) -> ScalarField:
+        """
+        ヤコビ前処理を適用
+
+        Args:
+            residual: 残差場
+
+        Returns:
+            前処理を適用した残差場
+        """
+        # ラプラシアン演算子の対角成分の逆数を計算
+        diagonal_inv = ScalarField(residual.shape, residual.dx)
+        for axis in range(residual.ndim):
+            diagonal_inv.data += 1.0 / (residual.dx[axis] ** 2)
+
+        # 前処理された残差
+        preconditioned = ScalarField(residual.shape, residual.dx)
+        preconditioned.data = residual.data / diagonal_inv.data
+
+        return preconditioned
+
+    @partial(jit, static_argnums=(0,))
+    def solve(
+        self, rhs: ScalarField, initial_guess: Optional[ScalarField] = None
+    ) -> ScalarField:
+        """
+        Poisson方程式を共役勾配法で解く
+
+        Args:
+            rhs: 右辺項 f
+            initial_guess: 初期推定解（省略時はゼロベクトル）
+
+        Returns:
+            解 u
+        """
+        # 入力の妥当性検証
+        self.validate_input(rhs, initial_guess)
+
+        # 初期解の準備
+        solution = (
+            initial_guess.copy()
+            if initial_guess is not None
+            else ScalarField(rhs.shape, rhs.dx, initial_value=0.0)
+        )
+
+        def cg_step(state):
+            """共役勾配法の1ステップを定義"""
+            solution, residual, direction, rz_old = state
+
+            # Aの行列ベクトル積（ラプラシアン）
+            A_direction = self._apply_laplacian(
+                ScalarField(direction.shape, direction.dx, direction.data)
+            )
+
+            # ステップサイズの計算
+            alpha_numerator = rz_old
+            alpha_denominator = self._inner_product(direction, A_direction)
+            alpha = alpha_numerator / (alpha_denominator + 1e-10)
+
+            # 解と残差の更新
+            new_solution = ScalarField(
+                solution.shape, solution.dx, solution.data + alpha * direction.data
+            )
+            new_residual = ScalarField(
+                residual.shape, residual.dx, residual.data - alpha * A_direction.data
+            )
+
+            # 前処理
+            if self.preconditioner == "jacobi":
+                preconditioned_residual = self._jacobi_precondition(new_residual)
+            else:
+                preconditioned_residual = new_residual
+
+            # 内積の計算
+            rz_new = self._inner_product(new_residual, preconditioned_residual)
+
+            # 共役方向の更新
+            beta = rz_new / (rz_old + 1e-10)
+            new_direction = ScalarField(
+                preconditioned_residual.shape,
+                preconditioned_residual.dx,
+                preconditioned_residual.data + beta * direction.data,
+            )
+
+            return (new_solution, new_residual, new_direction, rz_new)
+
+        # 初期状態の準備
+        initial_residual = rhs - self._apply_laplacian(solution)
+
+        if self.preconditioner == "jacobi":
+            preconditioned_residual = self._jacobi_precondition(initial_residual)
         else:
-            dx_vec = np.asarray(dx)
+            preconditioned_residual = initial_residual
 
-        # 対角項の逆数を計算（ラプラシアン演算子の場合）
-        diagonal = sum(-2.0 / (dx_i * dx_i) for dx_i in dx_vec)
-        return v / (diagonal + 1e-14)  # ゼロ除算防止
+        initial_direction = preconditioned_residual
+        initial_rz = self._inner_product(initial_residual, preconditioned_residual)
 
-    def get_convergence_info(self) -> Dict[str, Any]:
-        """収束情報を取得"""
-        return {
-            "iterations": self._iteration_count,
-            "initial_residual": self._initial_residual_norm,
-            "final_residual": self._residual_history[-1]
-            if self._residual_history
-            else None,
-            "residual_history": self._residual_history,
-            "converged": self._iteration_count < self.max_iterations,
-        }
+        initial_state = (solution, initial_residual, initial_direction, initial_rz)
+
+        # メイン反復
+        def cg_loop(i, state):
+            """共役勾配法の収束判定を含むループ"""
+            solution, residual, direction, rz_old = state
+
+            # 残差のノルムを計算
+            residual_norm = jnp.linalg.norm(residual.data)
+            max_norm = jnp.linalg.norm(rhs.data)
+
+            # 収束判定
+            is_converged = residual_norm <= self.config.tolerance * max_norm
+
+            # 最大反復回数による制限
+            is_max_iter = i >= self.config.max_iterations
+
+            # 条件分岐
+            new_state = jax.lax.cond(
+                is_converged | is_max_iter,
+                lambda _: state,
+                lambda _: cg_step(state),
+                operand=None,
+            )
+
+            return new_state
+
+        # 反復計算の実行
+        final_state = jax.lax.fori_loop(
+            0, self.config.max_iterations, cg_loop, initial_state
+        )
+
+        # 最終的な解を返却
+        return final_state[0]
+
+    def compute_residual(self, solution: ScalarField, rhs: ScalarField) -> float:
+        """
+        残差を計算
+
+        Args:
+            solution: 解
+            rhs: 右辺項
+
+        Returns:
+            残差のノルム
+        """
+        # ラプラシアンと残差の計算
+        residual = rhs - self._apply_laplacian(solution)
+
+        # 残差のノルムを返却
+        return float(jnp.linalg.norm(residual.data))
 
     def get_diagnostics(self) -> Dict[str, Any]:
-        """診断情報を取得"""
+        """
+        ソルバーの診断情報を取得
+
+        Returns:
+            診断情報の辞書
+        """
+        # 親クラスの診断情報を取得し拡張
         diag = super().get_diagnostics()
         diag.update(
             {
-                "method": "Conjugate Gradient",
                 "preconditioner": self.preconditioner,
-                "convergence_info": self.get_convergence_info(),
             }
         )
         return diag

@@ -15,12 +15,14 @@ from jax import jit
 
 class Side(Enum):
     """境界の側を表す列挙型"""
+
     NEGATIVE = auto()  # 負の側 (x=0, y=0, z=0)
     POSITIVE = auto()  # 正の側 (x=Lx, y=Ly, z=Lz)
 
 
 class Direction(Enum):
     """座標軸の方向を表す列挙型"""
+
     X = 0
     Y = 1
     Z = 2
@@ -29,12 +31,13 @@ class Direction(Enum):
 @dataclass(frozen=True)
 class StencilInfo:
     """差分ステンシルの情報を保持する不変クラス
-    
+
     Attributes:
         points: ステンシル点の相対位置（中心からのオフセット）
         coefficients: 各点での係数
     """
-    points: jnp.ndarray      # shape: (N,)
+
+    points: jnp.ndarray  # shape: (N,)
     coefficients: jnp.ndarray  # shape: (N,)
 
     def __post_init__(self):
@@ -45,6 +48,7 @@ class StencilInfo:
 
 class BoundaryField(Protocol):
     """境界条件が適用される場のプロトコル"""
+
     @property
     def shape(self) -> Tuple[int, int, int]:
         """3次元形状を取得"""
@@ -60,7 +64,7 @@ class BoundaryCondition(ABC):
 
     def __init__(self, direction: Direction, side: Side, order: int = 2):
         """境界条件を初期化
-        
+
         Args:
             direction: 境界面の方向（X, Y, Z）
             side: 境界の側（NEGATIVE, POSITIVE）
@@ -73,10 +77,10 @@ class BoundaryCondition(ABC):
     @abstractmethod
     def apply(self, field: BoundaryField) -> jnp.DeviceArray:
         """境界条件を適用
-        
+
         Args:
             field: 境界条件を適用する場
-            
+
         Returns:
             境界条件が適用された新しい配列
         """
@@ -85,7 +89,7 @@ class BoundaryCondition(ABC):
     @abstractmethod
     def get_stencil(self) -> StencilInfo:
         """差分ステンシルの情報を取得
-        
+
         Returns:
             ステンシルの情報
         """
@@ -93,16 +97,14 @@ class BoundaryCondition(ABC):
 
     @jit
     def get_boundary_slice(
-        self, 
-        shape: Tuple[int, int, int], 
-        width: int = 1
+        self, shape: Tuple[int, int, int], width: int = 1
     ) -> Tuple[slice, ...]:
         """境界領域のスライスを取得
-        
+
         Args:
             shape: 場の3次元形状
             width: 境界領域の幅
-            
+
         Returns:
             境界領域を選択するスライスのタプル
         """
@@ -116,10 +118,10 @@ class BoundaryCondition(ABC):
     @jit
     def validate_field(self, field: BoundaryField) -> None:
         """場の妥当性を検証
-        
+
         Args:
             field: 検証する場
-            
+
         Raises:
             ValueError: 無効な場が指定された場合
         """

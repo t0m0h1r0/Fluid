@@ -1,93 +1,112 @@
-"""Poisson方程式のソルバー（改良版）"""
+"""
+Poisson方程式ソルバーの設定管理モジュール
 
-from typing import Optional, Union, List
-import numpy as np
+このモジュールは、数値偏微分方程式の解法に関する設定を
+柔軟かつ堅牢に管理するための機能を提供します。
 
-from core.field import ScalarField
-from core.solver import IterativeSolver
-from core.boundary import BoundaryCondition
-from .base import PoissonSolverBase, PoissonSolverTerm
-from .config import PoissonSolverConfig
+主な特徴:
+1. 反復法のパラメータ設定
+2. 収束判定基準の定義
+3. デフォルト値と設定のバリデーション
+"""
+
+from dataclasses import dataclass, field
+from typing import Dict, Any
+import yaml
 
 
-class PoissonSolver(PoissonSolverBase, IterativeSolver):
-    """Poisson方程式のソルバークラス（改良版）"""
+@dataclass
+class PoissonSolverConfig:
+    """
+    Poisson方程式ソルバーの設定を管理するデータクラス
 
-    def __init__(
-        self,
-        config: Optional[PoissonSolverConfig] = None,
-        boundary_conditions: Optional[List[BoundaryCondition]] = None,
-        terms: Optional[List[PoissonSolverTerm]] = None,
-        **kwargs,
-    ):
-        config = config or PoissonSolverConfig()
-        kwargs.setdefault("name", "Poisson")
-        kwargs.setdefault("tolerance", config.convergence.get("tolerance", 1e-6))
-        kwargs.setdefault(
-            "max_iterations", config.convergence.get("max_iterations", 1000)
-        )
+    数値解法の主要パラメータを包括的に管理します。
 
-        PoissonSolverBase.__init__(
-            self,
-            config=config,
-            boundary_conditions=boundary_conditions,
-            logger=kwargs.get("logger"),
-        )
-        IterativeSolver.__init__(self, **kwargs)
+    主要な設定パラメータ:
+    - max_iterations: 最大反復回数
+    - tolerance: 収束判定の許容誤差
+    - absolute_tolerance: 絶対誤差による収束判定
+    - relaxation_parameter: 緩和パラメータ（SOR法など）
+    """
 
-        self.terms = terms or []
-        self._converged = False
-        self._initial_residual = None
+    max_iterations: int = 1000
+    tolerance: float = 1e-6
+    absolute_tolerance: bool = False
+    relaxation_parameter: float = 1.0
 
-    def compute_residual(
-        self,
-        solution: Union[np.ndarray, ScalarField],
-        rhs: Union[np.ndarray, ScalarField],
-        dx: Union[float, np.ndarray],
-    ) -> float:
-        """残差を計算（新しい演算子を活用）"""
-        if isinstance(solution, ScalarField):
-            solution_field = solution
-        else:
-            solution_field = ScalarField(solution.shape, dx, initial_value=solution)
+    # オプションの診断設定
+    diagnostics: Dict[str, Any] = field(
+        default_factory=lambda: {"save_residual_history": True, "log_frequency": 10}
+    )
 
-        if isinstance(rhs, ScalarField):
-            rhs_field = rhs
-        else:
-            rhs_field = ScalarField(rhs.shape, dx, initial_value=rhs)
+    def validate(self) -> None:
+        """
+        設定値の妥当性を検証
 
-        # ラプラシアンの計算（新しい演算子を活用）
-        laplacian = solution_field.laplacian()
+        数値的制約と論理的整合性を確認します。
+        """
+        if self.max_iterations <= 0:
+            raise ValueError("最大反復回数は正の整数である必要があります")
 
-        # 残差の計算（新しい演算子を活用）
-        residual = laplacian - rhs_field
+        if self.tolerance <= 0:
+            raise ValueError("収束判定の許容誤差は正の値である必要があります")
 
-        # 境界条件の適用
-        if self.boundary_conditions:
-            for i, bc in enumerate(self.boundary_conditions):
-                if bc is not None:
-                    residual = bc.apply_all(residual, i)
+        if not 0 < self.relaxation_parameter <= 2:
+            raise ValueError("緩和パラメータは0から2の間である必要があります")
 
-        # L2ノルムを計算（新しいnorm()メソッドを活用）
-        return max(residual.norm(), 1e-15)
+    def update(self, config_dict: Dict[str, Any]) -> "PoissonSolverConfig":
+        """
+        設定を更新し、新しい設定インスタンスを返します。
 
-    def iterate(
-        self,
-        solution: Union[np.ndarray, ScalarField],
-        rhs: Union[np.ndarray, ScalarField],
-        dx: Union[float, np.ndarray],
-    ) -> Union[np.ndarray, ScalarField]:
-        """1回の反復を実行（新しい演算子を活用）"""
-        if isinstance(solution, np.ndarray):
-            solution = ScalarField(solution.shape, dx, initial_value=solution)
-        if isinstance(rhs, np.ndarray):
-            rhs = ScalarField(rhs.shape, dx, initial_value=rhs)
+        Args:
+            config_dict: 更新する設定の辞書
 
-        # ラプラシアンの計算（新しい演算子を活用）
-        laplacian = solution.laplacian()
+        Returns:
+            更新された設定インスタンス
+        """
+        updated_config = PoissonSolverConfig(**{**self.__dict__, **config_dict})
+        updated_config.validate()
+        return updated_config
 
-        # 更新量の計算（新しい演算子を活用）
-        update = (rhs - laplacian) * self.omega
+    @classmethod
+    def from_yaml(cls, filepath: str) -> "PoissonSolverConfig":
+        """
+        YAMLファイルから設定を読み込みます。
 
-        # 解の更新（新しい + 演算子を活用）
-        return solution + update
+        Args:
+            filepath: 設定ファイルのパス
+
+        Returns:
+            読み込まれた設定インスタンス
+        """
+        with open(filepath, "r", encoding="utf-8") as f:
+            config_dict = yaml.safe_load(f)
+
+        config = cls(**config_dict)
+        config.validate()
+        return config
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        設定を辞書形式にシリアライズします。
+
+        Returns:
+            設定の辞書表現
+        """
+        return {
+            "max_iterations": self.max_iterations,
+            "tolerance": self.tolerance,
+            "absolute_tolerance": self.absolute_tolerance,
+            "relaxation_parameter": self.relaxation_parameter,
+            "diagnostics": self.diagnostics,
+        }
+
+    def save_to_yaml(self, filepath: str) -> None:
+        """
+        設定をYAMLファイルに保存します。
+
+        Args:
+            filepath: 保存先のファイルパス
+        """
+        with open(filepath, "w", encoding="utf-8") as f:
+            yaml.dump(self.to_dict(), f, default_flow_style=False)

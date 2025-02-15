@@ -22,7 +22,6 @@ __all__ = [
     # 基底クラスとインターフェース
     "TimeIntegrator",
     "TimeIntegratorConfig",
-    
     # 具体的な時間積分法
     "ForwardEuler",
     "RungeKutta4",

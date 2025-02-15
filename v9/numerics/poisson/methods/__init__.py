@@ -10,10 +10,10 @@ Poisson方程式の高速・高精度な数値解法を提供します。
 - 高度な前処理と収束加速
 """
 
-from .methods.base import PoissonSolverBase, PoissonSolverConfig
-from .config import PoissonSolverConfig as PoissonConfig
-from .methods.sor import PoissonSORSolver
-from .methods.multigrid import PoissonMultigridSolver
+from .base import PoissonSolverBase
+from .sor import PoissonSORSolver
+from .multigrid import PoissonMultigridSolver
+from .cg import PoissonCGSolver
 
 __all__ = [
     # 基底クラスとインターフェース
