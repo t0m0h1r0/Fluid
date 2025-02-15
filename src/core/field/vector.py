@@ -86,23 +86,28 @@ class VectorField(Field):
         return FieldFactory.create_vector_field(self.grid, (curl_x, curl_y, curl_z))
 
     def symmetric_gradient(self) -> VectorField:
-        """対称勾配テンソルを計算
+            """対称勾配テンソルを計算
 
-        ∇uₛ = 0.5(∇u + ∇uᵀ)
-        """
-        # 対称勾配の各成分を計算
-        components = []
-        for i in range(3):
-            for j in range(3):
-                # 対称勾配の各成分: 0.5(∂uᵢ/∂xⱼ + ∂uⱼ/∂xᵢ)
-                grad_i = self._components[i].gradient(j)
-                grad_j = self._components[j].gradient(i)
-                component = 0.5 * (grad_i + grad_j)
-                components.append(component)
+            ∇uₛ = 0.5(∇u + ∇uᵀ)
+            """
+            # 対称勾配の各成分を計算
+            components = []
+            for i in range(3):
+                for j in range(3):
+                    # 対称勾配の各成分: 0.5(∂uᵢ/∂xⱼ + ∂uⱼ/∂xᵢ)
+                    grad_i = self._components[i].gradient(j)
+                    grad_j = self._components[j].gradient(i)
+                    
+                    # 新しい実装: スカラーフィールド同士の加算と定数との乗算を適切に処理
+                    component_data = 0.5 * (grad_i.data + grad_j.data)
+                    component = FieldFactory.create_scalar_field(
+                        self.grid, initial_value=component_data
+                    )
+                    components.append(component)
 
-        return FieldFactory.create_vector_field(
-            self.grid, tuple(comp.data for comp in components[:3])
-        )
+            return FieldFactory.create_vector_field(
+                self.grid, tuple(comp.data for comp in components[:3])
+            )
 
     def magnitude(self) -> ScalarField:
         """ベクトルの大きさを計算"""
